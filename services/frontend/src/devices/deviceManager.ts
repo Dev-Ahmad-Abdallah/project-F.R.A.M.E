@@ -15,6 +15,7 @@ import {
 } from '../api/devicesAPI';
 import { getEncrypted, setEncrypted } from '../storage/secureStorage';
 import { generateFingerprint, randomBytes } from '../crypto/cryptoUtils';
+import { getIdentityKeys } from '../crypto/olmMachine';
 
 // ── Constants ──
 
@@ -48,16 +49,26 @@ export async function registerCurrentDevice(
   const deviceId = generateDeviceId();
   const deviceDisplayName = detectDeviceDisplayName();
 
-  // Generate placeholder key material (real keys come from olmMachine)
-  const keyBytes = randomBytes(32);
-  const devicePublicKey = Array.from(keyBytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+  // Use real identity keys from OlmMachine if available, fall back to placeholder
+  let devicePublicKey: string;
+  let deviceSigningKey: string;
 
-  const signingKeyBytes = randomBytes(32);
-  const deviceSigningKey = Array.from(signingKeyBytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+  try {
+    const identityKeys = getIdentityKeys();
+    devicePublicKey = identityKeys.curve25519;
+    deviceSigningKey = identityKeys.ed25519;
+  } catch {
+    // OlmMachine not yet initialised — fall back to placeholder keys
+    const keyBytes = randomBytes(32);
+    devicePublicKey = Array.from(keyBytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    const signingKeyBytes = randomBytes(32);
+    deviceSigningKey = Array.from(signingKeyBytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
 
   const params: RegisterDeviceParams = {
     deviceId,

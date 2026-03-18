@@ -6,6 +6,8 @@ import { findDevicesByUser } from '../db/queries/devices';
 import { pool } from '../db/pool';
 import { redisClient, redisSubscriber } from '../redis/client';
 import { ApiError } from '../middleware/errorHandler';
+import { relayEventToAllPeers } from './federationService';
+import type { FederationEvent } from '@frame/shared/federation';
 
 const config = getConfig();
 
@@ -63,6 +65,28 @@ export async function sendMessage(params: SendMessageParams) {
       redisClient.publish(`device:${deviceId}`, notification)
     )
   );
+
+  // Relay to federation peers if room has remote members
+  const hasRemoteMembers = members.some(
+    (m) => !m.user_id.endsWith(`:${config.HOMESERVER_DOMAIN}`)
+  );
+
+  if (hasRemoteMembers) {
+    const federationEvent: FederationEvent = {
+      origin: config.HOMESERVER_DOMAIN,
+      originServerTs: Date.now(),
+      eventId,
+      roomId,
+      sender: senderId,
+      eventType,
+      content,
+      signatures: {},
+    };
+    // Fire and forget — don't block the sender on federation relay
+    relayEventToAllPeers(federationEvent).catch((err) =>
+      console.error('[Federation] Relay failed after sendMessage:', err)
+    );
+  }
 
   return {
     eventId,

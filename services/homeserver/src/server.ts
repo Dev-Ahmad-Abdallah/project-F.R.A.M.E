@@ -4,7 +4,7 @@ import cors from 'cors';
 import { getConfig, getCorsOrigins } from './config';
 import { getPublicKeyBase64 } from './services/federationService';
 import { pool, closePool } from './db/pool';
-import { redisClient, redisSubscriber, closeRedis } from './redis/client';
+import { redisClient, redisSubscriber, closeRedis, connectRedis } from './redis/client';
 import { errorHandler, asyncHandler } from './middleware/errorHandler';
 import { requireAuth } from './middleware/auth';
 import { authRouter } from './routes/auth';
@@ -82,10 +82,22 @@ app.get('/.well-known/frame/server', (_req, res) => {
 app.use(errorHandler);
 
 // ── Start server ──
-const server = app.listen(config.PORT, () => {
-  console.log(`Homeserver running on port ${config.PORT}`);
-  console.log(`Domain: ${config.HOMESERVER_DOMAIN}`);
-  console.log(`Environment: ${config.NODE_ENV}`);
+let server: ReturnType<typeof app.listen>;
+
+async function startServer() {
+  await connectRedis();
+  console.log('Redis connected');
+
+  server = app.listen(config.PORT, () => {
+    console.log(`Homeserver running on port ${config.PORT}`);
+    console.log(`Domain: ${config.HOMESERVER_DOMAIN}`);
+    console.log(`Environment: ${config.NODE_ENV}`);
+  });
+}
+
+startServer().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });
 
 // ── Graceful shutdown ──

@@ -72,7 +72,7 @@ export const syncQuerySchema = z.object({
 });
 
 export const keyUploadSchema = z.object({
-  oneTimePrekeys: z.array(z.string()).min(1).max(100),
+  oneTimePrekeys: z.array(z.string()).max(100),
   signedPrekey: z.string().optional(),
   signedPrekeySig: z.string().optional(),
 });

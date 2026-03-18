@@ -16,6 +16,7 @@ import {
   processOutgoingRequests,
 } from './olmMachine';
 import { uploadKeys, fetchKeyBundle } from '../api/keysAPI';
+import { fetchAndVerifyKey, type VerifiedKeyResult } from '../verification/keyTransparency';
 
 // ── Public API ──
 
@@ -63,15 +64,36 @@ export async function generateAndUploadKeys(
 }
 
 /**
- * Fetch a contact's public key bundle from the homeserver.
+ * Fetch a contact's public key bundle from the homeserver and verify
+ * it against the key transparency log.
  *
  * Returns the identity key, signed pre-key, its signature, and any
  * available one-time pre-keys needed to establish an Olm session.
  *
  * @param userId Target user ID
+ * @throws Error if key transparency verification fails
  */
 export async function fetchContactKeys(
   userId: string,
-): Promise<KeyBundle> {
-  return fetchKeyBundle(userId);
+): Promise<KeyBundle & { transparencyVerification: VerifiedKeyResult }> {
+  const bundle = await fetchKeyBundle(userId);
+
+  // Verify the key against the transparency log
+  const verification = await fetchAndVerifyKey(userId);
+
+  if (!verification.verified) {
+    throw new Error(
+      `Key transparency verification failed for ${userId}. ` +
+        'The key may have been tampered with.',
+    );
+  }
+
+  if (verification.rootChanged) {
+    console.warn(
+      `[F.R.A.M.E.] Merkle root changed for ${userId}. ` +
+        'This may indicate a key rotation or log manipulation.',
+    );
+  }
+
+  return { ...bundle, transparencyVerification: verification };
 }

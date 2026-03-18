@@ -29,6 +29,15 @@ export async function uploadPrekeys(
   signedPrekey?: string,
   signedPrekeySig?: string
 ) {
+  // Update signed prekey if provided
+  if (signedPrekey && signedPrekeySig) {
+    await pool.query(
+      `UPDATE key_bundles SET signed_prekey = $1, signed_prekey_signature = $2
+       WHERE user_id = $3 AND device_id = $4`,
+      [signedPrekey, signedPrekeySig, userId, deviceId]
+    );
+  }
+
   const totalKeys = await addOneTimePrekeys(userId, deviceId, oneTimePrekeys);
 
   return {

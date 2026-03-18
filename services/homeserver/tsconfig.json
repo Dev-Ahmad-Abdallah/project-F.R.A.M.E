@@ -13,8 +13,8 @@
     "declaration": true,
     "sourceMap": true,
     "paths": {
-      "@frame/shared/*": ["../../shared/types/*"],
-      "@frame/shared": ["../../shared/types/index"]
+      "@frame/shared/*": ["../../shared/dist/*"],
+      "@frame/shared": ["../../shared/dist/index"]
     },
     "baseUrl": "."
   },

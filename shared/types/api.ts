@@ -29,6 +29,7 @@ export interface RefreshRequest {
 
 export interface RefreshResponse {
   accessToken: string;
+  refreshToken: string;
 }
 
 // ── Messages ──

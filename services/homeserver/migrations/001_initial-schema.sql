@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS events (
   event_id TEXT PRIMARY KEY,
   room_id TEXT NOT NULL REFERENCES rooms(room_id),
   sender_id TEXT NOT NULL REFERENCES users(user_id),
-  sender_device_id TEXT NOT NULL REFERENCES devices(device_id),
+  sender_device_id TEXT,  -- Nullable: federation events have remote device IDs not in local DB
   event_type TEXT NOT NULL,
   ciphertext BYTEA,
   content JSONB,

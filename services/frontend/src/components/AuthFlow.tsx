@@ -7,11 +7,12 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import type { AuthResponse } from '@frame/shared/api';
+import type { AuthResponse } from '@frame/shared';
 import { login, register } from '../api/authAPI';
 import { FrameApiError } from '../api/client';
+import { generateAndUploadKeys } from '../crypto/keyManager';
 
-// ── Placeholder key generation ──
+// ── Placeholder key generation (for initial register payload only) ──
 
 function generatePlaceholderKey(): string {
   const bytes = new Uint8Array(32);
@@ -21,7 +22,7 @@ function generatePlaceholderKey(): string {
     .join('');
 }
 
-function generatePlaceholderKeys() {
+function generateInitialPlaceholderKeys() {
   return {
     identityKey: generatePlaceholderKey(),
     signedPrekey: generatePlaceholderKey(),
@@ -150,12 +151,24 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
         let auth: AuthResponse;
 
         if (mode === 'register') {
-          const keys = generatePlaceholderKeys();
+          // Send placeholder keys for the initial registration payload
+          // (the server needs them for the initial key bundle)
+          const keys = generateInitialPlaceholderKeys();
           auth = await register({
             username,
             password,
             ...keys,
           });
+
+          // Replace placeholders with real vodozemac keys via /keys/upload
+          try {
+            await generateAndUploadKeys(auth.userId, auth.deviceId);
+          } catch (keyErr) {
+            console.warn(
+              '[F.R.A.M.E.] vodozemac key generation failed; continuing with placeholder keys:',
+              keyErr,
+            );
+          }
         } else {
           auth = await login({ username, password });
         }

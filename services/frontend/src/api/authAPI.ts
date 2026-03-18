@@ -9,7 +9,7 @@ import type {
   LoginRequest,
   AuthResponse,
   RefreshResponse,
-} from '@frame/shared/api';
+} from '@frame/shared';
 
 import {
   apiRequest,
@@ -66,8 +66,8 @@ export async function refreshToken(): Promise<RefreshResponse> {
     noAuth: true,
   });
 
-  // Update only the access token; refresh token stays the same
-  setTokens(data.accessToken, rt);
+  // Update both tokens — server rotates the refresh token on each use
+  setTokens(data.accessToken, data.refreshToken);
   return data;
 }
 

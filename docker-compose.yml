@@ -18,7 +18,7 @@ services:
       HOMESERVER_DOMAIN: localhost:3000
       FEDERATION_SIGNING_KEY: dev-signing-key-a
       FEDERATION_PEERS: localhost:3001
-      CORS_ORIGINS: http://localhost:5173
+      CORS_ORIGINS: http://localhost:3000
     depends_on:
       - postgres-a
       - redis-a
@@ -40,7 +40,7 @@ services:
       HOMESERVER_DOMAIN: localhost:3001
       FEDERATION_SIGNING_KEY: dev-signing-key-b
       FEDERATION_PEERS: localhost:3000
-      CORS_ORIGINS: http://localhost:5173
+      CORS_ORIGINS: http://localhost:3000
     depends_on:
       - postgres-b
       - redis-b

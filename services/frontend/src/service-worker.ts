@@ -12,6 +12,10 @@
 
 declare const self: ServiceWorkerGlobalScope;
 
+// Workbox precache manifest (required by CRA's build toolchain)
+// eslint-disable-next-line no-restricted-globals
+const _manifest = (self as unknown as { __WB_MANIFEST: unknown[] }).__WB_MANIFEST;
+
 // ── Install ──
 
 self.addEventListener('install', (event: ExtendableEvent) => {

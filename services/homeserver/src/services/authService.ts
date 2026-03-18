@@ -3,8 +3,9 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { getConfig } from '../config';
 import { createUser, findUserByUsername, userExists } from '../db/queries/users';
-import { createDevice } from '../db/queries/devices';
+import { createDevice, findDevice } from '../db/queries/devices';
 import { upsertKeyBundle } from '../db/queries/keys';
+import { addKeyToLog } from './merkleTree';
 import { pool } from '../db/pool';
 import { ApiError } from '../middleware/errorHandler';
 import type { AuthPayload } from '../middleware/auth';
@@ -100,6 +101,9 @@ export async function register(params: RegisterParams): Promise<AuthResult> {
   // Store key bundle
   await upsertKeyBundle(userId, deviceId, identityKey, signedPrekey, signedPrekeySig, oneTimePrekeys);
 
+  // Add key to transparency log
+  await addKeyToLog(userId, identityKey);
+
   // Generate tokens
   const accessToken = signAccessToken(userId, deviceId);
   const refreshToken = await signAndStoreRefreshToken(userId, deviceId);
@@ -131,6 +135,13 @@ export async function login(params: LoginParams): Promise<AuthResult> {
   // Use existing device ID or generate new one
   const deviceId = existingDeviceId || generateDeviceId();
 
+  // Ensure the device exists in the database (create if new login device)
+  const existingDevice = await findDevice(deviceId);
+  if (!existingDevice) {
+    // Create a placeholder device record — keys will be uploaded separately via /keys/upload
+    await createDevice(deviceId, user.user_id, 'pending', 'pending', `${username}'s device`);
+  }
+
   // Generate tokens
   const accessToken = signAccessToken(user.user_id, deviceId);
   const refreshToken = await signAndStoreRefreshToken(user.user_id, deviceId);
@@ -144,7 +155,7 @@ export async function login(params: LoginParams): Promise<AuthResult> {
   };
 }
 
-export async function refreshAccessToken(refreshToken: string): Promise<{ accessToken: string }> {
+export async function refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {
   try {
     const payload = jwt.verify(refreshToken, config.JWT_SECRET, {
       algorithms: ['HS256'],
@@ -171,7 +182,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<{ access
     const accessToken = signAccessToken(payload.sub, payload.deviceId);
     const newRefreshToken = await signAndStoreRefreshToken(payload.sub, payload.deviceId);
 
-    return { accessToken, refreshToken: newRefreshToken } as { accessToken: string };
+    return { accessToken, refreshToken: newRefreshToken };
   } catch (err) {
     if (err instanceof ApiError) throw err;
     throw new ApiError(401, 'M_INVALID_TOKEN', 'Invalid or expired refresh token');

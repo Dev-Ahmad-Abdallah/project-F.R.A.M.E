@@ -10,7 +10,7 @@
  * SECURITY: Never log or expose raw key material.
  */
 
-import type { MerkleProof } from '@frame/shared/keys';
+import type { MerkleProof } from '@frame/shared';
 import { apiRequest } from '../api/client';
 import { getEncrypted, setEncrypted } from '../storage/secureStorage';
 

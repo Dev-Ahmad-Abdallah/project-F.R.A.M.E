@@ -11,10 +11,6 @@ jobs:
   backend:
     name: Backend (Homeserver)
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'push' ||
-      contains(join(github.event.pull_request.changed_files.*.filename, ','), 'services/homeserver/') ||
-      contains(join(github.event.pull_request.changed_files.*.filename, ','), 'shared/')
 
     services:
       postgres:
@@ -69,10 +65,6 @@ jobs:
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'push' ||
-      contains(join(github.event.pull_request.changed_files.*.filename, ','), 'services/frontend/') ||
-      contains(join(github.event.pull_request.changed_files.*.filename, ','), 'shared/')
 
     steps:
       - uses: actions/checkout@v4

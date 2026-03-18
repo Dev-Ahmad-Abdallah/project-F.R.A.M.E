@@ -7,7 +7,7 @@
  * - Handles 401 → refresh → retry once
  */
 
-import type { RefreshResponse, ApiError } from '@frame/shared/api';
+import type { RefreshResponse, ApiError } from '@frame/shared';
 
 // ── Token storage (in-memory only — cleared on page reload) ──
 
@@ -36,7 +36,7 @@ export function getRefreshToken(): string | null {
 
 function getBaseUrl(): string {
   const url =
-    process.env.REACT_APP_HOMESERVER_URL ?? 'http://localhost:8080';
+    process.env.REACT_APP_HOMESERVER_URL ?? 'http://localhost:3000';
 
   // Enforce HTTPS in production
   if (process.env.NODE_ENV === 'production' && url.startsWith('http://')) {
@@ -87,6 +87,7 @@ async function performRefresh(): Promise<void> {
 
   const data: RefreshResponse = await res.json();
   accessToken = data.accessToken;
+  refreshTokenValue = data.refreshToken;
 }
 
 /**
