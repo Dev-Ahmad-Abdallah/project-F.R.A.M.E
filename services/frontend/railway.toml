@@ -1,5 +1,4 @@
 [build]
-builder = "DOCKERFILE"
 dockerfilePath = "services/frontend/Dockerfile"
 watchPatterns = ["services/frontend/**", "shared/**"]
 
