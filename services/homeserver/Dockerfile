@@ -13,9 +13,10 @@ COPY services/homeserver/tsconfig.json services/homeserver/
 # Install dependencies
 RUN npm install --workspace=@frame/shared --workspace=@frame/homeserver
 
-# Copy source
+# Copy source and migrations
 COPY shared/ shared/
 COPY services/homeserver/src/ services/homeserver/src/
+COPY services/homeserver/migrations/ services/homeserver/migrations/
 
 # Build shared types first, then homeserver
 RUN npm run build --workspace=@frame/shared
