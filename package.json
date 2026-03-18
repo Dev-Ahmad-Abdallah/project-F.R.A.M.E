@@ -1,0 +1,25 @@
+{
+  "name": "project-frame",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Federated Ratcheting Architecture for Messaging Encryption",
+  "workspaces": [
+    "shared",
+    "services/homeserver",
+    "services/frontend"
+  ],
+  "scripts": {
+    "build:shared": "cd shared && npm run build",
+    "build:homeserver": "cd services/homeserver && npm run build",
+    "build:frontend": "cd services/frontend && npm run build",
+    "build": "npm run build:shared && npm run build:homeserver && npm run build:frontend",
+    "dev:homeserver": "cd services/homeserver && npm run dev",
+    "dev:frontend": "cd services/frontend && npm run dev",
+    "test:homeserver": "cd services/homeserver && npm test",
+    "test:frontend": "cd services/frontend && npm test",
+    "test": "npm run test:homeserver && npm run test:frontend",
+    "lint": "npm run lint --workspaces",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down"
+  }
+}

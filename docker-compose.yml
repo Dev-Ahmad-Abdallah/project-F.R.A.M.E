@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # ── Homeserver A ──
+  homeserver-a:
+    build:
+      context: .
+      dockerfile: services/homeserver/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres-a:5432/frame_a
+      REDIS_URL: redis://redis-a:6379
+      PORT: 3000
+      NODE_ENV: development
+      JWT_SECRET: dev-secret-homeserver-a-change-in-production-xxxxxxxxxxxxxxxxx
+      BCRYPT_SALT_ROUNDS: 12
+      HOMESERVER_DOMAIN: localhost:3000
+      FEDERATION_SIGNING_KEY: dev-signing-key-a
+      FEDERATION_PEERS: localhost:3001
+      CORS_ORIGINS: http://localhost:5173
+    depends_on:
+      - postgres-a
+      - redis-a
+
+  # ── Homeserver B (Federation peer) ──
+  homeserver-b:
+    build:
+      context: .
+      dockerfile: services/homeserver/Dockerfile
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres-b:5432/frame_b
+      REDIS_URL: redis://redis-b:6379
+      PORT: 3000
+      NODE_ENV: development
+      JWT_SECRET: dev-secret-homeserver-b-change-in-production-xxxxxxxxxxxxxxxxx
+      BCRYPT_SALT_ROUNDS: 12
+      HOMESERVER_DOMAIN: localhost:3001
+      FEDERATION_SIGNING_KEY: dev-signing-key-b
+      FEDERATION_PEERS: localhost:3000
+      CORS_ORIGINS: http://localhost:5173
+    depends_on:
+      - postgres-b
+      - redis-b
+
+  # ── PostgreSQL A ──
+  postgres-a:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: frame_a
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_a_data:/var/lib/postgresql/data
+
+  # ── PostgreSQL B ──
+  postgres-b:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: frame_b
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_b_data:/var/lib/postgresql/data
+
+  # ── Redis A ──
+  redis-a:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  # ── Redis B ──
+  redis-b:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+
+volumes:
+  pg_a_data:
+  pg_b_data:

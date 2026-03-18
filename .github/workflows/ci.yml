@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Backend checks ──
+  backend:
+    name: Backend (Homeserver)
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      contains(join(github.event.pull_request.changed_files.*.filename, ','), 'services/homeserver/') ||
+      contains(join(github.event.pull_request.changed_files.*.filename, ','), 'shared/')
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: frame_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build shared types
+        run: npm run build:shared
+
+      - name: Build homeserver
+        run: npm run build:homeserver
+
+      - name: Run tests
+        run: npm run test:homeserver
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/frame_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: ci-test-secret-minimum-32-characters-long-xxxxx
+          HOMESERVER_DOMAIN: localhost:3000
+          FEDERATION_SIGNING_KEY: ci-test-signing-key
+          NODE_ENV: test
+
+  # ── Frontend checks ──
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      contains(join(github.event.pull_request.changed_files.*.filename, ','), 'services/frontend/') ||
+      contains(join(github.event.pull_request.changed_files.*.filename, ','), 'shared/')
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build shared types
+        run: npm run build:shared
+
+      - name: Build frontend
+        run: npm run build:frontend
+
+      - name: Run tests
+        run: npm run test:frontend
+
+  # ── Security scanning ──
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run npm audit
+        run: npm audit --audit-level=high || true
+        continue-on-error: true
