@@ -20,6 +20,10 @@ COPY services/frontend/public/ services/frontend/public/
 
 # Build shared types then frontend
 RUN npm run build --workspace=@frame/shared
+
+# REACT_APP_* vars must be present at build time for CRA to inline them
+ARG REACT_APP_HOMESERVER_URL
+ENV REACT_APP_HOMESERVER_URL=$REACT_APP_HOMESERVER_URL
 RUN cd services/frontend && npm run build
 
 # Stage 2: Serve
