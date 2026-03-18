@@ -42,6 +42,25 @@ app.use(cors({
 // ── Body parsing ──
 app.use(express.json({ limit: '64kb' }));
 
+// ── Root info ──
+app.get('/', (_req, res) => {
+  res.json({
+    name: 'F.R.A.M.E. Homeserver',
+    version: '1.0.0',
+    domain: config.HOMESERVER_DOMAIN,
+    endpoints: {
+      health: '/health',
+      auth: '/auth',
+      keys: '/keys',
+      messages: '/messages',
+      devices: '/devices',
+      rooms: '/rooms',
+      federation: '/federation',
+      discovery: '/.well-known/frame/server',
+    },
+  });
+});
+
 // ── Routes ──
 app.use('/health', healthRouter);
 app.use('/auth', authRouter);
