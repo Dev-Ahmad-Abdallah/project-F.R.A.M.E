@@ -8,6 +8,7 @@
  */
 
 import React from 'react';
+import { FONT_BODY, FONT_MONO } from '../globalStyles';
 
 // ── Types ──
 
@@ -37,18 +38,21 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
 }) => {
   return (
     <div style={styles.overlay}>
-      <div style={styles.modal} role="alertdialog" aria-labelledby="device-alert-title">
+      <div style={styles.modal} role="alertdialog" aria-labelledby="device-alert-title" aria-describedby="device-alert-desc">
         {/* Warning header */}
         <div style={styles.header}>
           <span style={styles.warningIcon} aria-hidden="true">
-            &#9888;
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2L1 21h22L12 2z" stroke="#f85149" strokeWidth="1.5" fill="rgba(248,81,73,0.1)" />
+              <path d="M12 9v4M12 16v.5" stroke="#f85149" strokeWidth="2" strokeLinecap="round" />
+            </svg>
           </span>
           <h2 id="device-alert-title" style={styles.title}>
             Unknown Device Detected
           </h2>
         </div>
 
-        <p style={styles.warningText}>
+        <p id="device-alert-desc" style={styles.warningText}>
           A device you do not recognize has been added to your account.
           If you did not add this device, your account may be compromised.
         </p>
@@ -126,14 +130,15 @@ const styles: Record<string, React.CSSProperties> = {
   },
   modal: {
     backgroundColor: '#161b22',
-    border: '2px solid #da3633',
+    border: '2px solid #f85149',
     borderRadius: 12,
     padding: 28,
     maxWidth: 460,
     width: '100%',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    fontFamily: FONT_BODY,
     color: '#c9d1d9',
-    boxShadow: '0 0 40px rgba(218, 54, 51, 0.3)',
+    boxShadow: '0 0 40px rgba(248, 81, 73, 0.3)',
+    animation: 'frame-modal-enter 0.15s ease-out',
   },
   header: {
     display: 'flex',
@@ -143,7 +148,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   warningIcon: {
     fontSize: 28,
-    color: '#da3633',
+    color: '#f85149',
     lineHeight: 1,
   },
   title: {
@@ -156,7 +161,7 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '0 0 20px',
     fontSize: 14,
     lineHeight: 1.6,
-    color: '#f0883e',
+    color: '#d29922',
   },
   detailsBox: {
     display: 'flex',
@@ -188,7 +193,7 @@ const styles: Record<string, React.CSSProperties> = {
   fingerprintValue: {
     fontSize: 13,
     color: '#58a6ff',
-    fontFamily: 'monospace',
+    fontFamily: FONT_MONO,
     wordBreak: 'break-all',
     lineHeight: 1.6,
   },

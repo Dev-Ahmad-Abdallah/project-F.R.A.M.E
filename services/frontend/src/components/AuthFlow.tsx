@@ -344,7 +344,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'flex-start',
     gap: 8,
-    backgroundColor: '#3d1a1a',
+    backgroundColor: '#3d1f28',
     border: '1px solid #6e3630',
     borderRadius: 6,
     padding: '10px 12px',

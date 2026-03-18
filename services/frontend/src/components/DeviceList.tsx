@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import VerificationBadge from './VerificationBadge';
+import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import {
   getKnownDevices,
   getDeviceList,
@@ -200,7 +201,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #30363d',
     borderRadius: 8,
     color: '#c9d1d9',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    fontFamily: FONT_BODY,
     maxWidth: 560,
   },
   heading: {
@@ -222,7 +223,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   errorBanner: {
     padding: '8px 12px',
-    backgroundColor: '#3d1a1a',
+    backgroundColor: '#3d1f28',
     border: '1px solid #6e3630',
     borderRadius: 6,
     fontSize: 13,
@@ -281,7 +282,7 @@ const styles: Record<string, React.CSSProperties> = {
   deviceId: {
     fontSize: 12,
     color: '#8b949e',
-    fontFamily: 'monospace',
+    fontFamily: FONT_MONO,
   },
   lastSeen: {
     fontSize: 12,

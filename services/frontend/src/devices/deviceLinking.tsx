@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { generateFingerprint } from '../crypto/cryptoUtils';
+import { FONT_BODY, FONT_MONO } from '../globalStyles';
 
 // ── Types ──
 
@@ -174,7 +175,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #30363d',
     borderRadius: 8,
     color: '#c9d1d9',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    fontFamily: FONT_BODY,
     maxWidth: 480,
   },
   heading: {
@@ -224,7 +225,7 @@ const styles: Record<string, React.CSSProperties> = {
   qrData: {
     fontSize: 10,
     color: '#666',
-    fontFamily: 'monospace',
+    fontFamily: FONT_MONO,
   },
   fingerprintBox: {
     padding: 12,
@@ -238,7 +239,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#58a6ff',
     wordBreak: 'break-all',
     lineHeight: 1.6,
-    fontFamily: 'monospace',
+    fontFamily: FONT_MONO,
   },
   scannerPlaceholder: {
     display: 'flex',
@@ -274,7 +275,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     color: '#c9d1d9',
     outline: 'none',
-    fontFamily: 'monospace',
+    fontFamily: FONT_MONO,
   },
   actions: {
     display: 'flex',

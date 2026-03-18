@@ -6,6 +6,7 @@
 import React from 'react';
 import type { AuthResponse } from '@frame/shared';
 import AuthFlow from '../components/AuthFlow';
+import { FONT_BODY } from '../globalStyles';
 
 interface SignInPageProps {
   onAuthenticated: (auth: AuthResponse) => void;
@@ -60,7 +61,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#58a6ff',
     fontSize: 14,
     cursor: 'pointer',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontFamily: FONT_BODY,
     padding: '4px 0',
     minWidth: 80,
   },

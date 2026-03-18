@@ -7,6 +7,7 @@ import {
   processSyncResponse,
   DecryptedEvent,
 } from '../crypto/sessionManager';
+import { FONT_BODY } from '../globalStyles';
 
 // ── Helpers ──
 
@@ -474,11 +475,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           onKeyDown={handleKeyDown}
           placeholder="Type a message..."
           disabled={isSending}
+          aria-label="Message input"
         />
         <button
-          style={styles.sendButton}
+          style={{
+            ...styles.sendButton,
+            ...((isSending || !inputValue.trim()) ? { opacity: 0.4, cursor: 'not-allowed' } : {}),
+          }}
           onClick={() => handleSend()}
           disabled={isSending || !inputValue.trim()}
+          aria-label="Send message"
         >
           {isSending ? 'Sending...' : 'Send'}
         </button>
@@ -494,7 +500,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
-    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontFamily: FONT_BODY,
     border: '1px solid #30363d',
     borderRadius: 8,
     overflow: 'hidden',
@@ -560,7 +566,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     fontWeight: 600,
     fontStyle: 'italic',
-    fontFamily: 'Georgia, serif',
+    fontFamily: 'inherit',
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
@@ -572,7 +578,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 10,
     fontWeight: 600,
     padding: '1px 5px',
-    borderRadius: 3,
+    borderRadius: 4,
     backgroundColor: 'rgba(35, 134, 54, 0.15)',
     color: '#3fb950',
   },
@@ -709,7 +715,6 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#0d1117',
     color: '#c9d1d9',
     fontSize: 14,
-    outline: 'none',
     fontFamily: 'inherit',
     transition: 'border-color 0.15s',
   },

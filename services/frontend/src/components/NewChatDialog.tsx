@@ -12,6 +12,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import { createRoom } from '../api/roomsAPI';
 import type { RoomSummary } from '../api/roomsAPI';
+import { FONT_BODY } from '../globalStyles';
 
 // ── Types ──
 
@@ -157,6 +158,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 ...styles.typeButton,
                 ...(roomType === 'direct' ? styles.typeButtonActive : {}),
               }}
+              aria-pressed={roomType === 'direct'}
               onClick={() => setRoomType('direct')}
             >
               Direct Message
@@ -167,6 +169,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 ...styles.typeButton,
                 ...(roomType === 'group' ? styles.typeButtonActive : {}),
               }}
+              aria-pressed={roomType === 'group'}
               onClick={() => setRoomType('group')}
             >
               Group
@@ -283,10 +286,10 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 28,
     maxWidth: 440,
     width: '100%',
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    fontFamily: FONT_BODY,
     color: '#c9d1d9',
     boxShadow: '0 16px 48px rgba(0, 0, 0, 0.4)',
+    animation: 'frame-modal-enter 0.15s ease-out',
   },
   header: {
     display: 'flex',

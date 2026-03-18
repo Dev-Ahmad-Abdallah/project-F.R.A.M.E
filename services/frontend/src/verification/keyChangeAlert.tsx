@@ -62,6 +62,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 9999,
+    padding: 16,
   },
   modal: {
     backgroundColor: '#161b22',
@@ -71,6 +72,7 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: 520,
     width: '90%',
     boxShadow: '0 16px 48px rgba(0, 0, 0, 0.4)',
+    animation: 'frame-modal-enter 0.15s ease-out',
   },
   warningIcon: {
     fontSize: 32,
@@ -101,6 +103,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     gap: 16,
     marginBottom: 24,
+    flexWrap: 'wrap' as const,
   },
   fingerprintColumn: {
     flex: 1,
@@ -147,7 +150,7 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 130,
   },
   viewButton: {
-    backgroundColor: '#1f6feb',
+    backgroundColor: '#58a6ff',
     color: '#ffffff',
   },
   acceptButton: {
@@ -219,13 +222,24 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
 
   return (
     <div style={styles.overlay} onClick={handleOverlayClick}>
-      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+      <div
+        style={styles.modal}
+        role="alertdialog"
+        aria-labelledby="key-change-title"
+        aria-describedby="key-change-desc"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Warning header */}
-        <div style={styles.warningIcon}>!!</div>
-        <h2 style={styles.title}>Security Alert</h2>
+        <div style={styles.warningIcon} aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+            <path d="M12 2L1 21h22L12 2z" stroke="#f85149" strokeWidth="1.5" fill="rgba(248,81,73,0.1)" />
+            <path d="M12 9v4M12 16v.5" stroke="#f85149" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </div>
+        <h2 id="key-change-title" style={styles.title}>Security Alert</h2>
         <p style={styles.subtitle}>{userId}</p>
 
-        <p style={styles.description}>
+        <p id="key-change-desc" style={styles.description}>
           The identity key for this contact has changed. This could mean
           they reinstalled the app, got a new device, or — in the worst
           case — someone is intercepting your communication. Verify their

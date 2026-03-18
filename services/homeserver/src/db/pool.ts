@@ -5,8 +5,8 @@ const config = getConfig();
 
 export const pool = new Pool({
   connectionString: config.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
+  max: 100,
+  idleTimeoutMillis: 10000,
   connectionTimeoutMillis: 5000,
   ssl: config.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
 });

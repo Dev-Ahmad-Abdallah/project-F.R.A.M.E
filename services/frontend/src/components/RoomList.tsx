@@ -6,7 +6,7 @@
  * All rendered content is sanitized via DOMPurify.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import DOMPurify from 'dompurify';
 import type { RoomSummary } from '../api/roomsAPI';
 
@@ -87,6 +87,16 @@ function formatTimestamp(isoDate: string): string {
   }
 }
 
+// ── Avatar color helper ──
+
+const AVATAR_COLORS = ['#da3633', '#58a6ff', '#3fb950', '#d29922', '#bc8cff', '#f78166'];
+
+function getAvatarColor(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
 // ── Component ──
 
 const RoomList: React.FC<RoomListProps> = ({
@@ -95,6 +105,7 @@ const RoomList: React.FC<RoomListProps> = ({
   currentUserId,
   onSelectRoom,
 }) => {
+  const [hoveredRoomId, setHoveredRoomId] = useState<string | null>(null);
   if (rooms.length === 0) {
     return (
       <div style={styles.emptyContainer}>
@@ -119,12 +130,15 @@ const RoomList: React.FC<RoomListProps> = ({
             style={{
               ...styles.roomItem,
               ...(isSelected ? styles.roomItemSelected : {}),
+              ...(hoveredRoomId === room.roomId && !isSelected ? { backgroundColor: '#161b22' } : {}),
             }}
             onClick={() => onSelectRoom(room.roomId)}
+            onMouseEnter={() => setHoveredRoomId(room.roomId)}
+            onMouseLeave={() => setHoveredRoomId(null)}
             aria-current={isSelected ? 'true' : undefined}
           >
             {/* Avatar placeholder */}
-            <div style={styles.avatar}>
+            <div style={{ ...styles.avatar, backgroundColor: getAvatarColor(room.roomId || displayName) }}>
               {displayName.charAt(0).toUpperCase()}
             </div>
 
@@ -203,11 +217,11 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     transition: 'background-color 0.15s',
     fontFamily: 'inherit',
+    borderLeft: '3px solid transparent',
   },
   roomItemSelected: {
     backgroundColor: '#1c2128',
     borderLeft: '3px solid #58a6ff',
-    paddingLeft: 13,
   },
   avatar: {
     width: 40,
