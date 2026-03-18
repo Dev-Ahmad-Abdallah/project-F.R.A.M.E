@@ -16,7 +16,7 @@
     "dev:homeserver": "cd services/homeserver && npm run dev",
     "dev:frontend": "cd services/frontend && npm run dev",
     "test:homeserver": "cd services/homeserver && npm test",
-    "test:frontend": "cd services/frontend && npm test",
+    "test:frontend": "cd services/frontend && CI=true npm test",
     "test": "npm run test:homeserver && npm run test:frontend",
     "lint": "npm run lint --workspaces",
     "docker:up": "docker-compose up -d",

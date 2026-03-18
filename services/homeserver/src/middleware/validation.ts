@@ -56,13 +56,7 @@ export const refreshSchema = z.object({
 export const sendMessageSchema = z.object({
   roomId: z.string().min(1),
   eventType: z.string().min(1),
-  content: z.object({
-    algorithm: z.string(),
-    ciphertext: z.string(),
-    senderKey: z.string(),
-    sessionId: z.string(),
-    deviceId: z.string(),
-  }),
+  content: z.record(z.unknown()),
 });
 
 export const syncQuerySchema = z.object({
@@ -72,10 +66,10 @@ export const syncQuerySchema = z.object({
 });
 
 export const keyUploadSchema = z.object({
-  oneTimePrekeys: z.array(z.string()).max(100),
+  oneTimePrekeys: z.array(z.string()).max(100).optional(),
   signedPrekey: z.string().optional(),
   signedPrekeySig: z.string().optional(),
-});
+}).passthrough();
 
 export const deviceRegisterSchema = z.object({
   deviceId: z.string().min(1),

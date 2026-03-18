@@ -1,7 +1,9 @@
 /**
  * App — Root component for F.R.A.M.E. messaging application.
  *
- * Layout: sidebar (280px) + main content area.
+ * Page flow: Landing → Auth (Sign In / Register) → App Shell (chat).
+ *
+ * Layout (app shell): sidebar (280px) + main content area.
  * Sidebar: user info, room list, "New Chat" button, settings gear.
  * Main area: active view (chat, settings, verify, link-device, or empty).
  * Modal overlays: DeviceAlert, KeyChangeAlert.
@@ -18,6 +20,8 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import type { AuthResponse } from '@frame/shared';
+import LandingPage from './pages/LandingPage';
+import SignInPage from './pages/SignInPage';
 import AuthFlow from './components/AuthFlow';
 import ChatWindow from './components/ChatWindow';
 import DeviceList from './components/DeviceList';
@@ -29,7 +33,7 @@ import DeviceAlert from './devices/deviceAlert';
 import type { UnknownDeviceInfo } from './devices/deviceAlert';
 import KeyChangeAlert from './verification/keyChangeAlert';
 import type { KeyChangeAction } from './verification/keyChangeAlert';
-import { clearTokens } from './api/client';
+import { clearTokens, getAccessToken } from './api/client';
 import { listRooms } from './api/roomsAPI';
 import type { RoomSummary } from './api/roomsAPI';
 import { generateAndUploadKeys } from './crypto/keyManager';
@@ -39,11 +43,19 @@ import { initStorage } from './storage/secureStorage';
 
 // ── Types ──
 
+type CurrentPage = 'landing' | 'auth' | 'app';
 type ActiveView = 'chat' | 'settings' | 'verify' | 'link-device' | 'empty';
 
 // ── Component ──
 
 function App() {
+  // Page-level navigation
+  const [currentPage, setCurrentPage] = useState<CurrentPage>(() => {
+    // If already authenticated (e.g. token in memory from a soft reload),
+    // skip straight to the app shell.
+    return getAccessToken() ? 'app' : 'landing';
+  });
+
   const [auth, setAuth] = useState<AuthResponse | null>(null);
 
   // Layout and view state
@@ -78,6 +90,13 @@ function App() {
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // ── Auth handler ──
+
+  const handleAuthenticated = useCallback((authResponse: AuthResponse) => {
+    setAuth(authResponse);
+    setCurrentPage('app');
   }, []);
 
   // ── Post-login initialization ──
@@ -130,6 +149,7 @@ function App() {
   const handleLogout = useCallback(() => {
     clearTokens();
     setAuth(null);
+    setCurrentPage('landing');
     setActiveView('empty');
     setSelectedRoomId(null);
     setRooms([]);
@@ -189,9 +209,24 @@ function App() {
     setSidebarOpen(true);
   }, []);
 
-  // ── Not authenticated → show auth flow ──
+  // ── Page: Landing ──
+  if (currentPage === 'landing') {
+    return <LandingPage onGetStarted={() => setCurrentPage('auth')} />;
+  }
+
+  // ── Page: Auth ──
+  if (currentPage === 'auth') {
+    return (
+      <SignInPage
+        onAuthenticated={handleAuthenticated}
+        onBack={() => setCurrentPage('landing')}
+      />
+    );
+  }
+
+  // ── Page: App (not authenticated yet — shouldn't normally happen) ──
   if (!auth) {
-    return <AuthFlow onAuthenticated={setAuth} />;
+    return <SignInPage onAuthenticated={handleAuthenticated} onBack={() => setCurrentPage('landing')} />;
   }
 
   // ── Derive data for current view ──
@@ -279,7 +314,12 @@ function App() {
 
   const renderEmptyState = () => (
     <div style={styles.emptyMain}>
-      <div style={styles.emptyIcon}>&#128172;</div>
+      <div style={styles.emptyIcon}>
+        <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+          <rect x="6" y="10" width="44" height="32" rx="6" stroke="#30363d" strokeWidth="2" fill="rgba(88,166,255,0.04)" />
+          <path d="M6 16l22 14 22-14" stroke="#30363d" strokeWidth="2" fill="none" />
+        </svg>
+      </div>
       <h2 style={styles.emptyTitle}>Select a conversation</h2>
       <p style={styles.emptySubtitle}>
         Choose a chat from the sidebar or start a new conversation
@@ -349,7 +389,10 @@ function App() {
               aria-label="Settings"
               title="Settings"
             >
-              &#9881;
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <circle cx="9" cy="9" r="2.5" stroke="#8b949e" strokeWidth="1.5" fill="none" />
+                <path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.34 3.34l1.42 1.42M13.24 13.24l1.42 1.42M3.34 14.66l1.42-1.42M13.24 4.76l1.42-1.42" stroke="#8b949e" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
             </button>
             <button
               type="button"
@@ -357,7 +400,9 @@ function App() {
               onClick={handleLogout}
               title="Log out"
             >
-              &#8618;
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M6 15H4a1 1 0 01-1-1V4a1 1 0 011-1h2M12 12l3-3-3-3M7 9h8" stroke="#8b949e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </button>
           </div>
         </aside>
@@ -373,7 +418,10 @@ function App() {
               style={styles.backButton}
               onClick={handleBackToSidebar}
             >
-              &#8592; Back
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ marginRight: 6 }}>
+                <path d="M10 3L5 8l5 5" stroke="#58a6ff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Back
             </button>
           )}
           {renderMainContent()}
@@ -422,7 +470,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#0d1117',
     color: '#c9d1d9',
     fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   },
 
   // ── Sidebar ──
@@ -521,6 +569,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     cursor: 'pointer',
     fontFamily: 'inherit',
+    transition: 'background-color 0.15s',
   },
   settingsButton: {
     padding: '8px 10px',
@@ -531,6 +580,10 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     cursor: 'pointer',
     lineHeight: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'border-color 0.15s',
   },
   logoutButton: {
     padding: '8px 10px',
@@ -541,6 +594,10 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     cursor: 'pointer',
     lineHeight: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: 'border-color 0.15s',
   },
 
   // ── Main content ──
@@ -552,7 +609,9 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#0d1117',
   },
   backButton: {
-    padding: '8px 16px',
+    display: 'flex',
+    alignItems: 'center',
+    padding: '10px 16px',
     fontSize: 14,
     backgroundColor: '#161b22',
     color: '#58a6ff',
@@ -573,7 +632,6 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 32,
   },
   emptyIcon: {
-    fontSize: 48,
     marginBottom: 16,
     opacity: 0.4,
   },

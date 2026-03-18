@@ -411,6 +411,8 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#c9d1d9',
     fontSize: 14,
     outline: 'none',
+    fontFamily: 'inherit',
+    transition: 'border-color 0.15s',
   },
   sendButton: {
     padding: '8px 16px',
@@ -421,6 +423,8 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     fontWeight: 600,
     cursor: 'pointer',
+    fontFamily: 'inherit',
+    transition: 'background-color 0.15s',
   },
 };
 

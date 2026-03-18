@@ -38,10 +38,13 @@ export async function uploadPrekeys(
     );
   }
 
-  const totalKeys = await addOneTimePrekeys(userId, deviceId, oneTimePrekeys);
+  const totalKeys = await addOneTimePrekeys(userId, deviceId, oneTimePrekeys ?? []);
 
   return {
     oneTimeKeyCount: totalKeys,
+    one_time_key_counts: {
+      signed_curve25519: totalKeys,
+    },
   };
 }
 

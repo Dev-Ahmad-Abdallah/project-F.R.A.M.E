@@ -54,9 +54,27 @@ export async function createRoom(
 /**
  * List all rooms the authenticated user is a member of.
  */
+interface ServerRoom {
+  room_id?: string;
+  roomId?: string;
+  room_type?: string;
+  roomType?: string;
+  name?: string;
+  members?: RoomMember[];
+  created_by?: string;
+}
+
 export async function listRooms(): Promise<RoomSummary[]> {
-  const data = await apiRequest<{ rooms: RoomSummary[] } | RoomSummary[]>('/rooms');
-  return Array.isArray(data) ? data : data.rooms ?? [];
+  const data = await apiRequest<{ rooms: ServerRoom[] } | ServerRoom[]>('/rooms');
+  const rawRooms = Array.isArray(data) ? data : data.rooms ?? [];
+
+  return rawRooms.map((r) => ({
+    roomId: r.roomId ?? r.room_id ?? '',
+    roomType: (r.roomType ?? r.room_type ?? 'group') as 'direct' | 'group',
+    name: r.name,
+    members: r.members ?? [],
+    unreadCount: 0,
+  }));
 }
 
 /**
