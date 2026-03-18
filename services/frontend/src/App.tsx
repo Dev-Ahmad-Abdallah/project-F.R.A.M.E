@@ -65,6 +65,9 @@ function App() {
   const [showNewChatDialog, setShowNewChatDialog] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
+  const [initPhase, setInitPhase] = useState<'keys' | 'storage' | 'rooms' | 'done'>('keys');
+  const [roomFetchError, setRoomFetchError] = useState<string | null>(null);
+  const [connectionLost, setConnectionLost] = useState(false);
 
   // Modal overlay state
   const [deviceAlertInfo, setDeviceAlertInfo] =
@@ -74,6 +77,31 @@ function App() {
     oldPublicKey: string;
     newPublicKey: string;
   } | null>(null);
+
+  // Online/offline detection (Fix 5)
+  useEffect(() => {
+    const handleOffline = () => setConnectionLost(true);
+    const handleOnline = () => setConnectionLost(false);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    // Set initial state
+    if (!navigator.onLine) setConnectionLost(true);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
+
+  // Inject spinner keyframes (Fix 3)
+  useEffect(() => {
+    const styleId = 'frame-spin-keyframes';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = `@keyframes frame-spin { to { transform: rotate(360deg); } }`;
+      document.head.appendChild(style);
+    }
+  }, []);
 
   // Mobile detection
   const [isMobile, setIsMobile] = useState(
@@ -109,25 +137,30 @@ function App() {
     async function initialize() {
       try {
         // 1. Generate and upload device keys (handles initCrypto internally)
+        if (!cancelled) setInitPhase('keys');
         await generateAndUploadKeys(auth!.userId, auth!.deviceId);
 
-        // 3. Register service worker for push notifications
+        // 2. Register service worker for push notifications
         await registerServiceWorker();
 
-        // 4. Init encrypted IndexedDB storage
-        // Uses a default passphrase for demo; production would prompt the user
+        // 3. Init encrypted IndexedDB storage
+        if (!cancelled) setInitPhase('storage');
         await initStorage('frame-demo-passphrase');
 
-        // 5. Fetch room list
+        // 4. Fetch room list
         if (!cancelled) {
+          setInitPhase('rooms');
           try {
             const roomList = await listRooms();
             setRooms(roomList);
+            setRoomFetchError(null);
           } catch {
-            // Room list fetch may fail if API is not yet available
             console.warn('Failed to fetch rooms — API may not be ready.');
+            setRoomFetchError('Failed to load conversations. Check your connection.');
           }
         }
+
+        if (!cancelled) setInitPhase('done');
       } catch (err) {
         console.error('Initialization error:', err);
         if (!cancelled) {
@@ -154,6 +187,8 @@ function App() {
     setSelectedRoomId(null);
     setRooms([]);
     setInitError(null);
+    setInitPhase('keys');
+    setRoomFetchError(null);
   }, []);
 
   const handleSelectRoom = useCallback(
@@ -209,6 +244,16 @@ function App() {
     setSidebarOpen(true);
   }, []);
 
+  const handleRetryRoomFetch = useCallback(async () => {
+    setRoomFetchError(null);
+    try {
+      const roomList = await listRooms();
+      setRooms(roomList);
+    } catch {
+      setRoomFetchError('Failed to load conversations. Check your connection.');
+    }
+  }, []);
+
   // ── Page: Landing ──
   if (currentPage === 'landing') {
     return <LandingPage onGetStarted={() => setCurrentPage('auth')} />;
@@ -227,6 +272,21 @@ function App() {
   // ── Page: App (not authenticated yet — shouldn't normally happen) ──
   if (!auth) {
     return <SignInPage onAuthenticated={handleAuthenticated} onBack={() => setCurrentPage('landing')} />;
+  }
+
+  // ── Initialization overlay ──
+  if (initPhase !== 'done' && !initError) {
+    const phaseLabels: Record<string, string> = {
+      keys: 'Generating encryption keys...',
+      storage: 'Initializing secure storage...',
+      rooms: 'Loading conversations...',
+    };
+    return (
+      <div style={styles.initOverlay}>
+        <div style={styles.initSpinner} />
+        <p style={styles.initPhaseText}>{phaseLabels[initPhase] || 'Initializing...'}</p>
+      </div>
+    );
   }
 
   // ── Derive data for current view ──
@@ -252,14 +312,32 @@ function App() {
         if (!selectedRoomId) {
           return renderEmptyState();
         }
-        return (
-          <ChatWindow
-            key={selectedRoomId}
-            roomId={selectedRoomId}
-            currentUserId={auth.userId}
-            memberUserIds={memberUserIds}
-          />
-        );
+        {
+          // Derive display name for the room header
+          let chatDisplayName = selectedRoom?.name;
+          if (!chatDisplayName && selectedRoom?.roomType === 'direct') {
+            const other = selectedRoom.members.find((m) => m.userId !== auth.userId);
+            chatDisplayName = other?.displayName || other?.userId;
+          }
+          if (!chatDisplayName && selectedRoom) {
+            const names = selectedRoom.members
+              .filter((m) => m.userId !== auth.userId)
+              .slice(0, 3)
+              .map((m) => m.displayName || m.userId);
+            chatDisplayName = names.length > 0 ? names.join(', ') : 'Empty Room';
+          }
+          return (
+            <ChatWindow
+              key={selectedRoomId}
+              roomId={selectedRoomId}
+              currentUserId={auth.userId}
+              memberUserIds={memberUserIds}
+              roomDisplayName={chatDisplayName}
+              roomType={selectedRoom?.roomType}
+              memberCount={selectedRoom?.members.length}
+            />
+          );
+        }
 
       case 'settings':
         return (
@@ -320,9 +398,23 @@ function App() {
           <path d="M6 16l22 14 22-14" stroke="#30363d" strokeWidth="2" fill="none" />
         </svg>
       </div>
-      <h2 style={styles.emptyTitle}>Select a conversation</h2>
+      <h2 style={styles.emptyTitle}>
+        {rooms.length === 0 ? 'Welcome to F.R.A.M.E.' : 'Select a conversation'}
+      </h2>
       <p style={styles.emptySubtitle}>
-        Choose a chat from the sidebar or start a new conversation
+        {rooms.length === 0
+          ? 'Your conversations are end-to-end encrypted. Start by creating your first chat.'
+          : 'Choose a chat from the sidebar or start a new conversation'}
+      </p>
+      <button
+        type="button"
+        style={styles.emptyNewChatButton}
+        onClick={() => setShowNewChatDialog(true)}
+      >
+        + New Chat
+      </button>
+      <p style={styles.emptyHelpText}>
+        Send encrypted messages to anyone on your server
       </p>
     </div>
   );
@@ -333,7 +425,15 @@ function App() {
   const showMain = isMobile ? !sidebarOpen : true;
 
   return (
-    <div style={styles.appContainer}>
+    <div style={styles.appWrapper}>
+      {/* Connection lost banner (Fix 5) */}
+      {connectionLost && (
+        <div style={styles.connectionBanner}>
+          Connection lost — messages may be delayed
+        </div>
+      )}
+
+      <div style={styles.appContainer}>
       {/* Sidebar */}
       {showSidebar && (
         <aside style={{
@@ -358,6 +458,20 @@ function App() {
           {/* Init error */}
           {initError && (
             <div style={styles.initError}>{initError}</div>
+          )}
+
+          {/* Room fetch error (Fix 2) */}
+          {roomFetchError && (
+            <div style={styles.roomFetchError}>
+              <span>{roomFetchError}</span>
+              <button
+                type="button"
+                style={styles.roomRetryButton}
+                onClick={handleRetryRoomFetch}
+              >
+                Retry
+              </button>
+            </div>
           )}
 
           {/* Room list */}
@@ -455,6 +569,7 @@ function App() {
           onClose={() => setShowNewChatDialog(false)}
         />
       )}
+      </div>
     </div>
   );
 }
@@ -462,8 +577,9 @@ function App() {
 // ── Styles (dark theme) ──
 
 const styles: Record<string, React.CSSProperties> = {
-  appContainer: {
+  appWrapper: {
     display: 'flex',
+    flexDirection: 'column',
     height: '100vh',
     width: '100vw',
     overflow: 'hidden',
@@ -471,6 +587,11 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#c9d1d9',
     fontFamily:
       'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  },
+  appContainer: {
+    display: 'flex',
+    flex: 1,
+    overflow: 'hidden',
   },
 
   // ── Sidebar ──
@@ -531,6 +652,47 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#484f58',
   },
 
+  // ── Connection banner (Fix 5) ──
+  connectionBanner: {
+    padding: '4px 12px',
+    backgroundColor: 'rgba(210, 153, 34, 0.15)',
+    color: '#d29922',
+    fontSize: 12,
+    fontWeight: 500,
+    textAlign: 'center',
+    flexShrink: 0,
+    width: '100%',
+  },
+
+  // ── Init overlay (Fix 3) ──
+  initOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0d1117',
+    zIndex: 9999,
+  },
+  initSpinner: {
+    width: 32,
+    height: 32,
+    border: '3px solid #30363d',
+    borderTopColor: '#58a6ff',
+    borderRadius: '50%',
+    animation: 'frame-spin 0.8s linear infinite',
+    marginBottom: 16,
+  },
+  initPhaseText: {
+    fontSize: 14,
+    color: '#8b949e',
+    margin: 0,
+  },
+
   // ── Init error ──
   initError: {
     padding: '6px 12px',
@@ -540,6 +702,33 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     fontSize: 12,
     color: '#f85149',
+  },
+
+  // ── Room fetch error (Fix 2) ──
+  roomFetchError: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    padding: '8px 12px',
+    margin: '8px 12px 0',
+    backgroundColor: '#3d1f28',
+    border: '1px solid #6e3630',
+    borderRadius: 6,
+    fontSize: 12,
+    color: '#f85149',
+  },
+  roomRetryButton: {
+    padding: '4px 10px',
+    fontSize: 11,
+    fontWeight: 600,
+    backgroundColor: '#6e3630',
+    color: '#f85149',
+    border: 'none',
+    borderRadius: 4,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    flexShrink: 0,
   },
 
   // ── Room list ──
@@ -645,6 +834,26 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '8px 0 0',
     fontSize: 14,
     color: '#8b949e',
+    textAlign: 'center',
+    maxWidth: 320,
+  },
+  emptyNewChatButton: {
+    marginTop: 20,
+    padding: '10px 24px',
+    fontSize: 14,
+    fontWeight: 600,
+    backgroundColor: '#238636',
+    color: '#ffffff',
+    border: 'none',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    transition: 'background-color 0.15s',
+  },
+  emptyHelpText: {
+    marginTop: 10,
+    fontSize: 12,
+    color: '#484f58',
   },
 
   // ── Settings / centered views ──

@@ -138,6 +138,11 @@ const RoomList: React.FC<RoomListProps> = ({
                   </span>
                 )}
               </div>
+              {room.roomType === 'group' && (
+                <div style={styles.memberCount}>
+                  {room.members.length} member{room.members.length !== 1 ? 's' : ''}
+                </div>
+              )}
               <div style={styles.roomPreview}>
                 <span style={styles.previewText}>
                   {room.lastMessage
@@ -247,6 +252,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  memberCount: {
+    fontSize: 11,
+    color: '#484f58',
+    marginTop: 1,
   },
   previewText: {
     fontSize: 13,

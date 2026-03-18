@@ -172,6 +172,11 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
               Group
             </button>
           </div>
+          <p style={styles.typeHint}>
+            {roomType === 'direct'
+              ? 'Direct: private 1:1 conversation'
+              : 'Group: invite multiple people'}
+          </p>
         </div>
 
         {/* Room name (group only) */}
@@ -197,16 +202,35 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
           <label style={styles.label} htmlFor="new-chat-username">
             Username to invite
           </label>
-          <input
-            id="new-chat-username"
-            ref={inputRef}
-            type="text"
-            style={styles.input}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="e.g. @alice:frame.local"
-            disabled={loading}
-          />
+          <div style={styles.inputWrapper}>
+            <input
+              id="new-chat-username"
+              ref={inputRef}
+              type="text"
+              style={{
+                ...styles.input,
+                ...(username.trim() && /^@[^:]+:.+$/.test(username.trim())
+                  ? styles.inputValid
+                  : {}),
+              }}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="e.g. @alice:frame.local"
+              disabled={loading}
+            />
+            {username.trim() && /^@[^:]+:.+$/.test(username.trim()) && (
+              <span style={styles.validIcon} title="Valid username format">
+                &#10003;
+              </span>
+            )}
+          </div>
+          <span style={styles.fieldHint}>
+            {username.trim().length === 0
+              ? 'Format: @user:server'
+              : /^@[^:]+:.+$/.test(username.trim())
+                ? 'Valid username format'
+                : 'Expected format: @user:server'}
+          </span>
         </div>
 
         {/* Actions */}
@@ -337,6 +361,33 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#1c2128',
     color: '#58a6ff',
     borderColor: '#58a6ff',
+  },
+  typeHint: {
+    margin: '4px 0 0',
+    fontSize: 12,
+    color: '#484f58',
+    fontStyle: 'italic',
+  },
+  inputWrapper: {
+    position: 'relative' as const,
+    display: 'flex',
+    alignItems: 'center',
+  },
+  inputValid: {
+    borderColor: '#238636',
+  },
+  validIcon: {
+    position: 'absolute' as const,
+    right: 10,
+    color: '#3fb950',
+    fontSize: 14,
+    fontWeight: 700,
+    pointerEvents: 'none' as const,
+  },
+  fieldHint: {
+    fontSize: 11,
+    color: '#484f58',
+    marginTop: 2,
   },
   actions: {
     display: 'flex',

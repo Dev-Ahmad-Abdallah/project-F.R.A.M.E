@@ -15,6 +15,10 @@ export interface RoomMemberRow {
   joined_at: Date;
 }
 
+export interface RoomMemberWithDeviceCount extends RoomMemberRow {
+  device_count: number;
+}
+
 export async function createRoom(
   roomType: 'direct' | 'group',
   createdBy: string,
@@ -66,6 +70,18 @@ export async function addRoomMember(
 export async function getRoomMembers(roomId: string): Promise<RoomMemberRow[]> {
   const result = await pool.query(
     'SELECT * FROM room_members WHERE room_id = $1',
+    [roomId]
+  );
+  return result.rows;
+}
+
+export async function getRoomMembersWithDeviceCounts(roomId: string): Promise<RoomMemberWithDeviceCount[]> {
+  const result = await pool.query(
+    `SELECT rm.*, COALESCE(COUNT(d.device_id), 0)::int AS device_count
+     FROM room_members rm
+     LEFT JOIN devices d ON rm.user_id = d.user_id
+     WHERE rm.room_id = $1
+     GROUP BY rm.room_id, rm.user_id, rm.role, rm.joined_at`,
     [roomId]
   );
   return result.rows;

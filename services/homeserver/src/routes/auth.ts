@@ -3,7 +3,8 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { loginLimiter, registerLimiter, apiLimiter } from '../middleware/rateLimit';
 import { validateBody } from '../middleware/validation';
 import { registerSchema, loginSchema, refreshSchema } from '../middleware/validation';
-import { register, login, refreshAccessToken } from '../services/authService';
+import { requireAuth } from '../middleware/auth';
+import { register, login, refreshAccessToken, revokeAllTokens } from '../services/authService';
 
 export const authRouter = Router();
 
@@ -26,6 +27,17 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const result = await login(req.body);
     res.json(result);
+  })
+);
+
+// POST /auth/logout — Invalidate all refresh tokens server-side
+authRouter.post(
+  '/logout',
+  requireAuth,
+  apiLimiter,
+  asyncHandler(async (req, res) => {
+    await revokeAllTokens(req.auth!.sub);
+    res.json({ success: true });
   })
 );
 

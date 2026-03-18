@@ -3,10 +3,10 @@ import {
   createRoom as dbCreateRoom,
   addRoomMember,
   getUserRooms as dbGetUserRooms,
-  getRoomMembers,
+  getRoomMembersWithDeviceCounts,
   isRoomMember,
   RoomRow,
-  RoomMemberRow,
+  RoomMemberWithDeviceCount,
 } from '../db/queries/rooms';
 import { ApiError } from '../middleware/errorHandler';
 
@@ -39,6 +39,27 @@ export async function getUserRooms(userId: string): Promise<RoomRow[]> {
 }
 
 /**
+ * Invite a user to a room. The requester must be a current member.
+ */
+export async function inviteToRoom(
+  roomId: string,
+  requestingUserId: string,
+  targetUserId: string,
+): Promise<{ success: boolean }> {
+  const isMember = await isRoomMember(roomId, requestingUserId);
+  if (!isMember) {
+    throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
+  }
+
+  if (!targetUserId) {
+    throw new ApiError(400, 'M_BAD_JSON', 'Missing userId in request body');
+  }
+
+  await addRoomMember(roomId, targetUserId, 'member');
+  return { success: true };
+}
+
+/**
  * Join a room (by invite). The user must already have a pending membership
  * entry, or we allow open join for now.
  */
@@ -56,16 +77,18 @@ export async function joinRoom(
 }
 
 /**
- * Get the member list for a room. The requesting user must be a member.
+ * Get the member list for a room with device counts per member.
+ * The requesting user must be a member.
+ * Device counts are included to support the verification UI.
  */
 export async function getRoomMemberList(
   roomId: string,
   requestingUserId: string,
-): Promise<RoomMemberRow[]> {
+): Promise<RoomMemberWithDeviceCount[]> {
   const isMember = await isRoomMember(roomId, requestingUserId);
   if (!isMember) {
     throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
   }
 
-  return getRoomMembers(roomId);
+  return getRoomMembersWithDeviceCounts(roomId);
 }

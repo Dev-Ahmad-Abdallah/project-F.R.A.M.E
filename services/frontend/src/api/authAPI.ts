@@ -72,11 +72,16 @@ export async function refreshToken(): Promise<RefreshResponse> {
 }
 
 /**
- * Log out — clears in-memory tokens.
+ * Log out — invalidates server-side refresh tokens, then clears client tokens.
  *
- * A future iteration may also call a server-side /auth/logout endpoint
- * to invalidate the refresh token server-side.
+ * If the server call fails (e.g. network error, expired token),
+ * client tokens are still cleared to ensure local logout.
  */
-export function logout(): void {
+export async function logout(): Promise<void> {
+  try {
+    await apiRequest('/auth/logout', { method: 'POST' });
+  } catch {
+    // Server-side revocation failed — still clear client tokens
+  }
   clearTokens();
 }

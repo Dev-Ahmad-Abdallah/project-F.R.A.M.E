@@ -7,6 +7,7 @@ import {
   createRoom,
   getUserRooms,
   joinRoom,
+  inviteToRoom,
   getRoomMemberList,
 } from '../services/roomService';
 
@@ -36,6 +37,21 @@ roomsRouter.get(
   asyncHandler(async (req, res) => {
     const rooms = await getUserRooms(req.auth!.sub);
     res.json({ rooms });
+  }),
+);
+
+// POST /rooms/:roomId/invite — Invite a user to a room
+roomsRouter.post(
+  '/:roomId/invite',
+  requireAuth,
+  apiLimiter,
+  asyncHandler(async (req, res) => {
+    const result = await inviteToRoom(
+      req.params.roomId,
+      req.auth!.sub,
+      req.body.userId,
+    );
+    res.json(result);
   }),
 );
 

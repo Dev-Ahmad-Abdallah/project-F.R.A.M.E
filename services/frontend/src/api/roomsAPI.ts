@@ -89,6 +89,25 @@ export async function joinRoom(roomId: string): Promise<void> {
 }
 
 /**
+ * Invite a user to a room.
+ *
+ * @param roomId  The room to invite the user to
+ * @param userId  The user ID to invite
+ */
+export async function inviteToRoom(
+  roomId: string,
+  userId: string,
+): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(
+    `/rooms/${encodeURIComponent(roomId)}/invite`,
+    {
+      method: 'POST',
+      body: { userId },
+    },
+  );
+}
+
+/**
  * Get the member list for a room.
  *
  * @param roomId  The room to query
