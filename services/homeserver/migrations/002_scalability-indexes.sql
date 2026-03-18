@@ -13,5 +13,4 @@ CREATE INDEX IF NOT EXISTS idx_delivery_device_status ON delivery_state(device_i
 -- Faster key bundle lookups for batch queryDeviceKeys
 CREATE INDEX IF NOT EXISTS idx_key_bundles_user ON key_bundles(user_id);
 
--- Set statement timeout to prevent runaway queries (30 seconds)
-ALTER DATABASE CURRENT SET statement_timeout = '30s';
+-- Statement timeout is configured at the connection pool level (pool.ts)
