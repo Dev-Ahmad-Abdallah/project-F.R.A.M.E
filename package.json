@@ -20,6 +20,10 @@
     "test": "npm run test:homeserver && npm run test:frontend",
     "lint": "npm run lint --workspaces",
     "docker:up": "docker-compose up -d",
-    "docker:down": "docker-compose down"
+    "docker:down": "docker-compose down",
+    "pipeline": "bash scripts/dev-pipeline.sh",
+    "test:all": "bash scripts/test-all.sh",
+    "watch": "bash scripts/watch-build.sh",
+    "check": "npm run build:shared && npm run build:homeserver && cd services/frontend && npx tsc --noEmit"
   }
 }

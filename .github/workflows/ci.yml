@@ -41,6 +41,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Install dependencies
         run: npm install
@@ -51,12 +52,21 @@ jobs:
       - name: Build homeserver
         run: npm run build:homeserver
 
+      - name: TypeCheck homeserver
+        run: cd services/homeserver && npx tsc --noEmit
+
+      - name: Run migrations
+        run: cd services/homeserver && npx node-pg-migrate up --migration-file-language sql --migrations-dir migrations
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/frame_test
+
       - name: Run tests
         run: npm run test:homeserver
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/frame_test
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: ci-test-secret-minimum-32-characters-long-xxxxx
+          BCRYPT_SALT_ROUNDS: 12
           HOMESERVER_DOMAIN: localhost:3000
           FEDERATION_SIGNING_KEY: ci-test-signing-key
           NODE_ENV: test
@@ -71,6 +81,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Install dependencies
         run: npm install
@@ -78,11 +89,25 @@ jobs:
       - name: Build shared types
         run: npm run build:shared
 
+      - name: TypeCheck frontend
+        run: cd services/frontend && npx tsc --noEmit
+
       - name: Build frontend
         run: npm run build:frontend
+        env:
+          REACT_APP_HOMESERVER_URL: http://localhost:3001
 
       - name: Run tests
         run: npm run test:frontend
+
+  # ── Docker compose validation ──
+  docker-check:
+    name: Docker Compose Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate docker-compose config
+        run: docker compose config --quiet
 
   # ── Security scanning ──
   security:
@@ -92,6 +117,14 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
 
       - name: Run npm audit
         run: npm audit --audit-level=high || true

@@ -89,10 +89,7 @@ function App() {
 
     async function initialize() {
       try {
-        // 1. Init crypto — generates Curve25519 + Ed25519 keys via vodozemac WASM
-        await initCrypto(auth!.userId, auth!.deviceId);
-
-        // 2. Generate and upload device keys to the homeserver
+        // 1. Generate and upload device keys (handles initCrypto internally)
         await generateAndUploadKeys(auth!.userId, auth!.deviceId);
 
         // 3. Register service worker for push notifications

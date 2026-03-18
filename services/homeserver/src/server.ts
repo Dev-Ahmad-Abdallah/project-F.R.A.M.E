@@ -7,6 +7,7 @@ import { pool, closePool } from './db/pool';
 import { redisClient, redisSubscriber, closeRedis, connectRedis } from './redis/client';
 import { errorHandler, asyncHandler } from './middleware/errorHandler';
 import { requireAuth } from './middleware/auth';
+import { apiLimiter } from './middleware/rateLimit';
 import { authRouter } from './routes/auth';
 import { keysRouter } from './routes/keys';
 import { messagesRouter } from './routes/messages';
@@ -51,11 +52,25 @@ app.use('/federation', federationRouter);
 app.use('/rooms', roomsRouter);
 
 // ── To-device messaging (required by vodozemac for Megolm key sharing) ──
-app.put('/sendToDevice/:eventType/:txnId', requireAuth, asyncHandler(async (req, res) => {
-  const messages = req.body.messages || {};
-  // Fan out to-device messages to recipient devices via Redis
+app.put('/sendToDevice/:eventType/:txnId', requireAuth, apiLimiter, asyncHandler(async (req, res) => {
+  const messages = req.body.messages;
+  if (!messages || typeof messages !== 'object') {
+    res.status(400).json({ error: { code: 'M_BAD_JSON', message: 'Missing messages object' } });
+    return;
+  }
+
+  // Limit total recipients per request to prevent abuse
+  let recipientCount = 0;
+  const MAX_RECIPIENTS = 100;
+
   for (const [userId, devices] of Object.entries(messages)) {
+    if (typeof devices !== 'object' || devices === null) continue;
     for (const [deviceId, content] of Object.entries(devices as Record<string, unknown>)) {
+      recipientCount++;
+      if (recipientCount > MAX_RECIPIENTS) {
+        res.status(400).json({ error: { code: 'M_BAD_JSON', message: 'Too many recipients' } });
+        return;
+      }
       await redisClient.publish(`todevice:${userId}:${deviceId}`, JSON.stringify({
         sender: req.auth!.sub,
         senderDevice: req.auth!.deviceId,
