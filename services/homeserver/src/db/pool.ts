@@ -8,6 +8,7 @@ export const pool = new Pool({
   max: 100,
   idleTimeoutMillis: 10000,
   connectionTimeoutMillis: 5000,
+  statement_timeout: 30000, // Kill queries after 30s to prevent pool exhaustion
   ssl: config.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
 });
 

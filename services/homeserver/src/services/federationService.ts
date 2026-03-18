@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { getConfig, getFederationPeers } from '../config';
 import { insertEvent, createDeliveryEntries } from '../db/queries/events';
 import { getRoomMembers } from '../db/queries/rooms';
-import { findDevicesByUser } from '../db/queries/devices';
+import { pool } from '../db/pool';
 import { redisClient } from '../redis/client';
 import { ApiError } from '../middleware/errorHandler';
 import type { FederationEvent, ServerDiscovery } from '@frame/shared/federation';
@@ -338,34 +338,35 @@ export async function handleIncomingFederationEvent(
     new Date(event.originServerTs)
   );
 
-  // 4. Fan-out to local recipient devices
+  // 4. Fan-out to local recipient devices (batch query instead of N+1)
   const members = await getRoomMembers(event.roomId);
-  const localDeviceIds: string[] = [];
+  const localMemberIds = members
+    .filter((m) => m.user_id.endsWith(`:${config.HOMESERVER_DOMAIN}`))
+    .map((m) => m.user_id);
 
-  for (const member of members) {
-    // Only fan-out to users on this homeserver
-    if (member.user_id.endsWith(`:${config.HOMESERVER_DOMAIN}`)) {
-      const devices = await findDevicesByUser(member.user_id);
-      for (const device of devices) {
-        localDeviceIds.push(device.device_id);
-      }
-    }
+  let localDeviceIds: string[] = [];
+  if (localMemberIds.length > 0) {
+    const deviceResult = await pool.query(
+      'SELECT device_id FROM devices WHERE user_id = ANY($1::text[])',
+      [localMemberIds]
+    );
+    localDeviceIds = deviceResult.rows.map((r: { device_id: string }) => r.device_id);
   }
 
   if (localDeviceIds.length > 0) {
     await createDeliveryEntries(event.eventId, localDeviceIds);
 
-    // Notify local devices via Redis pub/sub
-    for (const deviceId of localDeviceIds) {
-      await redisClient.publish(
-        `device:${deviceId}`,
-        JSON.stringify({
-          eventId: event.eventId,
-          roomId: event.roomId,
-          sequenceId: stored.sequence_id,
-        })
-      );
-    }
+    // Notify local devices via Redis pub/sub in parallel
+    const notification = JSON.stringify({
+      eventId: event.eventId,
+      roomId: event.roomId,
+      sequenceId: stored.sequence_id,
+    });
+    await Promise.all(
+      localDeviceIds.map((deviceId) =>
+        redisClient.publish(`device:${deviceId}`, notification)
+      )
+    );
   }
 
   return {

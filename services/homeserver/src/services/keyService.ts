@@ -54,33 +54,39 @@ export async function getKeyCount(userId: string, deviceId: string) {
 }
 
 // Query device keys for multiple users (required by vodozemac KeysQueryRequest)
+// Single batch query instead of N+1 per user/device
 export async function queryDeviceKeys(userIds: string[]) {
+  if (userIds.length === 0) return { device_keys: {} };
+
+  const result = await pool.query(
+    `SELECT d.user_id, d.device_id, d.device_signing_key,
+            kb.identity_key, kb.signed_prekey, kb.signed_prekey_signature
+     FROM devices d
+     LEFT JOIN key_bundles kb ON d.user_id = kb.user_id AND d.device_id = kb.device_id
+     WHERE d.user_id = ANY($1::text[])`,
+    [userIds]
+  );
+
   const deviceKeys: Record<string, Record<string, unknown>> = {};
 
-  for (const userId of userIds) {
-    const devices = await findDevicesByUser(userId);
-    const bundles: Record<string, unknown> = {};
-
-    for (const device of devices) {
-      const bundle = await pool.query(
-        'SELECT * FROM key_bundles WHERE user_id = $1 AND device_id = $2',
-        [userId, device.device_id]
-      );
-
-      if (bundle.rows[0]) {
-        bundles[device.device_id] = {
-          user_id: userId,
-          device_id: device.device_id,
-          algorithms: ['m.olm.v1.curve25519-aes-sha2', 'm.megolm.v1.aes-sha2'],
-          keys: {
-            [`curve25519:${device.device_id}`]: bundle.rows[0].identity_key,
-            [`ed25519:${device.device_id}`]: device.device_signing_key,
-          },
-        };
-      }
+  for (const row of result.rows) {
+    if (!deviceKeys[row.user_id]) deviceKeys[row.user_id] = {};
+    if (row.identity_key) {
+      deviceKeys[row.user_id][row.device_id] = {
+        user_id: row.user_id,
+        device_id: row.device_id,
+        algorithms: ['m.olm.v1.curve25519-aes-sha2', 'm.megolm.v1.aes-sha2'],
+        keys: {
+          [`curve25519:${row.device_id}`]: row.identity_key,
+          [`ed25519:${row.device_id}`]: row.device_signing_key,
+        },
+      };
     }
+  }
 
-    deviceKeys[userId] = bundles;
+  // Ensure all requested users have an entry (even if empty)
+  for (const userId of userIds) {
+    if (!deviceKeys[userId]) deviceKeys[userId] = {};
   }
 
   return { device_keys: deviceKeys };

@@ -1,9 +1,9 @@
 import rateLimit from 'express-rate-limit';
 
-// Login: 5 attempts per 15 minutes per IP
+// Login: 20 attempts per 15 minutes per IP (supports 100 users behind shared IP)
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5,
+  max: 20,
   message: {
     error: { code: 'M_RATE_LIMITED', message: 'Too many login attempts. Try again later.' },
   },
@@ -11,10 +11,10 @@ export const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Registration: 3 attempts per hour per IP
+// Registration: 15 attempts per hour per IP
 export const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 3,
+  max: 15,
   message: {
     error: { code: 'M_RATE_LIMITED', message: 'Too many registration attempts. Try again later.' },
   },
@@ -22,10 +22,10 @@ export const registerLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// General API: 60 requests per minute per IP
+// General API: 300 requests per minute per IP (100 users × ~3 req each)
 export const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 60,
+  max: 300,
   message: {
     error: { code: 'M_RATE_LIMITED', message: 'Rate limit exceeded. Try again later.' },
   },
@@ -33,10 +33,10 @@ export const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Message sending: 30 per minute per IP
+// Message sending: 120 per minute per IP
 export const messageLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 30,
+  max: 120,
   message: {
     error: { code: 'M_RATE_LIMITED', message: 'Message rate limit exceeded.' },
   },

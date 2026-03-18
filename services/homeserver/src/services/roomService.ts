@@ -23,10 +23,10 @@ export async function createRoom(
 ): Promise<{ roomId: string; room: RoomRow }> {
   const room = await dbCreateRoom(roomType, userId, homeserver);
 
-  // Add invited members
-  for (const inviteeId of inviteUserIds) {
-    await addRoomMember(room.room_id, inviteeId, 'member');
-  }
+  // Add invited members in parallel
+  await Promise.all(
+    inviteUserIds.map((inviteeId) => addRoomMember(room.room_id, inviteeId, 'member'))
+  );
 
   return { roomId: room.room_id, room };
 }
