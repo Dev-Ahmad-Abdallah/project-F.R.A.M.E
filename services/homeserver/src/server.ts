@@ -19,6 +19,9 @@ import { roomsRouter } from './routes/rooms';
 const config = getConfig();
 const app = express();
 
+// ── Trust Railway's reverse proxy (required for rate-limit + correct client IP) ──
+app.set('trust proxy', 1);
+
 // ── Security headers ──
 app.use(helmet({
   contentSecurityPolicy: {

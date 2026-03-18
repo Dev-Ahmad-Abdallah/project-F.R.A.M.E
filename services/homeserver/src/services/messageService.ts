@@ -109,9 +109,14 @@ export async function syncMessages(
     events = await waitForEvents(userId, deviceId, since, limit, timeout);
   }
 
-  // Mark as delivered
-  for (const event of events) {
-    await markDelivered(event.event_id, deviceId);
+  // Mark as delivered in batch (fixes N+1 sequential updates)
+  if (events.length > 0) {
+    const eventIds = events.map((e) => e.event_id);
+    await pool.query(
+      `UPDATE delivery_state SET status = 'delivered', updated_at = NOW()
+       WHERE event_id = ANY($1::text[]) AND device_id = $2`,
+      [eventIds, deviceId]
+    );
   }
 
   const lastSeq = events.length > 0 ? events[events.length - 1].sequence_id : since;

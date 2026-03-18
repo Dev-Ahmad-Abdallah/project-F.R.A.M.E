@@ -123,7 +123,7 @@ export async function ensureSessionsForRoom(
       try {
         const reqBody = JSON.parse(request.body);
         const response = await apiRequest<Record<string, unknown>>(
-          '/sendToDevice/' + encodeURIComponent(request.type),
+          '/sendToDevice/' + encodeURIComponent(request.type) + '/' + Date.now().toString(36) + Math.random().toString(36).slice(2),
           { method: 'PUT', body: reqBody },
         );
         await machine.markRequestAsSent(
