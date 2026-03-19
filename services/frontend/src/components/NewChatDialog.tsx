@@ -366,11 +366,15 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         onCreated(newRoom);
       }, 1000);
     } catch (err) {
-      // If the error mentions a password, reveal the password field
-      if (err instanceof Error && err.message.toLowerCase().includes('password')) {
+      // If the error mentions a password or is a 403 Forbidden, reveal the password field
+      const msg = err instanceof Error ? err.message.toLowerCase() : '';
+      const code = err instanceof FrameApiError ? err.code : '';
+      if (msg.includes('password') || (code === 'M_FORBIDDEN' && !joinPassword)) {
         setShowJoinPassword(true);
+        setError('This session requires a password to join.');
+      } else {
+        setError(friendlyErrorMessage(err, isGuest));
       }
-      setError(friendlyErrorMessage(err, isGuest));
     } finally {
       setJoining(false);
     }
