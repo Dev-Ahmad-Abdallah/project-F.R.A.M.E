@@ -470,20 +470,28 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           0% { opacity: 0; transform: scale(0.92); }
           100% { opacity: 1; transform: scale(1); }
         }
+        @keyframes frame-spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
         .frame-context-menu-item:hover {
           background-color: rgba(248, 81, 73, 0.15) !important;
         }
-        div:hover > button[aria-label="Add reaction"],
-        div:hover > button[aria-label="Reply"] {
+        .frame-msg-row:hover > .frame-msg-hover-actions {
           opacity: 1 !important;
         }
-        div:hover > .frame-msg-hover-actions {
-          opacity: 1 !important;
+        .frame-msg-hover-action:hover {
+          color: #c9d1d9 !important;
+          background-color: rgba(139, 148, 158, 0.12) !important;
         }
-        button[aria-label="Add reaction"]:hover,
-        button[aria-label="Reply"]:hover {
-          border-color: #58a6ff !important;
-          color: #58a6ff !important;
+        @media (hover: none) {
+          .frame-msg-hover-actions {
+            opacity: 0.5 !important;
+          }
+          .frame-msg-hover-action {
+            width: 20px !important;
+            height: 20px !important;
+          }
         }
         .frame-reaction-emoji:hover {
           background-color: rgba(88, 166, 255, 0.15) !important;
@@ -1321,11 +1329,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         <div
           key={event.eventId}
           ref={(el) => { messageRefs.current[event.eventId] = el; }}
+          className="frame-msg-row"
           style={{
             display: 'flex', alignItems: 'flex-end', gap: 8,
             alignSelf: isOwn ? 'flex-end' : 'flex-start',
             maxWidth: 'clamp(200px, 75%, 600px)',
             marginTop: isFirstInGroup ? 12 : 4,
+            position: 'relative' as const,
             ...(hasPopIn ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}),
           }}
         >
@@ -1347,7 +1357,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
           )}
           <div
-            style={{ ...styles.messageBubble, ...(isOwn ? styles.ownMessage : styles.otherMessage), ...(hasError ? styles.previousSessionMessage : {}), ...bubbleRadius, marginTop: 0 }}
+            style={{ ...styles.messageBubble, ...(isOwn ? styles.ownMessage : styles.otherMessage), ...(hasError ? styles.previousSessionMessage : {}), ...bubbleRadius, marginTop: 0, position: 'relative' as const }}
             onContextMenu={(e) => handleMessageContextMenu(e, event.eventId, event.senderId)}
             onClick={(e) => handleMessageClick(e, event.eventId)}
           >
@@ -1452,11 +1462,45 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             })()}
           </div>
           {!isDeleted && !isExpired && !hasError && (
-            <div className="frame-msg-hover-actions" style={{ display: 'flex', flexDirection: 'column' as const, gap: 2, opacity: 0, transition: 'opacity 0.15s' }}>
-              <button type="button" style={styles.addReactionButton} onClick={() => handleReplyToMessage(event.eventId)} title="Reply" aria-label="Reply">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 00-4-4H4" /></svg>
+            <div className="frame-msg-hover-actions" style={{
+              position: 'absolute' as const,
+              top: -6,
+              ...(isOwn ? { left: -40 } : { right: -40 }),
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              opacity: 0,
+              transition: 'opacity 0.15s',
+              pointerEvents: 'auto' as const,
+            }}>
+              <button
+                type="button"
+                className="frame-msg-hover-action"
+                style={styles.hoverActionButton}
+                onClick={() => handleReplyToMessage(event.eventId)}
+                title="Reply"
+                aria-label="Reply"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 17 4 12 9 7"></polyline>
+                  <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
+                </svg>
               </button>
-              <button type="button" style={styles.addReactionButton} onClick={(e) => handleShowReactionPicker(e, event.eventId)} title="Add reaction" aria-label="Add reaction">+</button>
+              <button
+                type="button"
+                className="frame-msg-hover-action"
+                style={styles.hoverActionButton}
+                onClick={(e) => handleShowReactionPicker(e, event.eventId)}
+                title="Add reaction"
+                aria-label="Add reaction"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                  <line x1="9" y1="9" x2="9.01" y2="9" />
+                  <line x1="15" y1="9" x2="15.01" y2="9" />
+                </svg>
+              </button>
             </div>
           )}
         </div>
@@ -1976,8 +2020,8 @@ const styles: Record<string, React.CSSProperties> = {
   encryptionWarning: { fontSize: 14, color: '#8b949e', flexShrink: 0, marginTop: -1 },
   decryptErrorInline: { display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'help' },
   errorText: { fontStyle: 'italic', opacity: 0.8, fontSize: 13, color: '#8b949e' },
-  timestampRow: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4 },
-  timestamp: { fontSize: 10, marginTop: 4, opacity: 0.7, textAlign: 'right' },
+  timestampRow: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 3 },
+  timestamp: { fontSize: 10, opacity: 0.55, textAlign: 'right', color: 'inherit', letterSpacing: '0.01em' },
   statusIcon: { fontSize: 10, opacity: 0.6 },
   statusIconSent: { fontSize: 11, color: '#ffffff', opacity: 0.8 },
   statusIconFailed: { fontSize: 12, color: '#f85149' },
@@ -2004,7 +2048,7 @@ const styles: Record<string, React.CSSProperties> = {
   reactionsRow: { display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 4 },
   reactionBadge: { display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 6px', fontSize: 12, borderRadius: 10, border: '1px solid #30363d', backgroundColor: 'rgba(33, 38, 45, 0.8)', color: '#c9d1d9', cursor: 'pointer', fontFamily: 'inherit', transition: 'border-color 0.15s, background-color 0.15s', lineHeight: 1.3 },
   reactionBadgeOwn: { borderColor: '#58a6ff', backgroundColor: 'rgba(88, 166, 255, 0.15)' },
-  addReactionButton: { width: 24, height: 24, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#8b949e', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, alignSelf: 'center', opacity: 0, transition: 'opacity 0.15s, border-color 0.15s', fontFamily: 'inherit' },
+  hoverActionButton: { width: 24, height: 24, borderRadius: 6, border: 'none', backgroundColor: 'transparent', color: '#8b949e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 0, transition: 'color 0.15s, background-color 0.15s', fontFamily: 'inherit', lineHeight: 1 },
   reactionPicker: { position: 'fixed' as const, zIndex: 9999, display: 'flex', gap: 2, padding: '4px 6px', backgroundColor: '#1c2128', border: '1px solid rgba(99, 110, 123, 0.35)', borderRadius: 20, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', animation: 'frame-context-menu-in 0.15s ease-out' },
   reactionPickerEmoji: { width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, backgroundColor: 'transparent', border: 'none', borderRadius: '50%', cursor: 'pointer', transition: 'background-color 0.12s, transform 0.12s', fontFamily: 'inherit' },
   readReceiptIcon: { fontSize: 11, color: '#3fb950', opacity: 0.8, marginLeft: 2 },
