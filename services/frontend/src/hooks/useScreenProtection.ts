@@ -20,17 +20,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-const PRIVACY_MODE_KEY = 'frame-privacy-mode';
-
 export interface ScreenProtectionState {
   /** True when the document is hidden (tab switch, alt-tab, app backgrounded) */
   isHidden: boolean;
   /** True when the window has lost focus (another window is in front) */
   isBlurred: boolean;
-  /** True when privacy mode (watermark) is enabled */
-  privacyMode: boolean;
-  /** Toggle privacy mode on/off (only controls watermark) */
-  setPrivacyMode: (enabled: boolean) => void;
   /** True when a screen capture attempt has been detected */
   captureDetected: boolean;
   /** Dismiss the capture detection warning */
@@ -44,27 +38,11 @@ export interface ScreenProtectionState {
 export function useScreenProtection(): ScreenProtectionState {
   const [isHidden, setIsHidden] = useState(false);
   const [isBlurred, setIsBlurred] = useState(false);
-  const [privacyMode, setPrivacyModeState] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(PRIVACY_MODE_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
   const [captureDetected, setCaptureDetected] = useState(false);
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
   const [printScreenFlash, setPrintScreenFlash] = useState(false);
 
   const originalGetDisplayMediaRef = useRef<typeof navigator.mediaDevices.getDisplayMedia | null>(null);
-
-  const setPrivacyMode = useCallback((enabled: boolean) => {
-    setPrivacyModeState(enabled);
-    try {
-      localStorage.setItem(PRIVACY_MODE_KEY, String(enabled));
-    } catch {
-      // localStorage may be unavailable
-    }
-  }, []);
 
   const dismissCaptureWarning = useCallback(() => {
     setCaptureDetected(false);
@@ -605,8 +583,6 @@ export function useScreenProtection(): ScreenProtectionState {
   return {
     isHidden,
     isBlurred,
-    privacyMode,
-    setPrivacyMode,
     captureDetected,
     dismissCaptureWarning,
     devtoolsOpen,

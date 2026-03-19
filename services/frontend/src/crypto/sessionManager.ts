@@ -346,11 +346,9 @@ export async function decryptEvent(event: SyncEvent): Promise<DecryptedEvent> {
       'algorithm:', event.content?.algorithm,
     );
 
-    // Store in window for debugging
-    if (typeof window !== 'undefined') {
-      (window as unknown as Record<string, unknown[]>).__decryptDebug =
-        (window as unknown as Record<string, unknown[]>).__decryptDebug || [];
-      (window as unknown as Record<string, unknown[]>).__decryptDebug.push({
+    // Debug logging — only in development, never exposed on window
+    if (process.env.NODE_ENV === 'development') {
+      console.debug('[F.R.A.M.E.] Decrypt debug:', {
         eventId: event.eventId,
         error: errorMessage,
         algorithm: event.content?.algorithm,

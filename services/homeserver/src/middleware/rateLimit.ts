@@ -211,6 +211,18 @@ export const fileUploadLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// H-6 FIX: Guest session creation: 5 per hour per IP.
+// Prevents abuse of anonymous guest sessions for spam or resource exhaustion.
+const guestWindowMs = 60 * 60 * 1000;
+export const guestLimiter = rateLimit({
+  windowMs: guestWindowMs,
+  max: 5,
+  store: new RedisStore('ratelimit:guest', guestWindowMs) as unknown as Store,
+  handler: rateLimitHandler,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Message sending: 300 per minute per user PER ROOM.
 // Keyed by userId:roomId so active participation in multiple rooms
 // doesn't exhaust a single global bucket. A user chatting in 10 rooms

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import multer from 'multer';
 import { requireAuth } from '../middleware/auth';
-import { fileUploadLimiter } from '../middleware/rateLimit';
+import { fileUploadLimiter, apiLimiter } from '../middleware/rateLimit';
 import { asyncHandler, ApiError } from '../middleware/errorHandler';
 import { isRoomMember } from '../db/queries/rooms';
 import { pool } from '../db/pool';
@@ -29,11 +29,69 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 // ── Multer setup (memory storage — encrypted blob goes straight to PG) ──
+//
+// H-3 NOTE: File attachments are currently stored as raw BLOBs in PostgreSQL
+// (file_attachments.encrypted_blob). For production scale, consider migrating
+// to object storage (S3/R2) with only metadata in PG. The 10 MB multer limit
+// below is enforced at the middleware layer to bound memory usage per request.
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE },
 });
+
+// ── Magic byte signatures for MIME type validation ──
+
+/**
+ * Validate that the file content's magic bytes match the claimed MIME type.
+ * Returns true if the content matches or if we can't check (e.g. text types).
+ * Returns false if the magic bytes contradict the claimed type.
+ */
+function validateMagicBytes(buffer: Buffer, claimedMime: string): boolean {
+  if (buffer.length < 4) return false;
+
+  // Define magic byte signatures for binary formats
+  const signatures: Record<string, { bytes: number[]; offset?: number }[]> = {
+    'image/jpeg': [{ bytes: [0xFF, 0xD8, 0xFF] }],
+    'image/png': [{ bytes: [0x89, 0x50, 0x4E, 0x47] }],
+    'image/gif': [{ bytes: [0x47, 0x49, 0x46, 0x38] }],
+    'image/webp': [{ bytes: [0x52, 0x49, 0x46, 0x46] }],
+    'application/pdf': [{ bytes: [0x25, 0x50, 0x44, 0x46] }],
+    'application/zip': [{ bytes: [0x50, 0x4B, 0x03, 0x04] }],
+    'application/x-zip-compressed': [{ bytes: [0x50, 0x4B, 0x03, 0x04] }],
+    'application/msword': [{ bytes: [0xD0, 0xCF, 0x11, 0xE0] }],
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': [
+      { bytes: [0x50, 0x4B, 0x03, 0x04] },
+    ],
+  };
+
+  // For text-based formats, verify content looks like text (no null bytes in first 512 bytes)
+  const textTypes = new Set(['text/plain', 'text/csv', 'application/json']);
+  if (textTypes.has(claimedMime)) {
+    const checkLen = Math.min(buffer.length, 512);
+    for (let i = 0; i < checkLen; i++) {
+      if (buffer[i] === 0x00) return false;
+    }
+    return true;
+  }
+
+  const sigs = signatures[claimedMime];
+  if (!sigs) return true;
+
+  // Special check for WEBP: RIFF header + "WEBP" at offset 8
+  if (claimedMime === 'image/webp') {
+    if (buffer.length < 12) return false;
+    const riff = buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46;
+    const webp = buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50;
+    return riff && webp;
+  }
+
+  return sigs.some((sig) => {
+    const offset = sig.offset ?? 0;
+    if (buffer.length < offset + sig.bytes.length) return false;
+    return sig.bytes.every((byte, i) => buffer[offset + i] === byte);
+  });
+}
 
 // ── Helpers ──
 
@@ -110,9 +168,14 @@ filesRouter.post(
       throw new ApiError(400, 'M_BAD_JSON', 'mimeType is required');
     }
 
-    // Validate MIME type
+    // Validate MIME type against allowlist
     if (!ALLOWED_MIME_TYPES.has(mimeTypeValue)) {
       throw new ApiError(400, 'M_BAD_MIME_TYPE', 'File type is not allowed');
+    }
+
+    // Validate file content magic bytes match claimed MIME type
+    if (!validateMagicBytes(file.buffer, mimeTypeValue)) {
+      throw new ApiError(400, 'M_BAD_MIME_TYPE', 'File content does not match claimed MIME type');
     }
 
     // Validate file size (belt-and-suspenders — multer also enforces this)
@@ -149,9 +212,11 @@ filesRouter.post(
 
 // ── GET /files/:fileId ──
 
+// H-4 FIX: Added apiLimiter to prevent unlimited file download abuse
 filesRouter.get(
   '/:fileId',
   requireAuth,
+  apiLimiter,
   asyncHandler(async (req, res) => {
     if (!req.auth) {
       throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');

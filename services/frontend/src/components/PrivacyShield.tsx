@@ -1,11 +1,10 @@
 /**
  * PrivacyShield — Screen capture protection overlays for F.R.A.M.E.
  *
- * Renders three layers:
+ * Renders invisible protection layers:
  *   1. Black overlay — instantly covers screen when app loses visibility (tab switch, background)
- *   2. Blur overlay — blurs app when window loses focus (desktop screenshot tools)
- *   3. Watermark overlay — subtle diagonal repeating user ID text when privacy mode is on
- *   4. Capture warning toast — shown when screen recording is detected
+ *   2. Black overlay — covers screen when window loses focus (desktop screenshot tools)
+ *   3. Capture warning toast — shown when screen recording is detected
  */
 
 import React, { useEffect, useState } from 'react';
@@ -15,10 +14,6 @@ interface PrivacyShieldProps {
   isHidden: boolean;
   /** Whether the window has lost focus */
   isBlurred: boolean;
-  /** Whether privacy mode is enabled (shows watermark) */
-  privacyMode: boolean;
-  /** User identifier for watermark text */
-  userId?: string;
   /** Whether a screen capture attempt was detected */
   captureDetected: boolean;
   /** Dismiss capture warning */
@@ -28,8 +23,6 @@ interface PrivacyShieldProps {
 const PrivacyShield: React.FC<PrivacyShieldProps> = ({
   isHidden,
   isBlurred,
-  privacyMode,
-  userId,
   captureDetected,
   onDismissCaptureWarning,
 }) => {
@@ -62,11 +55,6 @@ const PrivacyShield: React.FC<PrivacyShieldProps> = ({
     }
   }, [captureDetected, onDismissCaptureWarning]);
 
-  // Extract short username (strip @user:server format)
-  const shortLabel = userId
-    ? userId.replace(/^@/, '').replace(/:.*$/, '')
-    : 'PROTECTED';
-
   return (
     <>
       {/* 1. Black screen overlay — instant, above everything */}
@@ -75,17 +63,7 @@ const PrivacyShield: React.FC<PrivacyShieldProps> = ({
           style={overlayStyles.blackOverlay}
           aria-hidden="true"
           data-testid="privacy-black-overlay"
-        >
-          <div style={overlayStyles.blackOverlayContent}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.3 }}>
-              <path
-                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-2h2v2h-2zm0-4V7h2v6h-2z"
-                fill="#30363d"
-              />
-            </svg>
-            <span style={overlayStyles.blackOverlayText}>Screen Protected</span>
-          </div>
-        </div>
+        />
       )}
 
       {/* 2. FULL BLACK overlay — when window loses focus */}
@@ -95,26 +73,6 @@ const PrivacyShield: React.FC<PrivacyShieldProps> = ({
           aria-hidden="true"
           data-testid="privacy-blur-overlay"
         />
-      )}
-
-      {/* 3. Forensic watermark — subtle horizontal grid over message area only */}
-      {!isHidden && (
-        <div
-          style={overlayStyles.watermarkOverlay}
-          aria-hidden="true"
-          data-testid="privacy-watermark-overlay"
-        >
-          {/* Rows of subtle forensic ID text in a horizontal grid */}
-          {Array.from({ length: 24 }, (_, row) => (
-            <div key={row} style={overlayStyles.watermarkRow}>
-              {Array.from({ length: 6 }, (_, col) => (
-                <span key={col} style={overlayStyles.watermarkText}>
-                  {shortLabel}
-                </span>
-              ))}
-            </div>
-          ))}
-        </div>
       )}
 
       {/* Fade-in mask when returning from hidden */}
@@ -171,21 +129,6 @@ const overlayStyles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     // No transition — must be instant
   },
-  blackOverlayContent: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 12,
-  },
-  blackOverlayText: {
-    color: '#30363d',
-    fontSize: 14,
-    fontWeight: 500,
-    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    letterSpacing: '0.05em',
-    userSelect: 'none',
-  },
-
   // FULL BLACK overlay on blur — not just blur, complete blackout
   blurOverlay: {
     position: 'fixed',
@@ -196,40 +139,6 @@ const overlayStyles: Record<string, React.CSSProperties> = {
     backgroundColor: '#000000',
     zIndex: 999998,
     // No transition — must be instant
-  },
-
-  // Forensic watermark: subtle horizontal grid, message area only
-  watermarkOverlay: {
-    position: 'fixed',
-    // Offset to cover only the message area (skip sidebar ~320px left, header ~50px top, input ~60px bottom)
-    top: 50,
-    left: 320,
-    right: 0,
-    bottom: 60,
-    zIndex: 999990,
-    pointerEvents: 'none',
-    overflow: 'hidden',
-    userSelect: 'none',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'space-between',
-  },
-  watermarkRow: {
-    display: 'flex',
-    justifyContent: 'space-around',
-    width: '100%',
-  },
-  watermarkText: {
-    color: '#141a22',
-    fontSize: 8,
-    fontWeight: 400,
-    fontFamily: 'monospace',
-    opacity: 0.015,
-    whiteSpace: 'nowrap',
-    letterSpacing: '0.2em',
-    userSelect: 'none',
-    pointerEvents: 'none',
-    lineHeight: 1,
   },
 
   // Fade-in mask when returning from hidden

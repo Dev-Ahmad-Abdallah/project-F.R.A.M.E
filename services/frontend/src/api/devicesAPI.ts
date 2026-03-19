@@ -19,6 +19,7 @@ export interface DeviceInfo {
   devicePublicKey: string;
   deviceSigningKey: string;
   lastSeen?: string;
+  verified?: boolean;
 }
 
 export interface RegisterDeviceResponse {
@@ -52,6 +53,18 @@ export async function listDevices(
   userId: string,
 ): Promise<ListDevicesResponse> {
   return apiRequest<ListDevicesResponse>(`/devices/${encodeURIComponent(userId)}`);
+}
+
+/**
+ * Mark a device as verified (server-side).
+ */
+export async function verifyDeviceOnServer(
+  deviceId: string,
+): Promise<{ verified: boolean }> {
+  return apiRequest<{ verified: boolean }>(
+    `/devices/${encodeURIComponent(deviceId)}/verify`,
+    { method: 'PUT' },
+  );
 }
 
 /**

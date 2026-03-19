@@ -1,4 +1,4 @@
-import { createDevice, findDevicesByUser, findDevice, deleteDevice, updateLastSeen, countDevicesByUser } from '../db/queries/devices';
+import { createDevice, findDevicesByUser, findDevice, deleteDevice, updateLastSeen, countDevicesByUser, setDeviceVerified as setDeviceVerifiedDb } from '../db/queries/devices';
 import { getUserRooms } from '../db/queries/rooms';
 import { redisClient } from '../redis/client';
 import { ApiError } from '../middleware/errorHandler';
@@ -44,8 +44,17 @@ export async function listDevices(userId: string) {
       deviceSigningKey: d.device_signing_key,
       lastSeen: d.last_seen,
       createdAt: d.created_at,
+      verified: d.verified,
     })),
   };
+}
+
+export async function verifyDevice(deviceId: string, userId: string) {
+  const updated = await setDeviceVerifiedDb(deviceId, userId);
+  if (!updated) {
+    throw new ApiError(404, 'M_NOT_FOUND', 'Device not found or not owned by user');
+  }
+  return { verified: true };
 }
 
 export async function removeDevice(deviceId: string, userId: string) {

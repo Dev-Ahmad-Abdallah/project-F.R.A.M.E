@@ -3,7 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import { apiLimiter } from '../middleware/rateLimit';
 import { asyncHandler } from '../middleware/errorHandler';
 import { validateBody, deviceRegisterSchema } from '../middleware/validation';
-import { registerDevice, listDevices, removeDevice, heartbeat } from '../services/deviceService';
+import { registerDevice, listDevices, removeDevice, heartbeat, verifyDevice } from '../services/deviceService';
 import { usersShareRoom } from '../db/queries/rooms';
 import { ApiError } from '../middleware/errorHandler';
 
@@ -57,6 +57,20 @@ devicesRouter.get(
     }
 
     const result = await listDevices(targetUserId);
+    res.json(result);
+  })
+);
+
+// PUT /devices/:deviceId/verify — Mark a device as verified (server-side)
+devicesRouter.put(
+  '/:deviceId/verify',
+  requireAuth,
+  apiLimiter,
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const result = await verifyDevice(req.params.deviceId, req.auth.sub);
     res.json(result);
   })
 );

@@ -200,11 +200,13 @@ messagesRouter.post(
       throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
     }
 
-    const key = `typing:${roomId}:${req.auth.sub}`;
+    const hashKey = `typing:${roomId}`;
     if (isTyping) {
-      await redisClient.set(key, '1', 'EX', 5);
+      await redisClient.hset(hashKey, req.auth.sub, String(Date.now()));
+      // Ensure the hash expires if all clients disconnect without clearing
+      await redisClient.expire(hashKey, 30);
     } else {
-      await redisClient.del(key);
+      await redisClient.hdel(hashKey, req.auth.sub);
     }
     res.json({ success: true });
   })
@@ -224,11 +226,26 @@ messagesRouter.get(
       throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
     }
 
-    const pattern = `typing:${roomId}:*`;
-    const keys = await redisClient.keys(pattern);
-    const typingUserIds = keys
-      .map((k) => k.replace(`typing:${roomId}:`, ''))
-      .filter((userId) => userId !== req.auth?.sub);
+    // H-1 FIX: Use HGETALL instead of KEYS to avoid O(N) scan in production
+    const hashKey = `typing:${roomId}`;
+    const typingEntries = await redisClient.hgetall(hashKey);
+    const now = Date.now();
+    const staleThreshold = 5000; // 5 seconds
+    const staleFields: string[] = [];
+    const typingUserIds: string[] = [];
+
+    for (const [userId, timestamp] of Object.entries(typingEntries)) {
+      if (now - Number(timestamp) > staleThreshold) {
+        staleFields.push(userId);
+      } else if (userId !== req.auth?.sub) {
+        typingUserIds.push(userId);
+      }
+    }
+
+    // Clean up stale entries lazily
+    if (staleFields.length > 0) {
+      await redisClient.hdel(hashKey, ...staleFields);
+    }
 
     res.json({ typingUserIds });
   })
