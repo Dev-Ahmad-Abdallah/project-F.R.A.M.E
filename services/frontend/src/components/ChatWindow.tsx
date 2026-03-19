@@ -524,13 +524,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           color: #c9d1d9 !important;
           background-color: rgba(139, 148, 158, 0.12) !important;
         }
-        @media (hover: none) {
+        @media (hover: none), (max-width: 600px) {
           .frame-msg-hover-actions {
-            opacity: 0.5 !important;
-          }
-          .frame-msg-hover-action {
-            width: 20px !important;
-            height: 20px !important;
+            display: none !important;
           }
         }
         .frame-reaction-emoji:hover {
@@ -2769,7 +2765,7 @@ const styles: Record<string, React.CSSProperties> = {
   timeGap: { display: 'flex', justifyContent: 'center', margin: '8px 0 4px' },
   timeGapText: { fontSize: 10, color: '#8b949e', backgroundColor: '#161b22', padding: '2px 10px', borderRadius: 10 },
   emptyState: { textAlign: 'center', color: '#8b949e', marginTop: 40, fontSize: 14 },
-  messageBubble: { maxWidth: 'clamp(180px, 65%, 480px)', minWidth: 80, padding: '10px 14px', borderRadius: 16, fontSize: 'clamp(13px, 1.4vw, 15px)', lineHeight: 1.5, wordBreak: 'break-word' as const, overflowWrap: 'break-word' as const, transition: 'background-color 0.15s' },
+  messageBubble: { maxWidth: 'clamp(180px, 65%, 480px)', minWidth: 80, padding: '10px 14px', borderRadius: 16, fontSize: 'clamp(13px, 1.4vw, 15px)', lineHeight: 1.5, wordBreak: 'break-word' as const, overflowWrap: 'break-word' as const, overflow: 'hidden' as const, transition: 'background-color 0.15s' },
   ownMessage: { backgroundColor: '#1B6EF3', color: '#ffffff' },
   otherMessage: { backgroundColor: '#2D333B', color: '#e6edf3' },
   errorMessage: { opacity: 0.7, borderLeft: '3px solid #f85149' },
