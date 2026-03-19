@@ -175,7 +175,7 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
   return (
     <div style={{
       ...containerStyle,
-      backgroundColor: isSent ? 'rgba(88, 166, 255, 0.08)' : '#161b22',
+      backgroundColor: isSent ? 'rgba(255, 255, 255, 0.06)' : 'rgba(13, 17, 23, 0.5)',
     }}>
       {/* Image preview */}
       {previewUrl && isImage && (
@@ -245,26 +245,28 @@ export default FileAttachment;
 // ── Styles ──
 
 const containerStyle: React.CSSProperties = {
-  border: '1px solid #30363d',
-  borderRadius: 4,
-  padding: 10,
+  border: 'none',
+  borderRadius: 12,
+  padding: 8,
   maxWidth: 320,
   minWidth: 200,
 };
 
 const previewContainerStyle: React.CSSProperties = {
   marginBottom: 8,
-  borderRadius: 4,
+  borderRadius: 10,
   overflow: 'hidden',
-  backgroundColor: '#0d1117',
+  backgroundColor: 'rgba(0,0,0,0.15)',
+  boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
 };
 
 const previewImageStyle: React.CSSProperties = {
   display: 'block',
-  maxWidth: '100%',
+  maxWidth: 300,
+  width: '100%',
   maxHeight: 280,
   objectFit: 'contain',
-  borderRadius: 4,
+  borderRadius: 10,
 };
 
 const fileInfoRowStyle: React.CSSProperties = {
@@ -288,28 +290,33 @@ const fileDetailsStyle: React.CSSProperties = {
 const fileNameStyle: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
-  color: '#c9d1d9',
+  color: '#e6edf3',
   whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
+  lineHeight: 1.3,
 };
 
 const fileSizeStyle: React.CSSProperties = {
   fontSize: 11,
   color: '#8b949e',
-  marginTop: 1,
+  marginTop: 2,
+  lineHeight: 1,
 };
 
 const downloadButtonStyle: React.CSSProperties = {
   background: 'none',
-  border: '1px solid #30363d',
-  borderRadius: 4,
+  border: 'none',
+  borderRadius: '50%',
   padding: 6,
+  width: 32,
+  height: 32,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   flexShrink: 0,
   transition: 'background-color 0.15s, opacity 0.15s',
+  backgroundColor: 'rgba(88, 166, 255, 0.1)',
 };
 
 const progressStyle: React.CSSProperties = {

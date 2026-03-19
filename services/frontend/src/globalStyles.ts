@@ -12,9 +12,24 @@ const GLOBAL_STYLE_ID = 'frame-global-styles';
 
 const GLOBAL_CSS = `
 /* Hover states */
-button:hover:not(:disabled) { filter: brightness(1.15); }
-button:active:not(:disabled) { filter: brightness(0.9); transform: scale(0.98); }
+button:hover:not(:disabled) { filter: brightness(1.1); }
+button:active:not(:disabled) { filter: brightness(0.95); transform: scale(0.98); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Smooth sidebar collapse/expand */
+.frame-sidebar { transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* Dialog/modal smooth open/close */
+@keyframes frame-dialog-enter {
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes frame-dialog-backdrop-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.frame-dialog-enter { animation: frame-dialog-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.frame-dialog-backdrop-enter { animation: frame-dialog-backdrop-enter 0.2s ease-out forwards; }
 
 /* Focus visible */
 button:focus-visible, input:focus-visible, textarea:focus-visible {
@@ -81,15 +96,15 @@ button, label, span, [role="button"] {
 }
 
 .frame-sidebar {
-  width: clamp(240px, 25vw, 320px);
-  min-width: clamp(240px, 25vw, 320px);
+  width: 300px;
+  min-width: 300px;
   display: flex;
   flex-direction: column;
   background-color: #161b22;
-  border-right: 1px solid #30363d;
+  border-right: 1px solid #21262d;
   height: 100%;
   overflow: hidden;
-  transition: width 0.3s ease, min-width 0.3s ease;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border-top: 2px solid #3fb950;
 }
 
@@ -282,14 +297,14 @@ button, label, span, [role="button"] {
 .frame-chat-input-area {
   display: flex;
   align-items: flex-end;
-  padding: clamp(6px, 1vw, 12px) clamp(8px, 1.2vw, 16px);
+  padding: clamp(6px, 1vw, 10px) clamp(8px, 1.2vw, 14px);
   border-top: 1px solid #30363d;
   background-color: #161b22;
 }
 
 .frame-chat-textarea {
   flex: 1;
-  padding: clamp(6px, 0.8vw, 10px) 6px;
+  padding: clamp(8px, 0.8vw, 10px) 4px;
   border: none;
   background-color: transparent;
   color: #c9d1d9;
@@ -297,10 +312,11 @@ button, label, span, [role="button"] {
   font-family: inherit;
   resize: none;
   line-height: 20px;
-  min-height: clamp(32px, 4vw, 40px);
-  max-height: 116px;
+  min-height: clamp(36px, 4vw, 40px);
+  max-height: 100px;
   overflow: auto;
   outline: none;
+  transition: height 0.1s ease;
 }
 
 /* ── Landing page fluid typography ── */
@@ -672,15 +688,16 @@ button, label, span, [role="button"] {
     text-overflow: ellipsis !important;
   }
 
-  /* ── 5. Input area: taller touch target ── */
+  /* ── 5. Input area: taller touch target, safe area ── */
   .frame-chat-input-area {
     padding: 6px 8px !important;
+    padding-bottom: max(6px, env(safe-area-inset-bottom)) !important;
   }
 
   .frame-chat-textarea {
-    min-height: 48px !important;
+    min-height: 40px !important;
     font-size: 16px !important;
-    padding: 12px 6px !important;
+    padding: 10px 4px !important;
   }
 
   /* ── 8. Typing indicator: compact ── */

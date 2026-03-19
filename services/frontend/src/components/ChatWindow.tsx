@@ -1667,8 +1667,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         (new Date(nextMsg.event.originServerTs).getTime() - msgDate.getTime()) > GROUP_GAP_MS;
 
       const bubbleRadius = isOwn
-        ? { borderTopLeftRadius: 12, borderTopRightRadius: isFirstInGroup ? 12 : 4, borderBottomLeftRadius: 12, borderBottomRightRadius: isLastInGroup ? 12 : 4 }
-        : { borderTopLeftRadius: isFirstInGroup ? 12 : 4, borderTopRightRadius: 12, borderBottomLeftRadius: isLastInGroup ? 12 : 4, borderBottomRightRadius: 12 };
+        ? { borderTopLeftRadius: 16, borderTopRightRadius: isFirstInGroup ? 16 : 4, borderBottomLeftRadius: 16, borderBottomRightRadius: isLastInGroup ? 4 : 4 }
+        : { borderTopLeftRadius: isFirstInGroup ? 16 : 4, borderTopRightRadius: 16, borderBottomLeftRadius: isLastInGroup ? 4 : 4, borderBottomRightRadius: 16 };
 
       const hasPopIn = recentlyArrivedIds.has(event.eventId);
       elements.push(
@@ -1680,7 +1680,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             display: 'flex', alignItems: 'flex-end', gap: 8,
             alignSelf: isOwn ? 'flex-end' : 'flex-start',
             maxWidth: isMobile ? '85%' : 'clamp(200px, 75%, 600px)',
-            marginTop: isFirstInGroup ? 12 : 4,
+            marginTop: isFirstInGroup ? 8 : 2,
             position: 'relative' as const,
             ...(hasPopIn ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}),
           }}
@@ -1718,14 +1718,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               return (
                 <div
                   className="frame-reply-quote"
-                  style={{ borderLeft: `3px solid ${replyColor}`, backgroundColor: isOwn ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)', borderRadius: '0 6px 6px 0', padding: '6px 10px', marginBottom: 6, marginTop: -2, cursor: 'pointer', maxWidth: '100%', overflow: 'hidden' }}
+                  style={{ borderLeft: `3px solid ${isOwn ? 'rgba(255,255,255,0.5)' : '#58a6ff'}`, backgroundColor: isOwn ? 'rgba(255,255,255,0.08)' : 'rgba(88,166,255,0.06)', borderRadius: '0 8px 8px 0', padding: '6px 10px', marginBottom: 6, marginTop: 0, cursor: 'pointer', maxWidth: '100%', overflow: 'hidden', transition: 'background-color 0.15s' }}
                   onClick={(e) => { e.stopPropagation(); scrollToMessage(rt.eventId); }}
                   title="Click to scroll to original message"
                 >
-                  <div style={{ fontSize: 11, fontWeight: 700, color: replyColor, marginBottom: 2, lineHeight: 1.3 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: isOwn ? 'rgba(255,255,255,0.85)' : '#58a6ff', marginBottom: 2, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
                     {DOMPurify.sanitize(isAnonymous ? 'Anonymous' : formatDisplayName(rt.senderId), PURIFY_CONFIG)}
                   </div>
-                  <div className="frame-reply-quote-text" style={{ fontSize: 12, color: isOwn ? 'rgba(255,255,255,0.7)' : '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, lineHeight: 1.35, wordBreak: 'break-word' as const }}>
+                  <div className="frame-reply-quote-text" style={{ fontSize: 13, color: isOwn ? 'rgba(255,255,255,0.6)' : '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, lineHeight: 1.4, wordBreak: 'break-word' as const }}>
                     {typeof rt.body === 'string' ? DOMPurify.sanitize(rt.body, PURIFY_CONFIG) : 'Message'}
                   </div>
                 </div>
@@ -1791,7 +1791,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                           />
                         ) : null;
                       })()
-                    : <span className={isOwn ? 'frame-msg-text-own' : 'frame-msg-text'}>{(() => {
+                    : <span className={isOwn ? 'frame-msg-text-own' : 'frame-msg-text'} style={(() => {
+                      const t = renderMessageContent(decrypted);
+                      const emojiOnly = /^[\p{Emoji_Presentation}\p{Extended_Pictographic}\u{FE0F}\u{200D}\s]{1,10}$/u;
+                      if (emojiOnly.test(t.trim()) && t.trim().length <= 12) return { fontSize: 32, lineHeight: 1.3 };
+                      return {};
+                    })()}>{(() => {
                       const text = renderMessageContent(decrypted);
                       if (!searchQuery.trim()) return text;
                       const q = searchQuery.toLowerCase();
@@ -1933,27 +1938,35 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      {/* Drag-and-drop overlay */}
+      {/* Drag-and-drop overlay — covers message area only, smooth fade */}
       {isDragOver && (
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(63, 185, 80, 0.08)',
-          border: '2px dashed #3fb950',
-          borderRadius: 3,
+          backgroundColor: 'rgba(63, 185, 80, 0.06)',
+          border: '3px dashed rgba(63, 185, 80, 0.5)',
+          borderRadius: 8,
           zIndex: 9000,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           pointerEvents: 'none',
+          animation: 'frame-overlay-fade-in 0.2s ease-out',
+          backdropFilter: 'blur(2px)',
         }}>
           <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-            color: '#3fb950', fontWeight: 600, fontSize: 15,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+            color: '#3fb950', fontWeight: 600, fontSize: 16,
+            padding: '32px 24px',
+            backgroundColor: 'rgba(13, 17, 23, 0.85)',
+            borderRadius: 16,
+            border: '1px solid rgba(63, 185, 80, 0.3)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
           }}>
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#3fb950" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#3fb950" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
               <polyline points="17 8 12 3 7 8" />
               <line x1="12" y1="3" x2="12" y2="15" />
             </svg>
-            DROP FILE TO ATTACH
+            Drop to attach
+            <span style={{ fontSize: 12, color: '#8b949e', fontWeight: 400 }}>Release to add file</span>
           </div>
         </div>
       )}
@@ -2292,26 +2305,28 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
       )}
 
-      {/* Pending file preview bar */}
+      {/* Pending file preview bar — clean card above input */}
       {pendingFile && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
+          display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 12,
+          padding: isMobile ? '8px 10px' : '10px 16px',
           borderTop: '1px solid #30363d', backgroundColor: '#161b22',
+          animation: 'frame-overlay-fade-in 0.15s ease-out',
         }}>
           {/* Thumbnail or file icon */}
           {pendingFile.previewUrl ? (
             <img
               src={pendingFile.previewUrl}
               alt={pendingFile.file.name}
-              style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4, border: '1px solid #30363d', flexShrink: 0 }}
+              style={{ width: isMobile ? 40 : 48, height: isMobile ? 40 : 48, objectFit: 'cover', borderRadius: 8, border: '1px solid #30363d', flexShrink: 0 }}
             />
           ) : (
             <div style={{
-              width: 48, height: 48, borderRadius: 4, border: '1px solid #30363d',
+              width: isMobile ? 40 : 48, height: isMobile ? 40 : 48, borderRadius: 8, border: '1px solid #30363d',
               backgroundColor: '#0d1117', display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0,
             }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
               </svg>
@@ -2319,27 +2334,31 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           )}
           {/* File info */}
           <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#c9d1d9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ fontSize: isMobile ? 12 : 13, fontWeight: 600, color: '#c9d1d9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {pendingFile.file.name}
             </div>
-            <div style={{ fontSize: 11, color: '#8b949e', marginTop: 1 }}>
+            <div style={{ fontSize: 11, color: '#8b949e', marginTop: 2 }}>
               {formatFileSize(pendingFile.file.size)}
             </div>
           </div>
-          {/* Cancel button */}
+          {/* Close (cancel) button */}
           <button
             type="button"
             onClick={cancelPendingFile}
             style={{
-              background: 'none', border: '1px solid #30363d', color: '#8b949e',
-              fontSize: 12, cursor: 'pointer', padding: '4px 10px', borderRadius: 4,
-              fontFamily: 'inherit', fontWeight: 600, flexShrink: 0,
-              transition: 'color 0.15s, border-color 0.15s',
+              background: 'none', border: 'none', color: '#8b949e',
+              cursor: 'pointer', padding: 8, borderRadius: '50%',
+              fontFamily: 'inherit', flexShrink: 0,
+              transition: 'color 0.15s, background-color 0.15s',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              minWidth: 36, minHeight: 36,
             }}
             title="Remove attachment"
             aria-label="Remove attachment"
           >
-            CANCEL
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
           {/* Send button */}
           <button
@@ -2347,34 +2366,49 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             onClick={() => { void handleSendFile(); }}
             disabled={isUploadingFile}
             style={{
-              padding: '6px 14px', borderRadius: 3,
-              border: '1px solid rgba(63,185,80,0.3)', backgroundColor: '#238636',
-              color: '#fff', fontSize: 12, fontWeight: 700, cursor: isUploadingFile ? 'not-allowed' : 'pointer',
-              fontFamily: '"SF Mono", "Fira Code", monospace',
+              padding: '8px 16px', borderRadius: 20,
+              border: 'none', backgroundColor: '#238636',
+              color: '#fff', fontSize: 13, fontWeight: 700, cursor: isUploadingFile ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit',
               transition: 'background-color 0.15s, opacity 0.15s',
               flexShrink: 0, opacity: isUploadingFile ? 0.5 : 1,
-              letterSpacing: '0.05em', textTransform: 'uppercase' as const,
-              boxShadow: '0 0 6px rgba(63,185,80,0.15)',
-              display: 'flex', alignItems: 'center', gap: 4,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              minHeight: 36,
             }}
           >
-            {isUploadingFile ? (uploadStatus || 'SENDING...') : 'SEND'}
+            {isUploadingFile ? (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ animation: 'frame-spin 1s linear infinite' }}>
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 14" />
+                </svg>
+                {uploadStatus || 'Sending...'}
+              </>
+            ) : (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Send
+              </>
+            )}
           </button>
         </div>
       )}
 
-      {/* Input area — unified bar with all controls inside */}
+      {/* Input area — WhatsApp-style rounded bar */}
       {isRecordingVoice ? (
-        <div style={{ padding: 8, borderTop: '1px solid #f85149', backgroundColor: 'rgba(248,81,73,0.05)' }}>
-          <VoiceRecorder
-            onSend={(audio, dur, mime) => { void handleVoiceSend(audio, dur, mime); }}
-            onCancel={() => { setIsRecordingVoice(false); setVoiceStream(null); }}
-            stream={voiceStream}
-          />
+        <div className="frame-chat-input-area" style={{ borderTop: '1px solid rgba(248,81,73,0.3)', backgroundColor: 'rgba(248,81,73,0.04)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', flex: 1, backgroundColor: '#0d1117', borderRadius: 24, border: '1px solid rgba(248,81,73,0.4)', padding: '4px 6px 4px 12px', gap: 4 }}>
+            <VoiceRecorder
+              onSend={(audio, dur, mime) => { void handleVoiceSend(audio, dur, mime); }}
+              onCancel={() => { setIsRecordingVoice(false); setVoiceStream(null); }}
+              stream={voiceStream}
+            />
+          </div>
         </div>
       ) : (
       <div className="frame-chat-input-area" style={{ borderTop: replyTo ? 'none' : undefined }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', flex: 1, backgroundColor: '#0d1117', borderRadius: 4, border: isTextareaFocused ? '1px solid #3fb950' : '1px solid #30363d', transition: 'border-color 0.2s', padding: '4px 4px 4px 8px', gap: 2, position: 'relative' as const, ...(isTextareaFocused ? { boxShadow: '0 0 8px rgba(63,185,80,0.15)' } : {}) }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', flex: 1, backgroundColor: '#0d1117', borderRadius: 24, border: isTextareaFocused ? '1px solid #3fb950' : '1px solid #30363d', transition: 'border-color 0.2s, box-shadow 0.2s', padding: '4px 6px 4px 12px', gap: 4, position: 'relative' as const, ...(isTextareaFocused ? { boxShadow: '0 0 0 2px rgba(63,185,80,0.1)' } : {}) }}>
           {/* File attachment */}
           <input
             ref={fileInputRef}
@@ -2393,16 +2427,18 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               background: isUploadingFile ? 'rgba(88,166,255,0.1)' : 'none',
               border: 'none',
               cursor: isUploadingFile ? 'not-allowed' : 'pointer',
-              padding: 6,
+              padding: 8,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              opacity: isUploadingFile ? 0.5 : 0.8,
+              opacity: isUploadingFile ? 0.5 : 0.7,
               flexShrink: 0,
               alignSelf: 'flex-end',
-              marginBottom: 2,
-              borderRadius: 8,
+              marginBottom: 1,
+              borderRadius: '50%',
               transition: 'opacity 0.15s, background-color 0.15s',
+              minWidth: 36,
+              minHeight: 36,
             }}
           >
             {isUploadingFile ? (
@@ -2417,7 +2453,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             <span style={{ fontSize: 10, color: '#58a6ff', alignSelf: 'flex-end', marginBottom: 6, whiteSpace: 'nowrap' as const }}>{uploadStatus}</span>
           )}
           {/* View-once toggle with pill badge — compact on mobile */}
-          <button type="button" onClick={() => setViewOnceMode((v) => !v)} title={viewOnceMode ? 'View-once enabled' : 'Enable view-once mode'} aria-label="Toggle view-once mode" style={{ background: viewOnceMode ? 'rgba(217,158,36,0.2)' : 'none', border: 'none', cursor: 'pointer', padding: viewOnceMode ? (isMobile ? '2px 6px 2px 4px' : '3px 10px 3px 6px') : (isMobile ? '4px' : '6px'), display: 'flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 2 : 4, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2, borderRadius: 12, transition: 'background-color 0.15s, padding 0.15s' }}>
+          <button type="button" onClick={() => setViewOnceMode((v) => !v)} title={viewOnceMode ? 'View-once enabled' : 'Enable view-once mode'} aria-label="Toggle view-once mode" style={{ background: viewOnceMode ? 'rgba(217,158,36,0.2)' : 'none', border: 'none', cursor: 'pointer', padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 2 : 4, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 1, borderRadius: '50%', transition: 'background-color 0.15s', minWidth: 36, minHeight: 36 }}>
             <svg width={isMobile ? '14' : '16'} height={isMobile ? '14' : '16'} viewBox="0 0 24 24" fill="none" stroke={viewOnceMode ? '#d99e24' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
             {viewOnceMode && !isMobile && <span style={{ fontSize: 10, fontWeight: 700, color: '#d99e24', letterSpacing: 0.3, whiteSpace: 'nowrap' as const }}>View Once</span>}
           </button>
@@ -2429,8 +2465,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             <span style={{ position: 'absolute' as const, bottom: 6, right: inputValue.trim() ? 88 : 44, fontSize: 10, color: inputValue.length > 4500 ? '#f85149' : '#8b949e', fontFamily: 'inherit', pointerEvents: 'none' as const, transition: 'color 0.2s' }} aria-live="polite">{inputValue.length}/5000</span>
           )}
           {/* Emoji picker — bottom sheet on mobile, popover on desktop */}
-          <div ref={emojiPickerRef} style={{ position: 'relative' as const, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2 }}>
-            <button type="button" onClick={() => { if (isMobile) { setShowMobileEmojiSheet((v) => !v); } else { setShowEmojiPicker((v) => !v); } }} title="Insert emoji" aria-label="Emoji picker" style={{ background: (showEmojiPicker || showMobileEmojiSheet) ? 'rgba(88,166,255,0.15)' : 'none', border: 'none', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, transition: 'background-color 0.15s' }}>
+          <div ref={emojiPickerRef} style={{ position: 'relative' as const, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 1 }}>
+            <button type="button" onClick={() => { if (isMobile) { setShowMobileEmojiSheet((v) => !v); } else { setShowEmojiPicker((v) => !v); } }} title="Insert emoji" aria-label="Emoji picker" style={{ background: (showEmojiPicker || showMobileEmojiSheet) ? 'rgba(88,166,255,0.15)' : 'none', border: 'none', cursor: 'pointer', padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', transition: 'background-color 0.15s', minWidth: 36, minHeight: 36 }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={(showEmojiPicker || showMobileEmojiSheet) ? '#58a6ff' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
             </button>
             {!isMobile && showEmojiPicker && (
@@ -2443,7 +2479,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
           {/* Mic button — show when no text typed */}
           {!inputValue.trim() && (
-            <button type="button" onClick={async () => {
+            <button type="button" onClick={() => { void (async () => {
               // Acquire mic stream IN the click handler to preserve user gesture chain.
               // Browsers block getUserMedia if called outside a direct user interaction.
               try {
@@ -2456,14 +2492,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 (window as unknown as Record<string, unknown>).__framePermissionPending = false;
                 showToast?.('error', 'Microphone access denied. Check your browser permissions.', { duration: 5000 });
               }
-            }} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2, borderRadius: 8, transition: 'color 0.15s, background-color 0.15s', minWidth: 44, minHeight: 44 }} title="Record voice message" aria-label="Record voice message" onMouseEnter={(e) => { e.currentTarget.style.color = '#3fb950'; e.currentTarget.style.backgroundColor = 'rgba(63,185,80,0.1)'; }} onMouseLeave={(e) => { e.currentTarget.style.color = '#8b949e'; e.currentTarget.style.backgroundColor = 'transparent'; }}>
+            })(); }} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, alignSelf: 'flex-end', marginBottom: 1, borderRadius: '50%', transition: 'color 0.15s, background-color 0.15s', minWidth: 44, minHeight: 44 }} title="Record voice message" aria-label="Record voice message" onMouseEnter={(e) => { e.currentTarget.style.color = '#3fb950'; e.currentTarget.style.backgroundColor = 'rgba(63,185,80,0.1)'; }} onMouseLeave={(e) => { e.currentTarget.style.color = '#8b949e'; e.currentTarget.style.backgroundColor = 'transparent'; }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
             </button>
           )}
           {/* Send button — only when text exists. 44px min touch target on mobile */}
           {inputValue.trim() && (
-            <button style={{ padding: isMobile ? '10px 12px' : '6px 14px', borderRadius: 3, border: '1px solid rgba(63,185,80,0.3)', backgroundColor: '#238636', color: '#fff', fontSize: 13, fontWeight: 700, cursor: isSending ? 'not-allowed' : 'pointer', fontFamily: '"SF Mono", "Fira Code", monospace', transition: 'background-color 0.15s, opacity 0.15s', alignSelf: 'flex-end', flexShrink: 0, marginBottom: 2, opacity: isSending ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, minWidth: isMobile ? 44 : undefined, minHeight: isMobile ? 44 : undefined, letterSpacing: '0.05em', textTransform: 'uppercase' as const, boxShadow: '0 0 6px rgba(63,185,80,0.15)', ...(sendButtonAnimating ? { animation: 'frame-send-launch 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)' } : {}) }} onClick={() => void handleSend()} disabled={isSending} aria-label="Send message">
-              {isMobile ? (isSending ? (<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 14" /></svg>) : (<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>)) : (isSending ? 'SENDING...' : 'SEND')}
+            <button style={{ padding: 8, borderRadius: '50%', border: 'none', backgroundColor: '#238636', color: '#fff', cursor: isSending ? 'not-allowed' : 'pointer', transition: 'background-color 0.15s, opacity 0.15s, transform 0.15s', alignSelf: 'flex-end', flexShrink: 0, marginBottom: 1, opacity: isSending ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 44, minHeight: 44, boxShadow: '0 2px 8px rgba(35, 134, 54, 0.3)', ...(sendButtonAnimating ? { animation: 'frame-send-launch 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)' } : {}) }} onClick={() => void handleSend()} disabled={isSending} aria-label="Send message">
+              {isSending ? (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ animation: 'frame-spin 1s linear infinite' }}><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 14" /></svg>) : (<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>)}
             </button>
           )}
         </div>
@@ -2600,15 +2636,15 @@ const styles: Record<string, React.CSSProperties> = {
   roomLabel: { fontSize: 13, color: '#c9d1d9' },
   syncErrorIndicator: { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 14px', backgroundColor: 'rgba(210, 153, 34, 0.08)', borderBottom: '1px solid rgba(210, 153, 34, 0.15)' },
   messageList: { flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 2, scrollBehavior: 'smooth' as const, WebkitOverflowScrolling: 'touch' as const },
-  dateSeparator: { display: 'flex', alignItems: 'center', gap: 12, margin: '16px 0 8px' },
-  dateSeparatorLine: { flex: 1, height: 1, backgroundColor: '#21262d' },
-  dateSeparatorText: { fontSize: 11, fontWeight: 600, color: '#8b949e', textTransform: 'uppercase' as const, letterSpacing: '0.05em', flexShrink: 0 },
+  dateSeparator: { display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '16px 0 8px' },
+  dateSeparatorLine: { display: 'none' as const },
+  dateSeparatorText: { fontSize: 12, fontWeight: 600, color: '#8b949e', letterSpacing: '0.03em', flexShrink: 0, backgroundColor: 'rgba(33, 38, 45, 0.85)', padding: '4px 14px', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.2)' },
   timeGap: { display: 'flex', justifyContent: 'center', margin: '8px 0 4px' },
   timeGapText: { fontSize: 10, color: '#8b949e', backgroundColor: '#161b22', padding: '2px 10px', borderRadius: 10 },
   emptyState: { textAlign: 'center', color: '#8b949e', marginTop: 40, fontSize: 14 },
-  messageBubble: { maxWidth: 'clamp(200px, 75%, 600px)', minWidth: 80, padding: '8px 12px', borderRadius: 4, fontSize: 'clamp(13px, 1.4vw, 16px)', lineHeight: 1.4, wordBreak: 'break-word' as const, overflowWrap: 'break-word' as const },
-  ownMessage: { backgroundColor: '#4A90D9', color: '#ffffff' },
-  otherMessage: { backgroundColor: '#21262d', color: '#c9d1d9' },
+  messageBubble: { maxWidth: 'clamp(200px, 75%, 600px)', minWidth: 80, padding: '10px 14px', borderRadius: 16, fontSize: 'clamp(13px, 1.4vw, 15px)', lineHeight: 1.5, wordBreak: 'break-word' as const, overflowWrap: 'break-word' as const, transition: 'background-color 0.15s' },
+  ownMessage: { backgroundColor: '#1B6EF3', color: '#ffffff' },
+  otherMessage: { backgroundColor: '#2D333B', color: '#e6edf3' },
   errorMessage: { opacity: 0.7, borderLeft: '3px solid #f85149' },
   previousSessionMessage: { opacity: 0.6, borderLeft: '2px solid #484f58' },
   previousSessionInline: { display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'help' },
@@ -2621,20 +2657,20 @@ const styles: Record<string, React.CSSProperties> = {
   previousSessionLearnMore: { fontSize: 10, color: '#6e7681', fontStyle: 'italic' },
   optimisticSending: { opacity: 0.7 },
   optimisticFailed: { opacity: 0.8, backgroundColor: '#4a3040', borderRight: '3px solid #f85149' },
-  senderName: { fontSize: 11, fontWeight: 600, marginBottom: 2 },
+  senderName: { fontSize: 12, fontWeight: 700, marginBottom: 3, letterSpacing: '0.01em' },
   messageBody: { display: 'flex', alignItems: 'flex-start', gap: 3, overflowWrap: 'break-word' as const, wordBreak: 'break-word' as const },
   encryptionLock: { fontSize: 10, flexShrink: 0, marginTop: 2, opacity: 0.75, filter: 'drop-shadow(0 0 4px rgba(63,185,80,0.6)) drop-shadow(0 0 8px rgba(63,185,80,0.3))', color: '#3fb950' },
   encryptionWarning: { fontSize: 14, color: '#8b949e', flexShrink: 0, marginTop: -1 },
   decryptErrorInline: { display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'help' },
   errorText: { fontStyle: 'italic', opacity: 0.8, fontSize: 13, color: '#8b949e' },
-  timestampRow: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 3 },
-  timestamp: { fontSize: 10, opacity: 0.55, textAlign: 'right', color: 'inherit', letterSpacing: '0.03em', fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", "Consolas", monospace' },
+  timestampRow: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4 },
+  timestamp: { fontSize: 11, opacity: 0.5, textAlign: 'right', color: 'inherit', letterSpacing: '0.02em' },
   statusIcon: { fontSize: 10, opacity: 0.6 },
   statusIconSent: { fontSize: 11, color: '#ffffff', opacity: 0.8 },
   statusIconFailed: { fontSize: 12, color: '#f85149' },
   retryInlineButton: { padding: '1px 6px', fontSize: 10, fontWeight: 600, backgroundColor: 'rgba(248, 81, 73, 0.2)', color: '#f85149', border: '1px solid rgba(248, 81, 73, 0.4)', borderRadius: 3, cursor: 'pointer', fontFamily: 'inherit', marginLeft: 2 },
   deletedText: { fontStyle: 'italic', color: '#8b949e', opacity: 0.7 },
-  contextMenu: { position: 'fixed' as const, zIndex: 9999, backgroundColor: '#1c2128', border: '1px solid rgba(99, 110, 123, 0.35)', borderRadius: 3, boxShadow: '0 12px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)', padding: 6, minWidth: 140, backdropFilter: 'blur(12px)', animation: 'frame-context-menu-in 0.15s ease-out' },
+  contextMenu: { position: 'fixed' as const, zIndex: 9999, backgroundColor: '#1c2128', border: '1px solid rgba(99, 110, 123, 0.25)', borderRadius: 12, boxShadow: '0 12px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)', padding: 6, minWidth: 140, backdropFilter: 'blur(12px)', animation: 'frame-context-menu-in 0.15s ease-out' },
   contextMenuItem: { display: 'block', width: '100%', padding: '8px 14px', fontSize: 13, color: '#f85149', backgroundColor: 'transparent', border: 'none', borderRadius: 6, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', transition: 'background-color 0.12s' },
   expiredText: { fontStyle: 'italic', color: '#8b949e', opacity: 0.6 },
   leaveButton: { padding: '4px 10px', fontSize: 11, fontWeight: 600, backgroundColor: 'rgba(248, 81, 73, 0.1)', color: '#f85149', border: '1px solid rgba(248, 81, 73, 0.3)', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' },
@@ -2644,7 +2680,7 @@ const styles: Record<string, React.CSSProperties> = {
   disappearingMenuTitle: { fontSize: 11, fontWeight: 600, color: '#8b949e', padding: '4px 8px 6px', borderBottom: '1px solid #30363d', marginBottom: 4 },
   disappearingMenuItem: { display: 'block', width: '100%', padding: '6px 8px', fontSize: 12, color: '#c9d1d9', backgroundColor: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit' },
   viewOnceIcon: { fontSize: 12, flexShrink: 0, marginTop: 1, opacity: 0.7 },
-  newMessagesPill: { position: 'absolute' as const, bottom: 80, left: '50%', transform: 'translateX(-50%)', padding: '6px 16px', fontSize: 12, fontWeight: 600, color: '#ffffff', backgroundColor: '#238636', border: '1px solid rgba(63,185,80,0.4)', borderRadius: 3, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 10, transition: 'opacity 0.2s', letterSpacing: '0.04em', textTransform: 'uppercase' as const },
+  newMessagesPill: { position: 'absolute' as const, bottom: 80, left: '50%', transform: 'translateX(-50%)', padding: '8px 20px', fontSize: 13, fontWeight: 600, color: '#ffffff', backgroundColor: '#1B6EF3', border: 'none', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 16px rgba(27,110,243,0.35)', zIndex: 10, transition: 'opacity 0.2s, transform 0.15s', letterSpacing: '0.02em' },
   typingIndicator: { display: 'none', alignItems: 'center', gap: 4, padding: '4px 8px', marginTop: 4, alignSelf: 'flex-start', minHeight: 20 },
   typingDot: { width: 6, height: 6, borderRadius: '50%', backgroundColor: '#484f58', animation: 'frame-typing-bounce 1.4s infinite ease-in-out' },
   welcomeContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 24px', textAlign: 'center', flex: 1 },
@@ -2658,7 +2694,7 @@ const styles: Record<string, React.CSSProperties> = {
   hoverActionButton: { width: 24, height: 24, borderRadius: 6, border: 'none', backgroundColor: 'transparent', color: '#8b949e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, padding: 0, transition: 'color 0.15s, background-color 0.15s', fontFamily: 'inherit', lineHeight: 1 },
   reactionPicker: { position: 'fixed' as const, zIndex: 9999, display: 'flex', gap: 2, padding: '4px 6px', backgroundColor: '#1c2128', border: '1px solid rgba(99, 110, 123, 0.35)', borderRadius: 20, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', animation: 'frame-context-menu-in 0.15s ease-out' },
   reactionPickerEmoji: { width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, backgroundColor: 'transparent', border: 'none', borderRadius: '50%', cursor: 'pointer', transition: 'background-color 0.12s, transform 0.12s', fontFamily: 'inherit' },
-  readReceiptIcon: { fontSize: 11, color: '#3fb950', opacity: 0.8, marginLeft: 2 },
+  readReceiptIcon: { fontSize: 12, color: 'rgba(255,255,255,0.5)', opacity: 0.9, marginLeft: 2 },
   forwardOverlay: { position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
   forwardDialog: { backgroundColor: '#161b22', border: '1px solid #30363d', borderRadius: 3, width: 320, maxHeight: 420, display: 'flex', flexDirection: 'column' as const, boxShadow: '0 16px 48px rgba(0,0,0,0.5)', animation: 'frame-context-menu-in 0.15s ease-out' },
   forwardTitle: { fontSize: 15, fontWeight: 600, color: '#e6edf3', padding: '16px 16px 12px', borderBottom: '1px solid #30363d' },

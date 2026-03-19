@@ -1516,14 +1516,14 @@ function App() {
             animation: 'frame-scanline 10s linear infinite',
             opacity: 0.4,
           }} />
-          {/* F.R.A.M.E. sidebar header branding — tactical */}
-          <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(63,185,80,0.15)' }}>
-            <svg width="16" height="16" viewBox="0 0 64 64" fill="none" aria-hidden="true" style={{ flexShrink: 0, filter: 'drop-shadow(0 0 4px rgba(63,185,80,0.5))' }}>
+          {/* F.R.A.M.E. sidebar header branding */}
+          <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #21262d' }}>
+            <svg width="16" height="16" viewBox="0 0 64 64" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
               <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#3fb950" strokeWidth="3" fill="rgba(63,185,80,0.06)" />
               <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
             </svg>
-            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 3, color: '#3fb950', fontFamily: '"SF Mono", "Fira Code", monospace', textTransform: 'uppercase' as const, filter: 'drop-shadow(0 0 6px rgba(63,185,80,0.3))' }}>F.R.A.M.E.</span>
-            <span style={{ fontSize: 8, fontWeight: 600, color: '#3fb950', opacity: 0.5, letterSpacing: '0.1em', marginLeft: 'auto' }}>SECURE</span>
+            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 3, color: '#3fb950', fontFamily: '"SF Mono", "Fira Code", monospace', textTransform: 'uppercase' as const }}>F.R.A.M.E.</span>
+            <span style={{ fontSize: 9, fontWeight: 500, color: '#484f58', letterSpacing: '0.05em', marginLeft: 'auto' }}>SECURE</span>
           </div>
           {/* User info — click to open profile settings */}
           <div
@@ -1553,10 +1553,10 @@ function App() {
               {/* Online status indicator dot on avatar */}
               <div style={{
                 position: 'absolute' as const,
-                bottom: 1,
-                right: 1,
-                width: 13,
-                height: 13,
+                bottom: 0,
+                right: 0,
+                width: 11,
+                height: 11,
                 borderRadius: '50%',
                 backgroundColor: connectionLost ? '#d29922' : (userStatus === 'busy' ? '#f85149' : userStatus === 'away' ? '#d29922' : userStatus === 'offline' ? '#484f58' : '#3fb950'),
                 border: '2px solid #161b22',
@@ -1701,12 +1701,8 @@ function App() {
           </div>
 
           {/* F.R.A.M.E. sidebar footer branding */}
-          <div className="frame-sidebar-footer" style={{ padding: '8px 16px 10px', borderTop: '1px solid #30363d', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-            <svg width="12" height="12" viewBox="0 0 64 64" fill="none" aria-hidden="true" style={{ opacity: 0.45, flexShrink: 0 }}>
-              <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="3" fill="rgba(88,166,255,0.08)" />
-              <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            </svg>
-            <span style={{ fontSize: 10, color: '#484f58', fontWeight: 500, letterSpacing: 0.5 }}>F.R.A.M.E. v1.0.0</span>
+          <div className="frame-sidebar-footer" style={{ padding: '6px 16px 8px', borderTop: '1px solid #21262d', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+            <span style={{ fontSize: 10, color: '#30363d', fontWeight: 500, letterSpacing: 0.5 }}>F.R.A.M.E. v1.0.0</span>
           </div>
         </aside>
       )}
@@ -1841,14 +1837,14 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 12,
-    padding: '18px 16px 14px',
-    borderBottom: '1px solid #30363d',
+    padding: '14px 16px 12px',
+    borderBottom: '1px solid #21262d',
     cursor: 'pointer',
-    transition: 'background-color 0.15s ease',
+    transition: 'background-color 0.2s ease',
   },
   userAvatar: {
-    width: 48,
-    height: 48,
+    width: 40,
+    height: 40,
     borderRadius: '50%',
     background: 'transparent',
     border: '2px solid #3fb950',
@@ -1856,15 +1852,15 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 19,
+    fontSize: 16,
     fontWeight: 700,
     color: '#58a6ff',
     flexShrink: 0,
-    boxShadow: '0 0 6px rgba(63,185,80,0.25), 0 0 0 2px #161b22',
+    boxShadow: '0 0 0 2px #161b22',
   },
   userAvatarInner: {
-    width: 44,
-    height: 44,
+    width: 36,
+    height: 36,
     borderRadius: '50%',
     backgroundColor: '#21262d',
     display: 'flex',
@@ -1874,20 +1870,24 @@ const styles: Record<string, React.CSSProperties> = {
   userDetails: {
     display: 'flex',
     flexDirection: 'column',
+    gap: 1,
     minWidth: 0,
+    flex: 1,
   },
   userName: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 600,
     color: '#e6edf3',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+    lineHeight: '20px',
   },
   userStatus: {
-    fontSize: 11,
+    fontSize: 12,
     color: '#3fb950',
     fontWeight: 500,
+    lineHeight: '16px',
   },
   userDevice: {
     fontSize: 10,
@@ -1895,10 +1895,10 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     marginTop: 1,
-    opacity: 0.85,
+    opacity: 0.6,
   },
   totalUnreadBadge: {
-    backgroundColor: '#58a6ff',
+    backgroundColor: '#238636',
     color: '#ffffff',
     fontSize: 11,
     fontWeight: 700,
@@ -1990,8 +1990,8 @@ const styles: Record<string, React.CSSProperties> = {
     bottom: 0,
     left: 0,
     right: 0,
-    height: 40,
-    background: 'linear-gradient(to bottom, rgba(22, 27, 34, 0), rgba(22, 27, 34, 0.95))',
+    height: 32,
+    background: 'linear-gradient(to bottom, rgba(22, 27, 34, 0), rgba(22, 27, 34, 0.9))',
     pointerEvents: 'none' as const,
     zIndex: 1,
   },
@@ -2000,52 +2000,55 @@ const styles: Record<string, React.CSSProperties> = {
   sidebarActions: {
     display: 'flex',
     alignItems: 'center',
-    gap: 8,
-    padding: '12px 16px',
-    borderTop: '1px solid #30363d',
+    gap: 6,
+    padding: '10px 14px',
+    borderTop: '1px solid #21262d',
   },
   newChatButton: {
     flex: 1,
     padding: '8px 14px',
     fontSize: 13,
-    fontWeight: 700,
+    fontWeight: 600,
     backgroundColor: '#238636',
     color: '#ffffff',
-    border: '1px solid rgba(63,185,80,0.3)',
-    borderRadius: 3,
+    border: 'none',
+    borderRadius: 6,
     cursor: 'pointer',
     fontFamily: 'inherit',
-    transition: 'background-color 0.15s',
-    letterSpacing: '0.04em',
-    textTransform: 'uppercase' as const,
+    transition: 'background-color 0.2s ease',
+    letterSpacing: '0.02em',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
   settingsButton: {
     padding: '8px 10px',
     fontSize: 18,
     backgroundColor: 'transparent',
     color: '#8b949e',
-    border: '1px solid #30363d',
-    borderRadius: 3,
+    border: '1px solid #21262d',
+    borderRadius: 6,
     cursor: 'pointer',
     lineHeight: 1,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'border-color 0.15s',
+    transition: 'border-color 0.2s, background-color 0.2s',
   },
   logoutButton: {
     padding: '8px 10px',
     fontSize: 18,
     backgroundColor: 'transparent',
     color: '#8b949e',
-    border: '1px solid #30363d',
-    borderRadius: 3,
+    border: '1px solid #21262d',
+    borderRadius: 6,
     cursor: 'pointer',
     lineHeight: 1,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'border-color 0.15s',
+    transition: 'border-color 0.2s, background-color 0.2s',
   },
 
   // ── Main content ──
@@ -2100,16 +2103,14 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 20,
     padding: '10px 24px',
     fontSize: 14,
-    fontWeight: 700,
+    fontWeight: 600,
     backgroundColor: '#238636',
     color: '#ffffff',
-    border: '1px solid rgba(63,185,80,0.3)',
-    borderRadius: 3,
+    border: 'none',
+    borderRadius: 8,
     cursor: 'pointer',
     fontFamily: 'inherit',
-    transition: 'background-color 0.15s',
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.04em',
+    transition: 'background-color 0.2s ease',
   },
   emptyHelpText: {
     marginTop: 10,
@@ -2141,21 +2142,23 @@ const styles: Record<string, React.CSSProperties> = {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backdropFilter: 'blur(4px)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 9998,
+    animation: 'frame-fade-in 0.15s ease-out',
   },
   leaveModal: {
     backgroundColor: '#161b22',
     border: '1px solid #30363d',
-    borderRadius: 3,
+    borderRadius: 12,
     padding: 24,
     maxWidth: 380,
-    width: '100%',
-    boxShadow: '0 16px 48px rgba(0, 0, 0, 0.4)',
-    borderTop: '2px solid #3fb950',
+    width: '90%',
+    boxShadow: '0 24px 64px rgba(0, 0, 0, 0.5)',
+    animation: 'frame-modal-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
   },
   leaveCancelBtn: {
     padding: '8px 18px',
@@ -2164,7 +2167,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#21262d',
     color: '#c9d1d9',
     border: '1px solid #30363d',
-    borderRadius: 3,
+    borderRadius: 8,
     cursor: 'pointer',
     fontFamily: 'inherit',
   },
@@ -2175,7 +2178,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#da3633',
     color: '#ffffff',
     border: 'none',
-    borderRadius: 6,
+    borderRadius: 8,
     cursor: 'pointer',
     fontFamily: 'inherit',
   },

@@ -111,17 +111,19 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
   };
 
   const progress = duration > 0 ? currentTime / duration : 0;
-  const bgColor = isSent ? 'transparent' : '#21262d';
+  const activeColor = isSent ? 'rgba(255,255,255,0.85)' : '#58a6ff';
+  const inactiveColor = isSent ? 'rgba(255,255,255,0.25)' : '#484f58';
+  const btnBg = isSent ? 'rgba(255,255,255,0.15)' : 'rgba(88, 166, 255, 0.12)';
+  const btnColor = isSent ? '#ffffff' : '#e6edf3';
+  const timeColor = isSent ? 'rgba(255,255,255,0.55)' : '#8b949e';
 
   return (
     <div style={{
       display: 'flex',
       alignItems: 'center',
       gap: 10,
-      padding: '8px 12px',
-      borderRadius: 12,
-      backgroundColor: bgColor,
-      minWidth: 200,
+      padding: '4px 0',
+      minWidth: 220,
       maxWidth: 320,
     }}>
       {/* Play/Pause button */}
@@ -132,17 +134,17 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
           background: 'none',
           border: 'none',
           cursor: 'pointer',
-          color: '#e6edf3',
-          padding: 4,
+          color: btnColor,
+          padding: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
-          width: 32,
-          height: 32,
+          width: 36,
+          height: 36,
           borderRadius: '50%',
-          backgroundColor: 'rgba(88, 166, 255, 0.15)',
-          transition: 'background-color 0.15s',
+          backgroundColor: btnBg,
+          transition: 'background-color 0.15s, transform 0.1s',
         }}
         title={isPlaying ? 'Pause' : 'Play'}
         aria-label={isPlaying ? 'Pause voice message' : 'Play voice message'}
@@ -154,7 +156,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
           </svg>
         ) : (
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-            <polygon points="5,3 19,12 5,21" />
+            <polygon points="6,3 20,12 6,21" />
           </svg>
         )}
       </button>
@@ -165,8 +167,8 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
           flex: 1,
           display: 'flex',
           alignItems: 'center',
-          gap: 1.5,
-          height: 28,
+          gap: 2,
+          height: 32,
           cursor: 'pointer',
           position: 'relative',
         }}
@@ -186,10 +188,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
               key={i}
               style={{
                 width: 3,
-                height: Math.max(4, height * 24),
-                borderRadius: 1.5,
-                backgroundColor: isActive ? '#58a6ff' : '#484f58',
-                transition: 'background-color 0.15s',
+                height: Math.max(4, height * 28),
+                borderRadius: 2,
+                backgroundColor: isActive ? activeColor : inactiveColor,
+                transition: 'background-color 0.12s',
                 flexShrink: 0,
               }}
             />
@@ -201,9 +203,9 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
       <span style={{
         fontFamily: '"SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace',
         fontSize: 11,
-        color: '#8b949e',
+        color: timeColor,
         flexShrink: 0,
-        minWidth: 30,
+        minWidth: 32,
         textAlign: 'right' as const,
       }}>
         {isPlaying || currentTime > 0 ? formatTime(currentTime) : formatTime(duration)}

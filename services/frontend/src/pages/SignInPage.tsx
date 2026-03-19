@@ -61,6 +61,33 @@ const signinMobileStyles = `
   body {
     overflow-x: hidden !important;
   }
+  /* Auth container: center and prevent overflow */
+  .frame-auth-container {
+    max-width: 100vw !important;
+    padding: 0 12px !important;
+    box-sizing: border-box !important;
+  }
+  /* Auth card: full width on mobile */
+  .frame-auth-container > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 24px 16px 20px !important;
+  }
+  /* Inputs: full width */
+  .frame-auth-container input[type="text"],
+  .frame-auth-container input[type="password"] {
+    width: 100% !important;
+    box-sizing: border-box !important;
+    font-size: 16px !important;
+    min-height: 48px !important;
+  }
+  /* Submit button: full width */
+  .frame-auth-container button[type="submit"] {
+    width: 100% !important;
+    min-height: 48px !important;
+    font-size: 16px !important;
+  }
 }
 `;
 
