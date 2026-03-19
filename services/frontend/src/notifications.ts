@@ -18,6 +18,12 @@ let swRegistration: ServiceWorkerRegistration | null = null;
  * supported by the browser.
  */
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
+  if (process.env.NODE_ENV !== 'production') {
+    // Service worker registration is skipped in development because CRA's
+    // dev server serves the source file with the wrong MIME type.
+    return null;
+  }
+
   if (!('serviceWorker' in navigator)) {
     console.warn('Service workers are not supported in this browser.');
     return null;

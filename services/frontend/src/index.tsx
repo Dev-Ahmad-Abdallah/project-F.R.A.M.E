@@ -80,7 +80,9 @@ root.render(
   </React.StrictMode>
 );
 
-// Register service worker for push notifications
-registerServiceWorker().catch((err) => {
-  console.warn('Service worker registration failed:', err);
-});
+// Register service worker for push notifications (production only)
+if (process.env.NODE_ENV === 'production') {
+  registerServiceWorker().catch((err) => {
+    console.warn('Service worker registration failed:', err);
+  });
+}

@@ -204,8 +204,11 @@ export async function addKnownDevice(
   };
 
   const known = await getKnownDevices(userId);
-  known.push(knownDevice);
-  await setEncrypted('devices', `${KNOWN_DEVICES_KEY}:${userId}`, known);
+  // Deduplicate: only add if this deviceId isn't already known
+  if (!known.some((d) => d.deviceId === knownDevice.deviceId)) {
+    known.push(knownDevice);
+    await setEncrypted('devices', `${KNOWN_DEVICES_KEY}:${userId}`, known);
+  }
 
   return knownDevice;
 }

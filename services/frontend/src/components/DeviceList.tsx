@@ -99,9 +99,13 @@ const DeviceList: React.FC<DeviceListProps> = ({
         await addKnownDevice(userId, ud);
       }
 
-      // Reload known devices to include any newly added
+      // Reload known devices to include any newly added, then deduplicate by deviceId
       const updatedKnown = await getKnownDevices(userId);
-      setDevices(updatedKnown);
+      const seen = new Map<string, KnownDevice>();
+      for (const d of updatedKnown) {
+        seen.set(d.deviceId, d);
+      }
+      setDevices(Array.from(seen.values()));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load devices');
     } finally {
