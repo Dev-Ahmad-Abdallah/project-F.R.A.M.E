@@ -151,9 +151,10 @@ export async function login(params: LoginParams): Promise<AuthResult> {
       );
       const staleIds = staleDevices.rows.map((r) => r.device_id);
       if (staleIds.length > 0) {
-        // Clean up foreign key references before deleting devices
+        // Clean up ALL foreign key references before deleting devices
         await pool.query(`DELETE FROM delivery_state WHERE device_id = ANY($1::text[])`, [staleIds]);
         await pool.query(`DELETE FROM key_bundles WHERE device_id = ANY($1::text[])`, [staleIds]);
+        await pool.query(`DELETE FROM refresh_tokens WHERE device_id = ANY($1::text[])`, [staleIds]);
         await pool.query(`DELETE FROM to_device_messages WHERE recipient_device_id = ANY($1::text[])`, [staleIds]);
         await pool.query(`DELETE FROM devices WHERE device_id = ANY($1::text[])`, [staleIds]);
       }
