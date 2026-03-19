@@ -226,13 +226,26 @@ export async function decryptEvent(event: SyncEvent): Promise<DecryptedEvent> {
       decryptionError: null,
     };
   } catch (err) {
-    // Capture the error but do not log event content
+    // Capture the error — log type and message for debugging
     const errorMessage =
       err instanceof Error ? err.message : 'Unknown decryption error';
     console.error(
       `[F.R.A.M.E.] Decryption failed for event ${event.eventId}:`,
       errorMessage,
+      'eventType:', event.eventType,
+      'algorithm:', (event.content as Record<string, unknown>)?.algorithm,
     );
+
+    // Store in window for debugging
+    if (typeof window !== 'undefined') {
+      (window as unknown as Record<string, unknown[]>).__decryptDebug =
+        (window as unknown as Record<string, unknown[]>).__decryptDebug || [];
+      (window as unknown as Record<string, unknown[]>).__decryptDebug.push({
+        eventId: event.eventId,
+        error: errorMessage,
+        algorithm: (event.content as Record<string, unknown>)?.algorithm,
+      });
+    }
 
     return {
       event,
