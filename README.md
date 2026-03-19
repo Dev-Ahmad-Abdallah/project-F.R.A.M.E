@@ -145,6 +145,47 @@ flowchart TB
 
 ---
 
+## Railway Production Infrastructure
+
+```mermaid
+flowchart TB
+    subgraph Railway["Railway Production — 7 Services"]
+        subgraph HS_A["Homeserver A"]
+            HSA["project-F.R.A.M.E<br/>project-frame-production.up.railway.app"]
+        end
+        subgraph HS_B["Homeserver B — Federation Peer"]
+            HSB["homeserver-b<br/>homeserver-b-production.up.railway.app"]
+        end
+        subgraph FE["Frontend"]
+            Frontend["React SPA + nginx<br/>frame.up.railway.app"]
+        end
+        subgraph Data_A["Data Layer A"]
+            PG_A[("PostgreSQL<br/>postgres-volume")]
+            Redis_A[("Redis<br/>redis-volume")]
+        end
+        subgraph Data_B["Data Layer B — Federation"]
+            PG_B[("PostgreSQL inst2<br/>precious-volume")]
+            Redis_B[("Redis inst2<br/>robust-volume")]
+        end
+    end
+
+    Internet(("Users")) -->|HTTPS| Frontend
+    Frontend -->|API| HSA
+    HSA --> PG_A
+    HSA --> Redis_A
+    HSB --> PG_B
+    HSB --> Redis_B
+    HSA <-->|"Federation — Ed25519 signed events"| HSB
+```
+
+- **7 services** all online with persistent volumes for data durability
+- **2 homeservers** demonstrating real federation (separate databases, separate Redis)
+- **Auto-TLS** via Railway — HTTPS enforced on all public endpoints
+- **CI/CD**: GitHub Actions build + test + security scan, then auto-deploy on merge to `main`
+- **Health monitoring**: `/health` endpoint checks PostgreSQL + Redis connectivity
+
+---
+
 ## Quick Start
 
 ### 1. Clone the repository
