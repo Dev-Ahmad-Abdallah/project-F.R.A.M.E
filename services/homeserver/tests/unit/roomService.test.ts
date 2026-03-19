@@ -67,7 +67,7 @@ describe('createRoom', () => {
     expect(result.room).toBe(fakeRoom);
 
     // Should create the room
-    expect(mockDbCreateRoom).toHaveBeenCalledWith('group', '@alice:test.frame.local', 'test.frame.local');
+    expect(mockDbCreateRoom).toHaveBeenCalledWith('group', '@alice:test.frame.local', 'test.frame.local', undefined);
 
     // Should add each invited member
     expect(mockAddRoomMember).toHaveBeenCalledTimes(2);

@@ -8,6 +8,7 @@ export interface DeviceRow {
   display_name: string | null;
   last_seen: Date | null;
   created_at: Date;
+  device_keys_json: Record<string, unknown> | null;
 }
 
 export async function createDevice(
@@ -59,6 +60,13 @@ export async function updateLastSeen(deviceId: string): Promise<void> {
   await pool.query(
     'UPDATE devices SET last_seen = NOW() WHERE device_id = $1',
     [deviceId]
+  );
+}
+
+export async function updateDeviceKeysJson(deviceId: string, deviceKeysJson: Record<string, unknown>): Promise<void> {
+  await pool.query(
+    'UPDATE devices SET device_keys_json = $2 WHERE device_id = $1',
+    [deviceId, JSON.stringify(deviceKeysJson)]
   );
 }
 

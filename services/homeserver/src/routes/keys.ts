@@ -5,7 +5,7 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { validateBody, keyUploadSchema, keysQuerySchema, keysClaimSchema } from '../middleware/validation';
 import { fetchKeyBundle, uploadPrekeys, getKeyCount, queryDeviceKeys, claimKeys } from '../services/keyService';
 import { getProofForUser } from '../services/merkleTree';
-import { updateDevice } from '../db/queries/devices';
+import { updateDevice, updateDeviceKeysJson } from '../db/queries/devices';
 import { upsertKeyBundle, addOneTimePrekeys } from '../db/queries/keys';
 
 export const keysRouter = Router();
@@ -29,6 +29,8 @@ keysRouter.post(
       const ed25519Key = keys[`ed25519:${deviceId}`];
       if (curve25519Key && ed25519Key) {
         await updateDevice(deviceId, curve25519Key, ed25519Key);
+        // Store the full signed device_keys JSON so /keys/query preserves signatures
+        await updateDeviceKeysJson(deviceId, dk);
         // Ensure a key_bundle row exists for this device
         await upsertKeyBundle(userId, deviceId, curve25519Key, '', '', []);
       }

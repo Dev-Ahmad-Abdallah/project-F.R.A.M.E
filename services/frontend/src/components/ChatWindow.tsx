@@ -1176,6 +1176,34 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'left' as const,
     fontFamily: 'inherit',
   },
+
+  // ── View-once ──
+  viewOnceToggle: {
+    padding: '6px 8px',
+    fontSize: 16,
+    backgroundColor: 'transparent',
+    color: '#8b949e',
+    border: '1px solid #30363d',
+    borderRadius: 20,
+    cursor: 'pointer',
+    lineHeight: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    transition: 'border-color 0.15s, color 0.15s, background-color 0.15s',
+  },
+  viewOnceToggleActive: {
+    backgroundColor: 'rgba(210, 153, 34, 0.15)',
+    color: '#d29922',
+    borderColor: '#d29922',
+  },
+  viewOnceIcon: {
+    fontSize: 12,
+    flexShrink: 0,
+    marginTop: 1,
+    opacity: 0.7,
+  },
 };
 
 export default ChatWindow;

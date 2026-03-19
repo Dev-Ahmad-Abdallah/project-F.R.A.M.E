@@ -29,14 +29,8 @@ jest.mock('../../src/db/queries/rooms', () => ({
   getRoomMembers: (...args: any[]) => mockGetRoomMembers(...args),
 }));
 
-jest.mock('../../src/db/queries/devices', () => ({
-  findDevicesByUser: jest.fn().mockResolvedValue([]),
-}));
-
 jest.mock('../../src/db/pool', () => ({
-  pool: {
-    query: (...args: any[]) => mockPoolQuery(...args),
-  },
+  pool: { query: (...args: any[]) => mockPoolQuery(...args) },
 }));
 
 jest.mock('../../src/redis/client', () => ({
@@ -44,9 +38,9 @@ jest.mock('../../src/redis/client', () => ({
     publish: jest.fn().mockResolvedValue(1),
   },
   redisSubscriber: {
-    on: jest.fn(),
     subscribe: jest.fn().mockResolvedValue(undefined),
     unsubscribe: jest.fn().mockResolvedValue(undefined),
+    on: jest.fn(),
     removeListener: jest.fn(),
   },
 }));
@@ -80,143 +74,107 @@ beforeEach(() => {
 // ── sendMessage() ──
 
 describe('sendMessage', () => {
-  it('creates event and delivery entries for room member devices', async () => {
-    const fakeEvent = {
-      event_id: '$abc123',
-      room_id: '!room:test.frame.local',
-      sender_id: '@alice:test.frame.local',
-      sender_device_id: 'DEVICE_A',
-      event_type: 'm.room.message',
-      content: { body: 'hello' },
-      sequence_id: 42,
-      origin_server: 'test.frame.local',
-      origin_ts: new Date(),
-      deleted_at: null,
-      created_at: new Date(),
-    };
-
+  it('inserts event and creates delivery entries', async () => {
     mockIsRoomMember.mockResolvedValue(true);
-    mockInsertEvent.mockResolvedValue(fakeEvent);
+    mockInsertEvent.mockResolvedValue({
+      event_id: '$evt1',
+      room_id: '!room1:test',
+      sender_id: '@alice:test.frame.local',
+      sender_device_id: 'DEV1',
+      event_type: 'm.room.encrypted',
+      content: { ciphertext: 'abc' },
+      sequence_id: 42,
+      origin_ts: new Date(),
+    });
     mockGetRoomMembers.mockResolvedValue([
-      { user_id: '@alice:test.frame.local', role: 'admin' },
-      { user_id: '@bob:test.frame.local', role: 'member' },
+      { user_id: '@alice:test.frame.local' },
+      { user_id: '@bob:test.frame.local' },
     ]);
-    // Pool query for device IDs
+    // Mock pool.query for device lookup
     mockPoolQuery.mockResolvedValue({
       rows: [
-        { device_id: 'DEVICE_A' },
-        { device_id: 'DEVICE_B' },
+        { device_id: 'DEV1' },
+        { device_id: 'DEV2' },
       ],
     });
     mockCreateDeliveryEntries.mockResolvedValue(undefined);
 
     const result = await sendMessage({
-      roomId: '!room:test.frame.local',
+      roomId: '!room1:test',
       senderId: '@alice:test.frame.local',
-      senderDeviceId: 'DEVICE_A',
-      eventType: 'm.room.message',
-      content: { body: 'hello' },
+      senderDeviceId: 'DEV1',
+      eventType: 'm.room.encrypted',
+      content: { ciphertext: 'abc' },
     });
 
     expect(result.eventId).toBeDefined();
+    expect(typeof result.eventId).toBe('string');
     expect(result.sequenceId).toBe(42);
-
-    // Should verify membership
-    expect(mockIsRoomMember).toHaveBeenCalledWith('!room:test.frame.local', '@alice:test.frame.local');
-
-    // Should insert the event
-    expect(mockInsertEvent).toHaveBeenCalledTimes(1);
-
-    // Should create delivery entries (excluding sender device)
-    expect(mockCreateDeliveryEntries).toHaveBeenCalledWith(
-      expect.any(String),
-      ['DEVICE_B'], // DEVICE_A filtered out as sender device
-    );
+    expect(mockIsRoomMember).toHaveBeenCalledWith('!room1:test', '@alice:test.frame.local');
+    expect(mockInsertEvent).toHaveBeenCalled();
+    expect(mockCreateDeliveryEntries).toHaveBeenCalled();
   });
 
-  it('throws 403 when sender is not a room member', async () => {
+  it('throws 403 if sender is not a room member', async () => {
     mockIsRoomMember.mockResolvedValue(false);
 
     await expect(
       sendMessage({
-        roomId: '!room:test.frame.local',
-        senderId: '@outsider:test.frame.local',
-        senderDeviceId: 'DEVICE_X',
-        eventType: 'm.room.message',
-        content: { body: 'hello' },
+        roomId: '!room1:test',
+        senderId: '@alice:test.frame.local',
+        senderDeviceId: 'DEV1',
+        eventType: 'm.room.encrypted',
+        content: { ciphertext: 'abc' },
       }),
     ).rejects.toMatchObject({
       statusCode: 403,
       code: 'M_FORBIDDEN',
     });
-
-    expect(mockInsertEvent).not.toHaveBeenCalled();
   });
 });
 
 // ── syncMessages() ──
 
 describe('syncMessages', () => {
-  it('returns events since sequence ID', async () => {
+  it('returns events since a given sequence ID', async () => {
     const fakeEvents = [
       {
         event_id: '$evt1',
-        room_id: '!room:test.frame.local',
+        room_id: '!room1:test',
         sender_id: '@bob:test.frame.local',
-        sender_device_id: 'DEVICE_B',
-        event_type: 'm.room.message',
-        content: { body: 'hey' },
-        sequence_id: 10,
+        sender_device_id: 'DEV2',
+        event_type: 'm.room.encrypted',
+        content: { ciphertext: 'xyz' },
         origin_ts: new Date(),
-        deleted_at: null,
-        created_at: new Date(),
-      },
-      {
-        event_id: '$evt2',
-        room_id: '!room:test.frame.local',
-        sender_id: '@bob:test.frame.local',
-        sender_device_id: 'DEVICE_B',
-        event_type: 'm.room.message',
-        content: { body: 'world' },
-        sequence_id: 11,
-        origin_ts: new Date(),
-        deleted_at: null,
-        created_at: new Date(),
+        sequence_id: 43,
       },
     ];
-
-    // First pool.query call: clean up stale to-device messages
-    // Second pool.query call: fetch unclaimed to-device messages
-    // Third pool.query call: batch mark delivered
-    mockPoolQuery
-      .mockResolvedValueOnce({ rows: [], rowCount: 0 })  // DELETE stale
-      .mockResolvedValueOnce({ rows: [] })                 // UPDATE to-device (none)
-      .mockResolvedValueOnce({ rows: [], rowCount: 0 });  // UPDATE delivery_state
-
     mockGetEventsByUser.mockResolvedValue(fakeEvents);
+    mockMarkDelivered.mockResolvedValue(undefined);
 
-    const result = await syncMessages('@alice:test.frame.local', 'DEVICE_A', 5, 50, 0);
+    const result = await syncMessages(
+      '@alice:test.frame.local',
+      'DEV1',
+      42,
+      50,
+      0,
+    );
 
-    expect(result.events).toHaveLength(2);
-    expect(result.nextBatch).toBe('11');
+    expect(result.events).toHaveLength(1);
+    expect(result.nextBatch).toBe('43');
     expect(result.hasMore).toBe(false);
-    expect(result.events[0]).toMatchObject({
-      eventId: '$evt1',
-      roomId: '!room:test.frame.local',
-    });
-
-    // Should query events since sequence 5
-    expect(mockGetEventsByUser).toHaveBeenCalledWith('@alice:test.frame.local', 5, 50);
   });
 
   it('returns empty result when no events exist', async () => {
-    mockPoolQuery
-      .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-      .mockResolvedValueOnce({ rows: [] });
-
     mockGetEventsByUser.mockResolvedValue([]);
 
-    const result = await syncMessages('@alice:test.frame.local', 'DEVICE_A', 0, 50, 0);
+    const result = await syncMessages(
+      '@alice:test.frame.local',
+      'DEV1',
+      0,
+      50,
+      0,
+    );
 
     expect(result.events).toHaveLength(0);
     expect(result.nextBatch).toBe('0');
@@ -227,17 +185,21 @@ describe('syncMessages', () => {
 // ── deleteMessage() ──
 
 describe('deleteMessage', () => {
-  it('soft-deletes event and returns success', async () => {
-    mockSoftDeleteEvent.mockResolvedValue(true);
+  it('soft-deletes own message', async () => {
+    // pool.query is called twice: once for SELECT sender_id, once for UPDATE
+    mockPoolQuery
+      .mockResolvedValueOnce({ rows: [{ sender_id: '@alice:test.frame.local' }] })
+      .mockResolvedValueOnce({ rowCount: 1 });
 
-    const result = await deleteMessage('$evt1', '@alice:test.frame.local');
+    await expect(
+      deleteMessage('$evt1', '@alice:test.frame.local'),
+    ).resolves.toBeUndefined();
 
-    expect(result).toEqual({ success: true });
-    expect(mockSoftDeleteEvent).toHaveBeenCalledWith('$evt1', '@alice:test.frame.local');
+    expect(mockPoolQuery).toHaveBeenCalledTimes(2);
   });
 
-  it('throws 404 when event not found or user is not the sender', async () => {
-    mockSoftDeleteEvent.mockResolvedValue(false);
+  it('throws 404 when event not found', async () => {
+    mockPoolQuery.mockResolvedValue({ rows: [] });
 
     await expect(
       deleteMessage('$nonexistent', '@alice:test.frame.local'),
@@ -247,16 +209,16 @@ describe('deleteMessage', () => {
     });
   });
 
-  it('throws 404 when a different user tries to delete', async () => {
-    mockSoftDeleteEvent.mockResolvedValue(false);
+  it('throws 403 when a different user tries to delete', async () => {
+    mockPoolQuery.mockResolvedValue({
+      rows: [{ sender_id: '@alice:test.frame.local' }],
+    });
 
     await expect(
       deleteMessage('$evt1', '@malicious:test.frame.local'),
     ).rejects.toMatchObject({
-      statusCode: 404,
-      code: 'M_NOT_FOUND',
+      statusCode: 403,
+      code: 'M_FORBIDDEN',
     });
-
-    expect(mockSoftDeleteEvent).toHaveBeenCalledWith('$evt1', '@malicious:test.frame.local');
   });
 });

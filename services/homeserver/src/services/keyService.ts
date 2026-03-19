@@ -59,7 +59,7 @@ export async function queryDeviceKeys(userIds: string[]) {
   if (userIds.length === 0) return { device_keys: {} };
 
   const result = await pool.query(
-    `SELECT d.user_id, d.device_id, d.device_signing_key,
+    `SELECT d.user_id, d.device_id, d.device_signing_key, d.device_keys_json,
             kb.identity_key, kb.signed_prekey, kb.signed_prekey_signature
      FROM devices d
      JOIN key_bundles kb ON d.user_id = kb.user_id AND d.device_id = kb.device_id
@@ -73,7 +73,11 @@ export async function queryDeviceKeys(userIds: string[]) {
 
   for (const row of result.rows) {
     if (!deviceKeys[row.user_id]) deviceKeys[row.user_id] = {};
-    if (row.identity_key && row.device_signing_key) {
+    if (row.device_keys_json) {
+      // Use the stored signed device_keys JSON directly (preserves signatures)
+      deviceKeys[row.user_id][row.device_id] = row.device_keys_json;
+    } else if (row.identity_key && row.device_signing_key) {
+      // Fallback: reconstruct unsigned device_keys from individual columns
       deviceKeys[row.user_id][row.device_id] = {
         user_id: row.user_id,
         device_id: row.device_id,
