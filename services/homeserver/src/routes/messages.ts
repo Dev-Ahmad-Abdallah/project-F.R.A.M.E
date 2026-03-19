@@ -21,7 +21,7 @@ interface SendMessageBody {
 // POST /messages/send — Send encrypted message payload
 messagesRouter.post(
   '/send',
-  express.json({ limit: '512kb' }),
+  express.json({ limit: '10mb' }),
   requireAuth,
   messageLimiter,
   validateBody(sendMessageSchema),

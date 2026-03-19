@@ -1154,7 +1154,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      void handleSend();
+      // If a file is staged, send the file instead of text
+      if (pendingFile) {
+        void handleSendFile();
+      } else {
+        void handleSend();
+      }
     }
   };
 
