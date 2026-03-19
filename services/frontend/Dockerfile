@@ -44,7 +44,12 @@ COPY --from=builder /app/services/frontend/build /usr/share/nginx/html
 # Remove source maps from production image
 RUN find /usr/share/nginx/html -name "*.map" -delete 2>/dev/null || true
 
+ENV PORT=80
 EXPOSE 80
+
+# Docker-native health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
 
 # Substitute $PORT in nginx config at runtime so Railway can set it
 CMD ["sh", "-c", "envsubst '${PORT}' < /etc/nginx/conf.d/default.conf > /tmp/nginx.conf && mv /tmp/nginx.conf /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]

@@ -404,7 +404,7 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
         {/* QR Code with animated border */}
         <div style={{
           ...styles.qrOuterFrame,
-          ...(isMobile ? { width: 160, height: 160 } : {}),
+          ...(isMobile ? { width: 156, height: 156 } : {}),
         }}>
           <QrCornerBrackets />
           <div style={{
@@ -412,7 +412,7 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
             ...(isMobile ? { width: 140, height: 140 } : {}),
           }}>
             {qrPayload ? (
-              <QRCodeSVG value={qrPayload} size={isMobile ? 120 : 160} bgColor="#ffffff" fgColor="#000000" />
+              <QRCodeSVG value={qrPayload} size={isMobile ? 116 : 160} bgColor="#ffffff" fgColor="#000000" />
             ) : (
               <div style={styles.qrInner}>
                 <span style={styles.qrLabel}>Generating...</span>
@@ -487,7 +487,10 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
         {/* Live camera feed */}
         {scannerOpen && (
           <div style={styles.cameraContainer}>
-            <div style={styles.cameraViewport}>
+            <div style={{
+              ...styles.cameraViewport,
+              ...(isMobile ? { maxWidth: '100%', width: '100%' } : {}),
+            }}>
               <QrCornerBrackets />
               <video
                 ref={videoRef}
@@ -548,7 +551,14 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
           <input
             id="scanned-fingerprint"
             type="text"
-            style={styles.input}
+            style={{
+              ...styles.input,
+              ...(isMobile ? {
+                fontSize: 16,
+                width: '100%',
+                boxSizing: 'border-box' as const,
+              } : {}),
+            }}
             placeholder="XXXX-YYYY-ZZZZ or full fingerprint"
             value={scannedFingerprint}
             onChange={(e) => setScannedFingerprint(e.target.value)}
@@ -574,7 +584,8 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
           style={{
             ...styles.approveButton,
             ...(!scannedFingerprint.trim() ? styles.buttonDisabled : {}),
-            minHeight: 44,
+            minHeight: isMobile ? 48 : 44,
+            ...(isMobile ? { width: '100%', flex: 'none' } : {}),
           }}
           onClick={handleApprove}
           disabled={!scannedFingerprint.trim()}
@@ -583,7 +594,11 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
         </button>
         <button
           type="button"
-          style={{ ...styles.rejectButton, minHeight: 44 }}
+          style={{
+            ...styles.rejectButton,
+            minHeight: isMobile ? 48 : 44,
+            ...(isMobile ? { width: '100%', flex: 'none' } : {}),
+          }}
           onClick={onReject}
         >
           Reject Device

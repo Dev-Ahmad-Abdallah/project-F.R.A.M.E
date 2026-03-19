@@ -145,7 +145,7 @@ function App() {
   const { toasts, showToast, dismissToast } = useToast();
 
   // PWA install prompt
-  const { showBanner: showInstallBanner, promptInstall, dismissBanner: dismissInstall } = useInstallPrompt();
+  const { showBanner: showInstallBanner, promptInstall, dismissBanner: dismissInstall, isIOS } = useInstallPrompt();
 
   // Track previous connection state for reconnection toast
   const prevConnectionLostRef = useRef(false);
@@ -337,6 +337,54 @@ function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // ── Swipe-to-close gesture for mobile sidebar ──
+  const sidebarRef = useRef<HTMLElement>(null);
+  const touchStartX = useRef<number | null>(null);
+  const touchCurrentX = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const sidebar = sidebarRef.current;
+    if (!sidebar) return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      touchStartX.current = e.touches[0].clientX;
+      touchCurrentX.current = e.touches[0].clientX;
+      sidebar.style.transition = 'none';
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (touchStartX.current === null) return;
+      touchCurrentX.current = e.touches[0].clientX;
+      const dx = touchCurrentX.current - touchStartX.current;
+      if (dx < 0) {
+        sidebar.style.transform = `translateX(${dx}px)`;
+      }
+    };
+
+    const onTouchEnd = () => {
+      if (touchStartX.current === null || touchCurrentX.current === null) return;
+      const dx = touchCurrentX.current - touchStartX.current;
+      sidebar.style.transition = '';
+      sidebar.style.transform = '';
+      if (dx < -80) {
+        setSidebarOpen(false);
+      }
+      touchStartX.current = null;
+      touchCurrentX.current = null;
+    };
+
+    sidebar.addEventListener('touchstart', onTouchStart, { passive: true });
+    sidebar.addEventListener('touchmove', onTouchMove, { passive: true });
+    sidebar.addEventListener('touchend', onTouchEnd, { passive: true });
+
+    return () => {
+      sidebar.removeEventListener('touchstart', onTouchStart);
+      sidebar.removeEventListener('touchmove', onTouchMove);
+      sidebar.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [isMobile, sidebarOpen]);
 
   // ── Keyboard shortcuts ──
   useEffect(() => {

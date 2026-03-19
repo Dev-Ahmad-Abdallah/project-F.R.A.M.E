@@ -26,6 +26,7 @@ import { getUserStatus } from '../api/authAPI';
 import type { UserStatus } from '../api/authAPI';
 import { formatDisplayName } from '../utils/displayName';
 import { SkeletonRoomItem } from './Skeleton';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // ── Types ──
 
@@ -217,6 +218,7 @@ const RoomList: React.FC<RoomListProps> = ({
   searchInputRef: externalSearchRef,
   focusedRoomIndex,
 }) => {
+  const isMobile = useIsMobile();
   const [hoveredRoomId, setHoveredRoomId] = useState<string | null>(null);
   const [starredIds, setStarredIds] = useState<Set<string>>(() => getStoredSet(STARRED_KEY));
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => getStoredSet(ARCHIVED_KEY));
@@ -323,16 +325,19 @@ const RoomList: React.FC<RoomListProps> = ({
 
   if (rooms.length === 0) {
     return (
-      <div style={styles.emptyContainer}>
+      <div style={{
+        ...styles.emptyContainer,
+        ...(isMobile ? { padding: 20, maxWidth: 260, margin: '0 auto' } : {}),
+      }}>
         {/* Animated shield icon */}
-        <div style={{ animation: 'frame-shield-float 3s ease-in-out infinite', marginBottom: 16 }}>
-          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+        <div style={{ animation: 'frame-shield-float 3s ease-in-out infinite', marginBottom: isMobile ? 12 : 16 }}>
+          <svg width={isMobile ? 32 : 40} height={isMobile ? 32 : 40} viewBox="0 0 40 40" fill="none">
             <path d="M20 3L6 10v10c0 9.33 5.97 17.53 14 20 8.03-2.47 14-10.67 14-20V10L20 3z" stroke="#58a6ff" strokeWidth="1.5" fill="rgba(88,166,255,0.06)" />
             <path d="M14 20l4 4 8-8" stroke="#3fb950" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
           </svg>
         </div>
-        <p style={styles.emptyText}>No conversations yet</p>
-        <p style={{ ...styles.emptyHint, marginTop: 4, fontSize: 11, color: '#6e7681', fontStyle: 'italic' }}>
+        <p style={{ ...styles.emptyText, fontSize: isMobile ? 13 : 14 }}>No conversations yet</p>
+        <p style={{ ...styles.emptyHint, marginTop: 4, fontSize: isMobile ? 11 : 11, color: '#6e7681', fontStyle: 'italic' }}>
           Your messages are protected by military-grade encryption
         </p>
       </div>
@@ -400,6 +405,7 @@ const RoomList: React.FC<RoomListProps> = ({
         role="listitem"
         style={{
           ...styles.roomItem,
+          ...(isMobile ? { minHeight: 56, padding: '10px 12px' } : {}),
           ...(isSelected ? styles.roomItemSelected : {}),
           ...(isHovered && !isSelected ? { backgroundColor: '#1c2128', transform: 'translateY(-1px)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' } : {}),
           ...(isFocusedByKeyboard && !isSelected ? { backgroundColor: '#1c2128', outline: '2px solid #58a6ff', outlineOffset: -2 } : {}),
@@ -589,16 +595,23 @@ const RoomList: React.FC<RoomListProps> = ({
       {/* Search / filter bar with focus expand animation */}
       <div style={{
         ...styles.searchContainer,
-        ...(searchFocused ? { padding: '10px 8px 6px' } : {}),
+        ...(isMobile ? { padding: '8px 10px 6px' } : {}),
+        ...(searchFocused && !isMobile ? { padding: '10px 8px 6px' } : {}),
         transition: 'padding 0.2s ease',
       }}>
         <div style={{
           ...styles.searchInputWrap,
+          ...(isMobile ? {
+            minHeight: 44,
+            borderRadius: 22,
+            padding: '0 14px',
+            width: '100%',
+          } : {}),
           ...(searchFocused ? {
             borderColor: '#58a6ff',
             backgroundColor: '#0d1117',
             animation: 'frame-search-glow 0.3s ease-out forwards',
-            padding: '8px 12px',
+            ...(!isMobile ? { padding: '8px 12px' } : {}),
           } : {}),
           transition: 'border-color 0.2s ease, padding 0.2s ease, box-shadow 0.3s ease',
         }}>
@@ -614,7 +627,8 @@ const RoomList: React.FC<RoomListProps> = ({
             type="text"
             style={{
               ...styles.searchInput,
-              ...(searchFocused ? { fontSize: 14 } : {}),
+              ...(isMobile ? { fontSize: 16 } : {}),
+              ...(searchFocused && !isMobile ? { fontSize: 14 } : {}),
               transition: 'font-size 0.2s ease',
             }}
             placeholder={searchFocused ? 'Type to filter conversations...' : 'Search conversations...'}
@@ -627,7 +641,10 @@ const RoomList: React.FC<RoomListProps> = ({
           {searchQuery && (
             <button
               type="button"
-              style={styles.searchClear}
+              style={{
+                ...styles.searchClear,
+                ...(isMobile ? { padding: '8px 8px', minWidth: 32, minHeight: 32 } : {}),
+              }}
               onClick={() => setSearchQuery('')}
               aria-label="Clear search"
             >

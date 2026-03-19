@@ -203,8 +203,8 @@ const DeviceList: React.FC<DeviceListProps> = ({
                   ...(isMobile ? {
                     flexDirection: 'column' as const,
                     alignItems: 'stretch',
-                    gap: 10,
-                    padding: '12px 14px',
+                    gap: 12,
+                    padding: '14px 12px',
                   } : {}),
                   // Staggered fade-in animation
                   animation: `frameDeviceRowFadeIn 0.4s ease-out ${index * 0.07}s both`,
@@ -213,37 +213,67 @@ const DeviceList: React.FC<DeviceListProps> = ({
                 <div style={styles.deviceInfo}>
                   <div style={{
                     ...styles.deviceHeader,
-                    ...(isMobile ? { flexWrap: 'wrap' as const } : {}),
+                    ...(isMobile ? { flexWrap: 'wrap' as const, gap: 6 } : {}),
                   }}>
                     <VerificationBadge verified={device.verified} size="small" />
-                    <span style={styles.deviceName}>
+                    <span style={{
+                      ...styles.deviceName,
+                      ...(isMobile ? { fontSize: 13 } : {}),
+                    }}>
                       {DOMPurify.sanitize(device.deviceDisplayName || 'Unnamed Device', PURIFY_CONFIG)}
                     </span>
                     {isCurrent && (
-                      <span style={styles.currentBadge}>This device</span>
+                      <span style={{
+                        ...styles.currentBadge,
+                        ...(isMobile ? {
+                          fontSize: 12,
+                          padding: '3px 10px',
+                          display: 'inline-block',
+                        } : {}),
+                      }}>This device</span>
                     )}
                   </div>
                   <div style={{
                     ...styles.deviceMeta,
                     ...(isMobile ? { flexDirection: 'column' as const, gap: 2 } : {}),
                   }}>
-                    <span style={styles.deviceId}>
-                      ID: {DOMPurify.sanitize(device.deviceId.slice(0, 12), PURIFY_CONFIG)}...
+                    <span style={{
+                      ...styles.deviceId,
+                      ...(isMobile ? {
+                        fontSize: 11,
+                        overflow: 'hidden' as const,
+                        textOverflow: 'ellipsis' as const,
+                        whiteSpace: 'nowrap' as const,
+                        maxWidth: '100%',
+                        display: 'block',
+                      } : {}),
+                    }}>
+                      ID: {DOMPurify.sanitize(device.deviceId.slice(0, isMobile ? 8 : 12), PURIFY_CONFIG)}...
                     </span>
                     <span style={styles.lastSeen}>
                       Last seen: {formatLastSeen(device.lastSeen)}
                     </span>
                   </div>
                   {device.fingerprint && (
-                    <div style={styles.deviceKey}>
-                      Key: {DOMPurify.sanitize(device.fingerprint.slice(0, 20), PURIFY_CONFIG)}...
+                    <div style={{
+                      ...styles.deviceKey,
+                      ...(isMobile ? {
+                        fontSize: 10,
+                        overflow: 'hidden' as const,
+                        textOverflow: 'ellipsis' as const,
+                        whiteSpace: 'nowrap' as const,
+                        maxWidth: '100%',
+                        display: 'block',
+                      } : {}),
+                    }}>
+                      Key: {DOMPurify.sanitize(device.fingerprint.slice(0, isMobile ? 12 : 20), PURIFY_CONFIG)}...
                     </div>
                   )}
                 </div>
 
                 <div style={{
                   ...styles.deviceActions,
-                  ...(isMobile ? { alignSelf: 'stretch' } : {}),
+                  ...(isMobile ? { alignSelf: 'stretch', width: '100%' } : {}),
                 }}>
                   {!isCurrent && (
                     <button
@@ -251,7 +281,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
                       style={{
                         ...styles.removeButton,
                         ...(isRemoving ? styles.buttonDisabled : {}),
-                        ...(isMobile ? { width: '100%', minHeight: 44 } : {}),
+                        ...(isMobile ? { width: '100%', minHeight: 48, fontSize: 14, borderRadius: 8 } : {}),
                       }}
                       onClick={() => handleRemoveRequest(device.deviceId)}
                       disabled={isRemoving}
@@ -273,17 +303,26 @@ const DeviceList: React.FC<DeviceListProps> = ({
             <p style={styles.confirmText}>
               Remove device <strong>{DOMPurify.sanitize(confirmRemoveId.slice(0, 12), PURIFY_CONFIG)}...</strong>? This will revoke its access.
             </p>
-            <div style={styles.confirmActions}>
+            <div style={{
+              ...styles.confirmActions,
+              ...(isMobile ? { flexDirection: 'column' as const, gap: 8 } : {}),
+            }}>
               <button
                 type="button"
-                style={styles.confirmCancel}
+                style={{
+                  ...styles.confirmCancel,
+                  ...(isMobile ? { width: '100%', minHeight: 48, fontSize: 14 } : {}),
+                }}
                 onClick={() => setConfirmRemoveId(null)}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                style={styles.confirmRemove}
+                style={{
+                  ...styles.confirmRemove,
+                  ...(isMobile ? { width: '100%', minHeight: 48, fontSize: 14 } : {}),
+                }}
                 onClick={() => void handleRemoveConfirm()}
               >
                 Remove
@@ -297,7 +336,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
         type="button"
         style={{
           ...styles.refreshButton,
-          ...(isMobile ? { alignSelf: 'stretch', minHeight: 44 } : {}),
+          ...(isMobile ? { alignSelf: 'stretch', width: '100%', minHeight: 48, fontSize: 14, borderRadius: 8 } : {}),
         }}
         onClick={() => void loadDevices()}
         disabled={loading}

@@ -401,7 +401,11 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
             padding: '24px 16px',
             display: 'flex',
             flexDirection: 'column' as const,
-            justifyContent: 'center',
+            justifyContent: 'flex-start',
+            overflowY: 'auto' as const,
+            boxSizing: 'border-box' as const,
+            paddingTop: 32,
+            paddingBottom: 32,
           } : {}),
         }}
         ref={modalRef}

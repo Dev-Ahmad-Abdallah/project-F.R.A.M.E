@@ -24,7 +24,7 @@ services:
       NODE_ENV: development
       # DEV ONLY — change before any real deployment
       JWT_SECRET: dev-secret-homeserver-a-change-in-production-xxxxxxxxxxxxxxxxx
-      BCRYPT_SALT_ROUNDS: 4      # Fast for local dev; production uses 12 via Railway
+      BCRYPT_SALT_ROUNDS: 10     # Min 10 enforced by config schema; production uses 12
       HOMESERVER_DOMAIN: localhost:3000
       FEDERATION_SIGNING_KEY: dev-signing-key-a
       FEDERATION_PEERS: localhost:3001
@@ -56,7 +56,7 @@ services:
       PORT: 3000
       NODE_ENV: development
       JWT_SECRET: dev-secret-homeserver-b-change-in-production-xxxxxxxxxxxxxxxxx
-      BCRYPT_SALT_ROUNDS: 4
+      BCRYPT_SALT_ROUNDS: 10
       HOMESERVER_DOMAIN: localhost:3001
       FEDERATION_SIGNING_KEY: dev-signing-key-b
       FEDERATION_PEERS: localhost:3000
@@ -82,6 +82,8 @@ services:
       dockerfile: services/frontend/Dockerfile
       args:
         REACT_APP_HOMESERVER_URL: http://localhost:3000
+    environment:
+      PORT: 80
     ports:
       - "127.0.0.1:3002:80"
     depends_on:

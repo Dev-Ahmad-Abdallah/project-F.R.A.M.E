@@ -17,6 +17,7 @@ import {
   setAutoLock,
 } from '../hooks/useSessionTimeout';
 import { setSessionTimeout } from '../api/client';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // ── Keyframes (injected once) ──
 
@@ -62,6 +63,7 @@ function formatCountdown(ms: number): string {
 }
 
 const SessionSettings: React.FC = () => {
+  const isMobile = useIsMobile();
   const [timeoutMs, setTimeoutMs] = useState<number>(getSavedTimeout);
   const [autoLock, setAutoLockState] = useState<boolean>(getAutoLock);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -123,30 +125,41 @@ const SessionSettings: React.FC = () => {
   const progress = isNever ? 1 : remainingMs / timeoutMs;
   const isUrgent = !isNever && progress < 0.15;
 
-  // SVG ring parameters
-  const ringRadius = 18;
+  // SVG ring parameters — smaller on mobile
+  const ringSize = isMobile ? 60 : 48;
+  const ringRadius = isMobile ? 24 : 18;
   const ringCircumference = 2 * Math.PI * ringRadius;
   const ringOffset = ringCircumference * (1 - progress);
 
   return (
-    <div style={styles.container}>
+    <div style={{
+      ...styles.container,
+      ...(isMobile ? { maxWidth: '100%', padding: '16px 0' } : {}),
+    }}>
       <h3 style={styles.heading}>Session Security</h3>
 
       {/* Visual countdown timer */}
       {!isNever && (
-        <div style={styles.timerContainer}>
-          <div style={styles.timerRing}>
-            <svg width="48" height="48" viewBox="0 0 48 48">
+        <div style={{
+          ...styles.timerContainer,
+          ...(isMobile ? { flexDirection: 'column' as const, alignItems: 'center', textAlign: 'center' as const, padding: '16px 12px' } : {}),
+        }}>
+          <div style={{
+            ...styles.timerRing,
+            width: ringSize,
+            height: ringSize,
+          }}>
+            <svg width={ringSize} height={ringSize} viewBox={`0 0 ${ringSize} ${ringSize}`}>
               {/* Background ring */}
               <circle
-                cx="24" cy="24" r={ringRadius}
+                cx={ringSize / 2} cy={ringSize / 2} r={ringRadius}
                 fill="none"
                 stroke="#21262d"
                 strokeWidth="3"
               />
               {/* Progress ring */}
               <circle
-                cx="24" cy="24" r={ringRadius}
+                cx={ringSize / 2} cy={ringSize / 2} r={ringRadius}
                 fill="none"
                 stroke={isUrgent ? '#f85149' : '#238636'}
                 strokeWidth="3"
@@ -162,6 +175,7 @@ const SessionSettings: React.FC = () => {
             </svg>
             <span style={{
               ...styles.timerText,
+              ...(isMobile ? { fontSize: 13 } : {}),
               ...(isUrgent ? { animation: 'frameTimerUrgentPulse 1s ease-in-out infinite' } : {}),
             }}>
               {formatCountdown(remainingMs)}

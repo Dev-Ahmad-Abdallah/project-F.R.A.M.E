@@ -129,23 +129,38 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
           width: '100%',
           height: '100%',
           borderRadius: 0,
-          padding: '24px 20px',
+          padding: '24px 16px',
           display: 'flex',
           flexDirection: 'column' as const,
           justifyContent: 'center',
+          overflowY: 'auto' as const,
+          boxSizing: 'border-box' as const,
         } : {}),
       }} role="alertdialog" aria-modal="true" aria-labelledby="device-alert-title" aria-describedby="device-alert-desc">
         {/* Warning header */}
-        <div style={styles.header}>
-          <span style={styles.warningIcon} aria-hidden="true">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style={{
+        <div style={{
+          ...styles.header,
+          ...(isMobile ? {
+            flexDirection: 'column' as const,
+            textAlign: 'center' as const,
+            gap: 8,
+          } : {}),
+        }}>
+          <span style={{
+            ...styles.warningIcon,
+            ...(isMobile ? { display: 'flex', justifyContent: 'center' } : {}),
+          }} aria-hidden="true">
+            <svg width={isMobile ? 24 : 28} height={isMobile ? 24 : 28} viewBox="0 0 24 24" fill="none" style={{
               animation: 'frameAlertWarningShake 0.6s ease-out',
             }}>
               <path d="M12 2L1 21h22L12 2z" stroke="#f85149" strokeWidth="1.5" fill="rgba(248,81,73,0.15)" />
               <path d="M12 9v4M12 16v.5" stroke="#f85149" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </span>
-          <h2 id="device-alert-title" style={styles.title}>
+          <h2 id="device-alert-title" style={{
+            ...styles.title,
+            ...(isMobile ? { fontSize: 16, textAlign: 'center' as const } : {}),
+          }}>
             Unknown Device Detected
           </h2>
         </div>
@@ -180,7 +195,14 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
             <span style={styles.detailLabel}>Public Key Fingerprint</span>
             <code style={{
               ...styles.fingerprintValue,
-              ...(isMobile ? { fontSize: 11, lineHeight: 1.5 } : {}),
+              ...(isMobile ? {
+                fontSize: 10,
+                lineHeight: 1.6,
+                wordBreak: 'break-all' as const,
+                overflowWrap: 'anywhere' as const,
+                display: 'block',
+                maxWidth: '100%',
+              } : {}),
             }}>
               {DOMPurify.sanitize(formatFingerprint(device.fingerprint), PURIFY_CONFIG)}
             </code>
@@ -191,7 +213,10 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
         <div style={styles.actions} role="group" aria-label="Device actions">
           <button
             type="button"
-            style={styles.verifyButton}
+            style={{
+              ...styles.verifyButton,
+              ...(isMobile ? { minHeight: 48, width: '100%' } : {}),
+            }}
             onClick={() => onVerify(device.deviceId)}
             aria-label="Verify this device"
           >
@@ -199,7 +224,10 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
           </button>
           <button
             type="button"
-            style={styles.removeButton}
+            style={{
+              ...styles.removeButton,
+              ...(isMobile ? { minHeight: 48, width: '100%' } : {}),
+            }}
             onClick={() => onRemove(device.deviceId)}
             aria-label="Remove this device"
           >
@@ -207,7 +235,10 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
           </button>
           <button
             type="button"
-            style={styles.ignoreButton}
+            style={{
+              ...styles.ignoreButton,
+              ...(isMobile ? { minHeight: 48, width: '100%' } : {}),
+            }}
             onClick={() => onIgnore(device.deviceId)}
             aria-label="Ignore this device (not recommended)"
           >

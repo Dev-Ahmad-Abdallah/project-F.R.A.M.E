@@ -52,5 +52,9 @@ EXPOSE 3000
 # Prevent unbounded memory growth crashing the container on Railway
 ENV NODE_OPTIONS="--max-old-space-size=512"
 
+# Docker-native health check (Railway also polls /health via API)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT:-3000}/health || exit 1
+
 # Run idempotent SQL migrations then start server
 CMD ["sh", "-c", "echo '=== CONTAINER STARTING ===' && cd services/homeserver && echo '=== RUNNING MIGRATIONS ===' && sh migrate.sh && echo '=== STARTING NODE ===' && node dist/server.js"]

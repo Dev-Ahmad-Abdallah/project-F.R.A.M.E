@@ -210,9 +210,9 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
   // ── Success overlay ──
   if (showSuccess) {
     return (
-      <div style={styles.container}>
+      <div style={styles.container} className="frame-auth-container">
         <div style={styles.bgGrid} />
-        <div style={{ ...styles.card, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 260 }}>
+        <div className="frame-auth-card" style={{ ...styles.card, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 260 }}>
           <div style={styles.successCircle}>
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
               <circle cx="24" cy="24" r="22" stroke="#3fb950" strokeWidth="2" fill="rgba(63,185,80,0.08)" style={{ animation: 'frame-success-circle 0.4s ease-out forwards' }} />
@@ -232,11 +232,12 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
   }
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} className="frame-auth-container">
       {/* Subtle background grid (matches landing page) */}
       <div style={styles.bgGrid} />
 
       <div
+        className="frame-auth-card"
         style={{
           ...styles.card,
           ...(shaking ? { animation: 'frame-shake 0.4s ease-in-out' } : {}),
@@ -259,7 +260,7 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
         </p>
 
         {error && (
-          <div style={styles.error} role="alert">
+          <div style={styles.error} role="alert" className="frame-error-message">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }}>
               <circle cx="7" cy="7" r="6" stroke="#f85149" strokeWidth="1.5" fill="none" />
               <path d="M7 4v3M7 9v.5" stroke="#f85149" strokeWidth="1.5" strokeLinecap="round" />
@@ -294,6 +295,7 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
             <input
               ref={passwordRef}
               id="frame-password"
+              className="frame-password-input"
               style={{
                 ...inputFocusStyle('password'),
                 paddingRight: 40,
@@ -313,6 +315,7 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
               type="button"
               onClick={() => setShowPassword((v) => !v)}
               style={styles.eyeButton}
+              className="frame-eye-button"
               tabIndex={-1}
               aria-label={showPassword ? 'Hide password' : 'Show password'}
             >
@@ -336,7 +339,7 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
 
           {/* Password strength indicator (register only) */}
           {mode === 'register' && (
-            <div style={styles.strengthContainer}>
+            <div style={styles.strengthContainer} className="frame-strength-container">
               <div style={styles.strengthTrack}>
                 <div
                   style={{
@@ -417,6 +420,7 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
         <p style={{ ...styles.toggle, marginTop: 8 }}>
           <button
             type="button"
+            className="frame-guest-button"
             style={{ ...styles.toggleLink, color: '#8b949e', textDecoration: 'none', fontSize: 12 }}
             onClick={() => void handleGuestLogin()}
             disabled={loading}
@@ -426,7 +430,7 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
         </p>
 
         {/* Keyboard shortcut hint */}
-        <p style={styles.shortcutHint}>
+        <p style={styles.shortcutHint} className="frame-shortcut-hint">
           Press <kbd style={styles.kbd}>Enter</kbd> to submit &middot; <kbd style={styles.kbd}>Tab</kbd> to navigate
         </p>
       </div>
@@ -476,6 +480,91 @@ const keyframes = `
 
 @keyframes frame-fade-in {
   to { opacity: 1; }
+}
+
+/* ── Mobile optimizations (320px–600px) ── */
+@media (max-width: 600px) {
+  /* 1. Auth card full-width on mobile — no max-width, just padding */
+  .frame-auth-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    padding: clamp(20px, 5vw, 36px) clamp(16px, 4vw, 32px) clamp(16px, 4vw, 28px) !important;
+  }
+
+  /* 2 & 3. Input fields: 48px min height + 16px font (prevents iOS zoom) */
+  .frame-auth-card input {
+    min-height: 48px !important;
+    font-size: clamp(16px, 4vw, 18px) !important;
+    padding: 12px !important;
+  }
+
+  /* 4. Password strength bar always visible — reduce surrounding margins */
+  .frame-strength-container {
+    margin-top: -4px !important;
+    margin-bottom: 4px !important;
+  }
+
+  /* 5. Show/hide password button — 44px touch target */
+  .frame-eye-button {
+    width: 44px !important;
+    height: 44px !important;
+    right: 4px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+  }
+
+  /* Password input needs room for the larger eye button */
+  .frame-password-input {
+    padding-right: 52px !important;
+  }
+
+  /* 6. Continue as Guest — prominent on mobile */
+  .frame-guest-button {
+    display: block !important;
+    width: 100% !important;
+    padding: 12px 16px !important;
+    margin-top: 12px !important;
+    font-size: 14px !important;
+    color: #8b949e !important;
+    border: 1px solid #30363d !important;
+    border-radius: 6px !important;
+    text-align: center !important;
+    text-decoration: none !important;
+    background: rgba(48, 54, 61, 0.3) !important;
+  }
+
+  /* 7. Hide keyboard shortcuts hint — useless on touch */
+  .frame-shortcut-hint {
+    display: none !important;
+  }
+
+  /* 9. Viewport height fix for soft keyboard */
+  .frame-auth-container {
+    min-height: 100dvh !important;
+    min-height: -webkit-fill-available !important;
+    overflow-y: auto !important;
+    padding-bottom: env(safe-area-inset-bottom, 16px) !important;
+  }
+
+  /* 10. Error messages — readable on small screens */
+  .frame-error-message {
+    font-size: clamp(13px, 3.5vw, 15px) !important;
+    padding: 12px !important;
+    line-height: 1.5 !important;
+  }
+
+  /* Submit button — comfortable touch target */
+  .frame-auth-card button[type="submit"] {
+    min-height: 48px !important;
+    font-size: clamp(15px, 4vw, 16px) !important;
+  }
 }
 `;
 

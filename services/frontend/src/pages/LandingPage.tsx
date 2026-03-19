@@ -287,21 +287,22 @@ function MobileMenu({ scrollTo }: { scrollTo: (id: string) => void }) {
       </button>
       {open && (
         <div style={{
-          position: 'absolute',
-          top: '100%',
+          position: 'fixed',
+          top: 56,
+          left: 0,
           right: 0,
-          marginTop: 8,
           backgroundColor: C.cardBg,
           border: `1px solid ${C.border}`,
-          borderRadius: 8,
+          borderRadius: '0 0 8px 8px',
           padding: 8,
-          minWidth: 180,
+          width: '100vw',
           display: 'flex',
           flexDirection: 'column',
           gap: 4,
           zIndex: 200,
           boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
           animation: 'frame-menu-slide-down 0.2s ease-out',
+          boxSizing: 'border-box',
         }}>
           {['features', 'how-it-works', 'security'].map((id) => (
             <button
@@ -312,13 +313,13 @@ function MobileMenu({ scrollTo }: { scrollTo: (id: string) => void }) {
                 background: 'none',
                 border: 'none',
                 color: C.text,
-                fontSize: 14,
-                padding: '10px 16px',
+                fontSize: 16,
+                padding: '12px 20px',
                 textAlign: 'left',
                 cursor: 'pointer',
                 fontFamily: C.font,
                 borderRadius: 6,
-                minHeight: 44,
+                minHeight: 48,
               }}
             >
               {id === 'how-it-works' ? 'How It Works' : id.charAt(0).toUpperCase() + id.slice(1)}
@@ -594,17 +595,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
             }} />
           </p>
 
-          <div style={{
-            display: 'flex',
-            flexDirection: 'row',
-            gap: 16,
-            marginTop: 36,
-            position: 'relative',
-            zIndex: 1,
-            animation: 'frame-fade-in 0.8s ease-out 0.3s both',
-            flexWrap: 'wrap',
-            justifyContent: 'center',
-          }}>
+          <div className="frame-hero-ctas">
             {/* Enhancement #5: Pulsing CTA button */}
             <button type="button" onClick={onGetStarted} style={{
               padding: '14px 36px',
@@ -766,16 +757,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
               Get up and running in three simple steps.
             </p>
           </ScrollReveal>
-          <div style={{
-            display: 'flex',
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            gap: 0,
-            maxWidth: 900,
-            margin: '0 auto',
-            alignItems: 'stretch',
-            justifyContent: 'center',
-          }}>
+          <div className="frame-how-it-works-steps">
             {steps.map((step, i) => (
               <React.Fragment key={step.num}>
                 <ScrollReveal delay={i * 200}>
@@ -824,11 +806,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
                 </ScrollReveal>
                 {/* Connector line between steps (desktop only) — Enhancement #7 partial: animated dashes */}
                 {i < steps.length - 1 && (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    paddingBottom: 60,
-                  }}>
+                  <div className="frame-step-connector">
                     <svg width="40" height="2" viewBox="0 0 40 2">
                       <line
                         x1="0" y1="1" x2="40" y2="1"
@@ -878,14 +856,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
               padding: 'clamp(20px, 3vw, 40px)',
               textAlign: 'center',
             }}>
-              <div style={{
-                display: 'flex',
-                flexDirection: 'row',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 0,
-              }}>
+              <div className="frame-arch-diagram">
                 {/* Client A */}
                 <div style={archBox(true)}>
                   <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
@@ -899,7 +870,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
                 </div>
 
                 {/* Animated flow arrow */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 8px' }}>
+                <div className="frame-arch-arrow">
                   <span style={{ fontSize: 10, color: C.accent, fontWeight: 600, marginBottom: 4 }}>ENCRYPTED</span>
                   <svg width="60" height="6" viewBox="0 0 60 6" style={{ overflow: 'visible' }}>
                     <line x1="0" y1="3" x2="60" y2="3" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
@@ -918,7 +889,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
                 </div>
 
                 {/* Animated flow arrow */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 8px' }}>
+                <div className="frame-arch-arrow">
                   <span style={{ fontSize: 10, color: C.accent, fontWeight: 600, marginBottom: 4 }}>ENCRYPTED</span>
                   <svg width="60" height="6" viewBox="0 0 60 6" style={{ overflow: 'visible' }}>
                     <line x1="0" y1="3" x2="60" y2="3" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
@@ -1015,13 +986,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
           }}>
             Built with vodozemac &middot; Olm/Megolm Protocol &middot; TypeScript &middot; Open Source
           </p>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'center',
-            gap: 24,
-            flexWrap: 'wrap',
-            marginBottom: 24,
-          }}>
+          <div className="frame-footer-links">
             <button type="button" onClick={onGetStarted} style={footerLink}>Sign In</button>
             <button type="button" onClick={onGetStarted} style={footerLink}>Register</button>
             <a href="https://github.com" target="_blank" rel="noopener noreferrer" style={{ ...footerLink, textDecoration: 'none' }}>GitHub</a>
@@ -1030,15 +995,16 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
           <div style={{ width: 48, height: 1, backgroundColor: C.border, margin: '0 auto 20px' }} />
           <p style={{
             margin: 0,
-            fontSize: 11,
+            fontSize: 'clamp(12px, 2.5vw, 14px)',
             color: '#6e7681',
             letterSpacing: 0.3,
+            wordBreak: 'break-word',
           }}>
             &copy; {new Date().getFullYear()} F.R.A.M.E. &mdash; Federated, Resilient, Authenticated Messaging with Encryption
           </p>
           <p style={{
             margin: '6px 0 0',
-            fontSize: 10,
+            fontSize: 'clamp(11px, 2vw, 12px)',
             color: '#484f58',
           }}>
             v1.0.0
@@ -1066,10 +1032,15 @@ const footerLink: React.CSSProperties = {
   background: 'none',
   border: 'none',
   color: C.accent,
-  fontSize: 13,
+  fontSize: 14,
   cursor: 'pointer',
   fontFamily: C.font,
-  padding: 0,
+  padding: '12px 8px',
+  minHeight: 48,
+  minWidth: 48,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
 };
 
 function archBox(trusted: boolean): React.CSSProperties {
