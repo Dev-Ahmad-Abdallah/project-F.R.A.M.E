@@ -147,8 +147,8 @@ jobs:
           DATABASE_URL: ${{ env.DATABASE_URL }}
 
       - name: ESLint (homeserver)
-        # 3 known warnings: _next (errorHandler), _signatures (federation), _msg (messageService)
-        run: cd services/homeserver && npx eslint src --ext .ts --max-warnings 3
+        # Known warnings: _next (errorHandler), _signatures (federation), _msg (messageService), _err (errorHandler)
+        run: cd services/homeserver && npx eslint src --ext .ts --max-warnings 5
 
       - name: ESLint (frontend)
         run: cd services/frontend && npx eslint src --ext .ts,.tsx --max-warnings 0

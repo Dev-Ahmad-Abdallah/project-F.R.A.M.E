@@ -197,7 +197,7 @@ export async function getUserRoomsWithMembers(userId: string, deviceId?: string)
     created_at: r.created_at,
     members: membersByRoom.get(r.room_id) || [],
     lastMessage: r.last_msg_content
-      ? { content: r.last_msg_content, timestamp: r.last_msg_ts! }
+      ? { content: r.last_msg_content, timestamp: r.last_msg_ts ?? new Date() }
       : null,
     unreadCount: unreadsByRoom.get(r.room_id) ?? 0,
   }));

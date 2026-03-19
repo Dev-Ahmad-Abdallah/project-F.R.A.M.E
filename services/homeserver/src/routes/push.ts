@@ -23,7 +23,7 @@ pushRouter.get(
   '/vapid-key',
   requireAuth,
   apiLimiter,
-  asyncHandler(async (_req, res) => {
+  asyncHandler((_req, res) => {
     const config = getConfig();
     const publicKey = config.VAPID_PUBLIC_KEY;
 

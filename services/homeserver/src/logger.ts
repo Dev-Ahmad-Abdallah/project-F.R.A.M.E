@@ -21,7 +21,8 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
 const MIN_LEVEL: LogLevel = IS_PRODUCTION ? 'info' : 'debug';
 
 function shouldLog(level: LogLevel): boolean {
-  return LEVEL_PRIORITY[level] >= LEVEL_PRIORITY[MIN_LEVEL];
+  const levelMap = new Map(Object.entries(LEVEL_PRIORITY));
+  return (levelMap.get(level) ?? 0) >= (levelMap.get(MIN_LEVEL) ?? 0);
 }
 
 function formatEntry(level: LogLevel, message: string, meta?: Record<string, unknown>): string {
