@@ -205,8 +205,8 @@ export async function decryptEvent(event: SyncEvent): Promise<DecryptedEvent> {
   try {
     const machine = getOlmMachine();
 
-    // Build a RoomEvent structure for the crypto machine
-    const roomEvent = JSON.stringify({
+    // Build a Matrix-format event JSON for the crypto machine
+    const eventJson = JSON.stringify({
       event_id: event.eventId,
       room_id: event.roomId,
       sender: event.senderId,
@@ -216,7 +216,10 @@ export async function decryptEvent(event: SyncEvent): Promise<DecryptedEvent> {
     });
 
     const roomIdObj = new sdk.RoomId(event.roomId);
-    const decrypted = await (machine.decryptRoomEvent as Function)(roomEvent, roomIdObj);
+
+    // decryptRoomEvent expects (RoomEvent, RoomId) — construct via SDK
+    const roomEvent = new sdk.RoomEvent(eventJson);
+    const decrypted = await machine.decryptRoomEvent(roomEvent, roomIdObj);
     const parsed = JSON.parse(decrypted.event);
 
     return {
