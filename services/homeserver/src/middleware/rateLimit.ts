@@ -196,15 +196,19 @@ export const refreshLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Message sending: 300 per minute per user (~5 msg/sec burst capacity)
-// Chat apps generate lots of messages — groups, rapid replies, reactions.
+// Message sending: 300 per minute per user PER ROOM.
+// Keyed by userId:roomId so active participation in multiple rooms
+// doesn't exhaust a single global bucket. A user chatting in 10 rooms
+// gets 300 msg/min in EACH room — plenty for rapid group conversations.
 const messageWindowMs = 60 * 1000;
 export const messageLimiter = rateLimit({
   windowMs: messageWindowMs,
   max: 300,
   store: new RedisStore('ratelimit:message', messageWindowMs) as unknown as Store,
   keyGenerator: (req: Request) => {
-    return req.auth?.sub ?? String(req.ip);
+    const roomId = (req.body as Record<string, unknown>)?.roomId;
+    const roomKey = typeof roomId === 'string' ? roomId : 'global';
+    return `${req.auth?.sub ?? String(req.ip)}:${roomKey}`;
   },
   handler: rateLimitHandler,
   standardHeaders: true,
