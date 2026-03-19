@@ -2,11 +2,12 @@ import { getConfig } from '../config';
 import {
   createRoom as dbCreateRoom,
   addRoomMember,
-  getUserRooms as dbGetUserRooms,
+  getUserRoomsWithMembers,
   getRoomMembersWithDeviceCounts,
   isRoomMember,
   RoomRow,
   RoomMemberWithDeviceCount,
+  RoomWithMembers,
 } from '../db/queries/rooms';
 import { ApiError } from '../middleware/errorHandler';
 
@@ -32,10 +33,10 @@ export async function createRoom(
 }
 
 /**
- * List all rooms the user is a member of.
+ * List all rooms the user is a member of, including member lists.
  */
-export async function getUserRooms(userId: string): Promise<RoomRow[]> {
-  return dbGetUserRooms(userId);
+export async function getUserRooms(userId: string): Promise<RoomWithMembers[]> {
+  return getUserRoomsWithMembers(userId);
 }
 
 /**

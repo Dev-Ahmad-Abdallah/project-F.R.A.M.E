@@ -54,13 +54,21 @@ export async function createRoom(
 /**
  * List all rooms the authenticated user is a member of.
  */
+interface ServerMember {
+  user_id?: string;
+  userId?: string;
+  role?: string;
+  display_name?: string;
+  displayName?: string;
+}
+
 interface ServerRoom {
   room_id?: string;
   roomId?: string;
   room_type?: string;
   roomType?: string;
   name?: string;
-  members?: RoomMember[];
+  members?: ServerMember[];
   created_by?: string;
 }
 
@@ -72,7 +80,10 @@ export async function listRooms(): Promise<RoomSummary[]> {
     roomId: r.roomId ?? r.room_id ?? '',
     roomType: (r.roomType ?? r.room_type ?? 'group') as 'direct' | 'group',
     name: r.name,
-    members: r.members ?? [],
+    members: (r.members ?? []).map((m) => ({
+      userId: m.userId ?? m.user_id ?? '',
+      displayName: m.displayName ?? m.display_name,
+    })),
     unreadCount: 0,
   }));
 }

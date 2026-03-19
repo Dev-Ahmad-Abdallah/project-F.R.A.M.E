@@ -98,6 +98,42 @@ export async function getUserRooms(userId: string): Promise<RoomRow[]> {
   return result.rows;
 }
 
+export interface RoomWithMembers extends RoomRow {
+  members: { user_id: string; role: string }[];
+}
+
+export async function getUserRoomsWithMembers(userId: string): Promise<RoomWithMembers[]> {
+  // Get rooms the user belongs to
+  const roomsResult = await pool.query(
+    `SELECT r.* FROM rooms r
+     JOIN room_members rm ON r.room_id = rm.room_id
+     WHERE rm.user_id = $1
+     ORDER BY r.created_at DESC`,
+    [userId]
+  );
+
+  if (roomsResult.rows.length === 0) return [];
+
+  // Get all members for these rooms in a single query
+  const roomIds = roomsResult.rows.map((r: RoomRow) => r.room_id);
+  const membersResult = await pool.query(
+    `SELECT room_id, user_id, role FROM room_members WHERE room_id = ANY($1::text[])`,
+    [roomIds]
+  );
+
+  // Group members by room
+  const membersByRoom: Record<string, { user_id: string; role: string }[]> = {};
+  for (const m of membersResult.rows) {
+    if (!membersByRoom[m.room_id]) membersByRoom[m.room_id] = [];
+    membersByRoom[m.room_id].push({ user_id: m.user_id, role: m.role });
+  }
+
+  return roomsResult.rows.map((r: RoomRow) => ({
+    ...r,
+    members: membersByRoom[r.room_id] || [],
+  }));
+}
+
 export async function isRoomMember(roomId: string, userId: string): Promise<boolean> {
   const result = await pool.query(
     'SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2',

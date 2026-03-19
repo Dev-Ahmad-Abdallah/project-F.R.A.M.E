@@ -88,8 +88,10 @@ export async function ensureSessionsForRoom(
   const machine = getOlmMachine();
 
   // Step 1: Update tracked users so the machine knows who is in the room
-  const userIds = memberUserIds.map((id) => new sdk.UserId(id));
-  await machine.updateTrackedUsers(userIds);
+  // NOTE: updateTrackedUsers destroys UserId instances, so we create
+  // separate arrays for each WASM call that needs them.
+  const trackUserIds = memberUserIds.map((id) => new sdk.UserId(id));
+  await machine.updateTrackedUsers(trackUserIds);
 
   // Step 2: Process outgoing requests (KeysQuery) to discover all devices
   await processOutgoingRequests();
@@ -97,7 +99,8 @@ export async function ensureSessionsForRoom(
   await sessionMutex.acquire();
   try {
     // Step 3: Claim one-time keys for devices without Olm sessions
-    const claimRequest = await machine.getMissingSessions(userIds);
+    const claimUserIds = memberUserIds.map((id) => new sdk.UserId(id));
+    const claimRequest = await machine.getMissingSessions(claimUserIds);
     if (claimRequest) {
       const claimBody = JSON.parse(claimRequest.body);
       const claimResponse = await apiRequest<Record<string, unknown>>(
@@ -113,9 +116,10 @@ export async function ensureSessionsForRoom(
 
     // Step 4: Share Megolm room key to all devices via Olm to-device messages
     const roomIdObj = new sdk.RoomId(roomId);
+    const shareUserIds = memberUserIds.map((id) => new sdk.UserId(id));
     const shareRequests = await machine.shareRoomKey(
       roomIdObj,
-      userIds,
+      shareUserIds,
       new sdk.EncryptionSettings(),
     );
 
