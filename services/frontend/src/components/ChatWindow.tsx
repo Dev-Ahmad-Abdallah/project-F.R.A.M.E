@@ -1813,33 +1813,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     };
   }
 
-  const renderEncryptionIcon = (decrypted: DecryptedEvent): React.ReactNode => {
-    if (!decrypted.isEncrypted) return null;
-    if (decrypted.decryptionError) {
-      return (
-        <span style={styles.previousSessionLock} title="Encrypted with keys from a previous session">
-          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" style={{ verticalAlign: 'middle' }}>
-            <path d="M8 1L2 4v4.5c0 3.5 2.5 6.2 6 7.5 3.5-1.3 6-4 6-7.5V4L8 1z" stroke="#8b949e" strokeWidth="1.2" fill="rgba(139,148,158,0.08)" />
-          </svg>
-        </span>
-      );
-    }
-    const isPulsing = recentlyEncryptedIds.has(decrypted.event.eventId);
-    return (
-      <span
-        style={{
-          ...styles.encryptionLock,
-          ...(isPulsing ? { animation: 'frame-lock-pulse 0.8s ease-out', display: 'inline-block' } : {}),
-        }}
-        title="Encrypted"
-      >
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" style={{ verticalAlign: 'middle' }}>
-          <path d="M8 1L2 4v4.5c0 3.5 2.5 6.2 6 7.5 3.5-1.3 6-4 6-7.5V4L8 1z" stroke="#3fb950" strokeWidth="1.2" fill="rgba(63,185,80,0.1)" />
-          <path d="M6 8.5l1.5 1.5L10.5 6" stroke="#3fb950" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-        </svg>
-      </span>
-    );
-  };
+  // E2EE badge in header is sufficient — per-message shields are visual noise
+  const renderEncryptionIcon = (_decrypted: DecryptedEvent): React.ReactNode => null;
 
   const renderSendStatus = (status: MessageSendStatus): React.ReactNode => {
     switch (status) {
@@ -2949,8 +2924,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           {uploadStatus && (
             <span style={{ fontSize: 10, color: '#58a6ff', alignSelf: 'flex-end', marginBottom: 6, whiteSpace: 'nowrap' as const }}>{uploadStatus}</span>
           )}
-          {/* Camera capture */}
-          <button
+          {/* Camera capture — mobile only */}
+          {isMobile && (<button
             type="button"
             title="Take photo"
             aria-label="Take photo"
@@ -2988,7 +2963,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
               <circle cx="12" cy="13" r="4" />
             </svg>
-          </button>
+          </button>)}
           {/* View-once toggle with pill badge — compact on mobile */}
           <button type="button" onClick={() => setViewOnceMode((v) => !v)} title={viewOnceMode ? 'View-once enabled' : 'Enable view-once mode'} aria-label="Toggle view-once mode" style={{ background: viewOnceMode ? 'rgba(217,158,36,0.2)' : 'none', border: 'none', cursor: 'pointer', padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 2 : 4, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 1, borderRadius: '50%', transition: 'background-color 0.15s', minWidth: 36, minHeight: 36 }}>
             <svg width={isMobile ? '14' : '16'} height={isMobile ? '14' : '16'} viewBox="0 0 24 24" fill="none" stroke={viewOnceMode ? '#d99e24' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
