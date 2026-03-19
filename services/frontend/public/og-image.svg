@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0d1117"/>
+      <stop offset="100%" style="stop-color:#161b22"/>
+    </linearGradient>
+    <linearGradient id="shield" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#58a6ff;stop-opacity:0.15"/>
+      <stop offset="100%" style="stop-color:#58a6ff;stop-opacity:0.02"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <g opacity="0.03" stroke="#58a6ff" stroke-width="1">
+    <line x1="0" y1="0" x2="1200" y2="630"/>
+    <line x1="200" y1="0" x2="1200" y2="500"/>
+    <line x1="400" y1="0" x2="1200" y2="400"/>
+    <line x1="0" y1="200" x2="800" y2="630"/>
+    <line x1="0" y1="400" x2="400" y2="630"/>
+  </g>
+  <g transform="translate(120, 140) scale(0.65)">
+    <path d="M256 32L64 128v128c0 115.2 81.92 222.72 192 256 110.08-33.28 192-140.8 192-256V128L256 32z" stroke="#58a6ff" stroke-width="8" fill="url(#shield)"/>
+    <path d="M192 272l48 48 80-80" stroke="#3fb950" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+  <text x="480" y="220" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="72" font-weight="800" fill="#e6edf3" letter-spacing="8">F.R.A.M.E.</text>
+  <text x="480" y="290" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="24" fill="#8b949e" letter-spacing="1">Federated Ratcheting Architecture</text>
+  <text x="480" y="325" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="24" fill="#8b949e" letter-spacing="1">for Messaging Encryption</text>
+  <g transform="translate(480, 380)">
+    <rect x="0" y="0" width="140" height="36" rx="18" fill="rgba(88,166,255,0.12)" stroke="#58a6ff" stroke-width="1"/>
+    <text x="70" y="23" font-family="system-ui,sans-serif" font-size="14" fill="#58a6ff" text-anchor="middle" font-weight="600">End-to-End E2EE</text>
+    <rect x="155" y="0" width="110" height="36" rx="18" fill="rgba(63,185,80,0.12)" stroke="#3fb950" stroke-width="1"/>
+    <text x="210" y="23" font-family="system-ui,sans-serif" font-size="14" fill="#3fb950" text-anchor="middle" font-weight="600">Federated</text>
+    <rect x="280" y="0" width="120" height="36" rx="18" fill="rgba(210,153,34,0.12)" stroke="#d29922" stroke-width="1"/>
+    <text x="340" y="23" font-family="system-ui,sans-serif" font-size="14" fill="#d29922" text-anchor="middle" font-weight="600">Zero Trust</text>
+    <rect x="415" y="0" width="130" height="36" rx="18" fill="rgba(139,148,158,0.12)" stroke="#8b949e" stroke-width="1"/>
+    <text x="480" y="23" font-family="system-ui,sans-serif" font-size="14" fill="#8b949e" text-anchor="middle" font-weight="600">Open Source</text>
+  </g>
+  <text x="480" y="480" font-family="system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="20" fill="#58a6ff" font-weight="500">Your messages. Your keys. Your privacy.</text>
+  <rect x="0" y="600" width="1200" height="30" fill="rgba(88,166,255,0.08)"/>
+  <text x="600" y="620" font-family="system-ui,sans-serif" font-size="13" fill="#8b949e" text-anchor="middle">frame.up.railway.app</text>
+</svg>
