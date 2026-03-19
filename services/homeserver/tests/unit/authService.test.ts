@@ -389,6 +389,31 @@ describe('refresh token rotation', () => {
     expect(decoded.type).toBe('refresh');
   });
 
+  it('issues a new valid refresh token during rotation', async () => {
+    const refreshToken = jwt.sign(
+      { sub: '@alice:test.frame.local', deviceId: 'DEV1', type: 'refresh', iss: 'test.frame.local' },
+      JWT_SECRET,
+      { algorithm: 'HS256', expiresIn: '7d' },
+    );
+
+    mockPoolQuery
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ '?column?': 1 }] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+
+    const result = await refreshAccessToken(refreshToken);
+
+    // New refresh token should be a valid JWT with correct claims
+    const newDecoded = jwt.verify(result.refreshToken, JWT_SECRET) as any;
+    expect(newDecoded.sub).toBe('@alice:test.frame.local');
+    expect(newDecoded.deviceId).toBe('DEV1');
+    expect(newDecoded.type).toBe('refresh');
+
+    // New access token should also be valid
+    const accessDecoded = jwt.verify(result.accessToken, JWT_SECRET) as any;
+    expect(accessDecoded.sub).toBe('@alice:test.frame.local');
+  });
+
   it('new access token preserves user and device from original', async () => {
     const refreshToken = jwt.sign(
       { sub: '@bob:test.frame.local', deviceId: 'MYDEV42', type: 'refresh', iss: 'test.frame.local' },

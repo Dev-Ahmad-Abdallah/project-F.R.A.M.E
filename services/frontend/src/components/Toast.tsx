@@ -108,7 +108,7 @@ function ToastItem({
       }}
     >
       {/* Icon */}
-      <div style={toastStyles.iconWrap}>{icons[toast.type]}</div>
+      <div style={toastStyles.iconWrap} aria-hidden="true">{icons[toast.type]}</div>
 
       {/* Message */}
       <div style={toastStyles.message}>{toast.message}</div>
@@ -120,7 +120,7 @@ function ToastItem({
         onClick={handleDismiss}
         aria-label="Dismiss notification"
       >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
           <path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="#8b949e" strokeWidth="1.5" strokeLinecap="round" />
         </svg>
       </button>
@@ -182,7 +182,7 @@ export default function ToastContainer({ toasts, onDismiss }: ToastContainerProp
   if (toasts.length === 0) return null;
 
   return (
-    <div style={toastStyles.container}>
+    <div style={toastStyles.container} role="status" aria-live="polite" aria-label="Notifications">
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} />
       ))}

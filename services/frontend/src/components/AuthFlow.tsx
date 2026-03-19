@@ -218,7 +218,7 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
       >
         {/* Shield icon */}
         <div style={styles.iconWrapper}>
-          <svg width="40" height="40" viewBox="0 0 64 64" fill="none">
+          <svg width="40" height="40" viewBox="0 0 64 64" fill="none" aria-hidden="true">
             <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="2" fill="rgba(88,166,255,0.06)" />
             <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
           </svg>
@@ -230,8 +230,8 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
         </p>
 
         {error && (
-          <div style={styles.error}>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
+          <div style={styles.error} role="alert">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" style={{ flexShrink: 0, marginTop: 1 }}>
               <circle cx="7" cy="7" r="6" stroke="#f85149" strokeWidth="1.5" fill="none" />
               <path d="M7 4v3M7 9v.5" stroke="#f85149" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
@@ -363,7 +363,7 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
 
         {/* Encryption notice */}
         <div style={styles.encryptionNotice}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
             <rect x="5" y="10" width="14" height="10" rx="2" stroke="#3fb950" strokeWidth="1.5" fill="rgba(63,185,80,0.1)" />
             <path d="M8 10V7a4 4 0 118 0v3" stroke="#3fb950" strokeWidth="1.5" fill="none" />
           </svg>
@@ -617,7 +617,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 12,
     marginBottom: 0,
     fontSize: 11,
-    color: '#484f58',
+    color: '#8b949e',
     textAlign: 'center' as const,
   },
   kbd: {

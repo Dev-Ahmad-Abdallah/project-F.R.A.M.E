@@ -23,7 +23,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 }
 
 /* Input placeholder */
-input::placeholder { color: #484f58; }
+input::placeholder { color: #8b949e; }
 
 /* Scrollbar styling for dark theme */
 ::-webkit-scrollbar { width: 8px; }

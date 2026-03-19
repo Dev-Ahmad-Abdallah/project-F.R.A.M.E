@@ -6,6 +6,37 @@ build
 docs/
 .env
 .env.*
+!.env.example
 coverage/
 .claude/
 *.log
+
+# Screenshots and design assets — not needed in production images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+
+# Test files
+**/__tests__/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+jest.config.*
+.eslintrc.*
+
+# CI/CD configuration
+.github/
+.codeql/
+trivy-results.sarif
+npm-audit-*.json
+
+# Dev tooling
+.vscode/
+.idea/
+*.swp
+.gitignore
+.gitattributes

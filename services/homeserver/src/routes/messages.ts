@@ -2,11 +2,12 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { messageLimiter, apiLimiter } from '../middleware/rateLimit';
 import { asyncHandler, ApiError } from '../middleware/errorHandler';
-import { validateBody, validateQuery, sendMessageSchema, syncQuerySchema, reactSchema } from '../middleware/validation';
+import { validateBody, validateQuery, sendMessageSchema, syncQuerySchema, reactSchema, typingSchema } from '../middleware/validation';
 import { sendMessage, deleteMessage, syncMessages, acknowledgeToDeviceMessages } from '../services/messageService';
 import { addReaction, upsertReadReceipt, getReadReceipts } from '../db/queries/events';
 import { isRoomMember } from '../db/queries/rooms';
 import { pool } from '../db/pool';
+import { redisClient } from '../redis/client';
 
 export const messagesRouter = Router();
 
@@ -179,5 +180,54 @@ messagesRouter.get(
 
     const receipts = await getReadReceipts(roomId);
     res.json({ receipts });
+  })
+);
+
+// POST /messages/typing — Set typing state for the current user
+messagesRouter.post(
+  '/typing',
+  requireAuth,
+  apiLimiter,
+  validateBody(typingSchema),
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const { roomId, isTyping } = req.body as { roomId: string; isTyping: boolean };
+    if (!(await isRoomMember(roomId, req.auth.sub))) {
+      throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
+    }
+
+    const key = `typing:${roomId}:${req.auth.sub}`;
+    if (isTyping) {
+      await redisClient.set(key, '1', 'EX', 5);
+    } else {
+      await redisClient.del(key);
+    }
+    res.json({ success: true });
+  })
+);
+
+// GET /messages/typing/:roomId — Get list of users currently typing
+messagesRouter.get(
+  '/typing/:roomId',
+  requireAuth,
+  apiLimiter,
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const { roomId } = req.params;
+    if (!(await isRoomMember(roomId, req.auth.sub))) {
+      throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
+    }
+
+    const pattern = `typing:${roomId}:*`;
+    const keys = await redisClient.keys(pattern);
+    const typingUserIds = keys
+      .map((k) => k.replace(`typing:${roomId}:`, ''))
+      .filter((userId) => userId !== req.auth!.sub);
+
+    res.json({ typingUserIds });
   })
 );

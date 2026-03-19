@@ -36,3 +36,15 @@ npm-debug.log*
 # CI scan outputs
 npm-audit-*.json
 trivy-results.sarif
+
+# Screenshots and design assets
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+
+# Documentation
+docs/
+*.md
+!README.md

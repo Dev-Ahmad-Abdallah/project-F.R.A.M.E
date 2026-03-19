@@ -143,3 +143,13 @@ export const readReceiptSchema = z.object({
 export const profileUpdateSchema = z.object({
   displayName: z.string().min(1).max(64),
 });
+
+export const typingSchema = z.object({
+  roomId: z.string().min(1),
+  isTyping: z.boolean(),
+});
+
+export const statusUpdateSchema = z.object({
+  status: z.enum(['online', 'away', 'busy', 'offline']),
+  statusMessage: z.string().max(128).optional(),
+});

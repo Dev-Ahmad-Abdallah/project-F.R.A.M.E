@@ -118,7 +118,47 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
   // Success flash state
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => { injectKeyframes(); }, []);
+
+  // Focus management: capture trigger, focus panel, return focus on close
+  useEffect(() => {
+    triggerRef.current = document.activeElement as HTMLElement;
+    const firstFocusable = panelRef.current?.querySelector<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    firstFocusable?.focus();
+    return () => { triggerRef.current?.focus(); };
+  }, []);
+
+  // Focus trap and Escape to close
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key === 'Tab') {
+        const focusable = panel.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+        } else {
+          if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
 
   const showSuccess = useCallback((msg: string) => {
     setSuccessMessage(msg);
@@ -218,8 +258,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
     : 'Unknown';
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
-      <div style={{
+    <div style={styles.overlay} onClick={onClose} role="dialog" aria-modal="true" aria-label="Room Settings">
+      <div ref={panelRef} style={{
         ...styles.panel,
         ...(isMobile ? {
           width: '100vw',
@@ -546,7 +586,7 @@ const styles: Record<string, React.CSSProperties> = {
   sectionLabel: {
     fontSize: 11,
     fontWeight: 600,
-    color: '#484f58',
+    color: '#8b949e',
     textTransform: 'uppercase' as const,
     letterSpacing: '0.05em',
     marginBottom: 8,
@@ -562,8 +602,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   editIcon: {
     fontSize: 13,
-    color: '#484f58',
-    opacity: 0.6,
+    color: '#8b949e',
+    opacity: 0.8,
   },
   readOnlyValue: {
     fontSize: 14,
@@ -703,7 +743,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   hintText: {
     fontSize: 11,
-    color: '#484f58',
+    color: '#8b949e',
     marginTop: 6,
     fontStyle: 'italic',
   },

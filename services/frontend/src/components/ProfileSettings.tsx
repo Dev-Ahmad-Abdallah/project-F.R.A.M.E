@@ -6,11 +6,19 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { getProfile, updateProfile } from '../api/authAPI';
+import { getProfile, updateProfile, updateStatus } from '../api/authAPI';
+import type { UserStatus } from '../api/authAPI';
 
 interface ProfileSettingsProps {
   userId: string;
 }
+
+const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
+  { value: 'online', label: 'Online', color: '#3fb950' },
+  { value: 'away', label: 'Away', color: '#d29922' },
+  { value: 'busy', label: 'Busy', color: '#f85149' },
+  { value: 'offline', label: 'Offline', color: '#484f58' },
+];
 
 const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId }) => {
   const [displayName, setDisplayName] = useState('');
@@ -19,6 +27,11 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Status state
+  const [currentStatus, setCurrentStatus] = useState<UserStatus>('online');
+  const [statusMessage, setStatusMessage] = useState('');
+  const [isSavingStatus, setIsSavingStatus] = useState(false);
 
   // Load profile on mount
   useEffect(() => {
@@ -29,6 +42,12 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId }) => {
         if (!cancelled) {
           setDisplayName(profile.displayName || '');
           setEditValue(profile.displayName || '');
+          if (profile.status) {
+            setCurrentStatus(profile.status);
+          }
+          if (profile.statusMessage) {
+            setStatusMessage(profile.statusMessage);
+          }
         }
       } catch {
         // Profile fetch failed — use userId as fallback
@@ -41,6 +60,29 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId }) => {
     })();
     return () => { cancelled = true; };
   }, [userId]);
+
+  const handleStatusChange = useCallback(async (newStatus: UserStatus) => {
+    setIsSavingStatus(true);
+    try {
+      await updateStatus(newStatus, statusMessage || undefined);
+      setCurrentStatus(newStatus);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update status');
+    } finally {
+      setIsSavingStatus(false);
+    }
+  }, [statusMessage]);
+
+  const handleStatusMessageSave = useCallback(async () => {
+    setIsSavingStatus(true);
+    try {
+      await updateStatus(currentStatus, statusMessage || undefined);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update status');
+    } finally {
+      setIsSavingStatus(false);
+    }
+  }, [currentStatus, statusMessage]);
 
   const handleSave = useCallback(async () => {
     const trimmed = editValue.trim();
@@ -153,6 +195,66 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId }) => {
           <div style={styles.fieldRow}>
             <label style={styles.fieldLabel}>User ID</label>
             <span style={styles.userIdText}>{userId}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Status section */}
+      <div style={{ ...styles.profileCard, marginTop: 12 }}>
+        <div style={styles.infoColumn}>
+          <div style={styles.fieldRow}>
+            <label style={styles.fieldLabel}>Status</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {STATUS_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  style={{
+                    padding: '5px 12px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    borderRadius: 6,
+                    border: currentStatus === opt.value ? `1px solid ${opt.color}` : '1px solid #30363d',
+                    backgroundColor: currentStatus === opt.value ? `${opt.color}20` : 'transparent',
+                    color: currentStatus === opt.value ? opt.color : '#8b949e',
+                    cursor: isSavingStatus ? 'not-allowed' : 'pointer',
+                    fontFamily: 'inherit',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    transition: 'all 0.15s',
+                  }}
+                  onClick={() => void handleStatusChange(opt.value)}
+                  disabled={isSavingStatus}
+                >
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: opt.color, display: 'inline-block' }} />
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={styles.fieldRow}>
+            <label style={styles.fieldLabel}>Status Message</label>
+            <div style={styles.editRow}>
+              <input
+                type="text"
+                style={styles.editInput}
+                value={statusMessage}
+                onChange={(e) => setStatusMessage(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleStatusMessageSave(); } }}
+                maxLength={128}
+                placeholder="What are you up to?"
+                disabled={isSavingStatus}
+              />
+              <button
+                type="button"
+                style={styles.saveButton}
+                onClick={() => void handleStatusMessageSave()}
+                disabled={isSavingStatus}
+              >
+                {isSavingStatus ? 'Saving...' : 'Set'}
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -22,6 +22,8 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import type { RoomSummary } from '../api/roomsAPI';
+import { getUserStatus } from '../api/authAPI';
+import type { UserStatus } from '../api/authAPI';
 import { formatDisplayName } from '../utils/displayName';
 import { SkeletonRoomItem } from './Skeleton';
 
@@ -148,6 +150,14 @@ function getAvatarColor(str: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
+// ── Status color helper ──
+const STATUS_COLORS: Record<UserStatus, string> = {
+  online: '#3fb950',
+  away: '#d29922',
+  busy: '#f85149',
+  offline: '#484f58',
+};
+
 // ── Inject keyframes for animations ──
 
 function injectRoomListKeyframes(): void {
@@ -206,6 +216,7 @@ const RoomList: React.FC<RoomListProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [starAnimatingId, setStarAnimatingId] = useState<string | null>(null);
+  const [userStatuses, setUserStatuses] = useState<Record<string, UserStatus>>({});
   const internalSearchRef = useRef<HTMLInputElement>(null);
   const searchInputRef = externalSearchRef || internalSearchRef;
   const roomItemRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
@@ -225,6 +236,32 @@ const RoomList: React.FC<RoomListProps> = ({
   useEffect(() => {
     injectRoomListKeyframes();
   }, []);
+
+  // Fetch user statuses for DM rooms
+  useEffect(() => {
+    if (rooms.length === 0) return;
+    let cancelled = false;
+    const fetchStatuses = async () => {
+      const dmUserIds = rooms
+        .filter((r) => r.roomType === 'direct')
+        .map((r) => r.members.find((m) => m.userId !== currentUserId)?.userId)
+        .filter((id): id is string => !!id);
+      const unique = [...new Set(dmUserIds)];
+      const results: Record<string, UserStatus> = {};
+      await Promise.all(
+        unique.map(async (uid) => {
+          try {
+            const s = await getUserStatus(uid);
+            results[uid] = s.status; // eslint-disable-line security/detect-object-injection
+          } catch { /* ignore */ }
+        }),
+      );
+      if (!cancelled) setUserStatuses(results);
+    };
+    void fetchStatuses();
+    const interval = setInterval(() => void fetchStatuses(), 30000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [rooms, currentUserId]);
 
   const toggleStar = useCallback((roomId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -329,10 +366,13 @@ const RoomList: React.FC<RoomListProps> = ({
     const roomIndex = visibleRoomOrder.indexOf(room.roomId);
     const isFocusedByKeyboard = focusedRoomIndex != null && roomIndex === focusedRoomIndex;
 
-    // Simulate online presence from last message recency (within 5 min)
-    const isOnline = room.lastMessage
-      ? (Date.now() - new Date(room.lastMessage.timestamp).getTime()) < 5 * 60 * 1000
-      : false;
+    // Get real user status for DM rooms
+    const otherUser = room.roomType === 'direct'
+      ? room.members.find((m) => m.userId !== currentUserId)
+      : null;
+    const otherStatus: UserStatus = otherUser ? (userStatuses[otherUser.userId] || 'offline') : 'offline';
+    const isOnline = otherStatus !== 'offline';
+    const statusDotColor = STATUS_COLORS[otherStatus]; // eslint-disable-line security/detect-object-injection
 
     return (
       <button
@@ -383,7 +423,7 @@ const RoomList: React.FC<RoomListProps> = ({
           <div style={{ ...styles.avatar, backgroundColor: getAvatarColor(room.roomId || displayName) }}>
             {displayName.charAt(0).toUpperCase()}
           </div>
-          {/* Online presence indicator (green dot) */}
+          {/* Status indicator dot */}
           {isOnline && (
             <div style={{
               position: 'absolute' as const,
@@ -392,9 +432,9 @@ const RoomList: React.FC<RoomListProps> = ({
               width: 10,
               height: 10,
               borderRadius: '50%',
-              backgroundColor: '#3fb950',
+              backgroundColor: statusDotColor,
               border: '2px solid #161b22',
-              animation: 'frame-online-pulse 3s ease-in-out infinite',
+              animation: otherStatus === 'online' ? 'frame-online-pulse 3s ease-in-out infinite' : undefined,
             }} />
           )}
         </div>
@@ -521,12 +561,12 @@ const RoomList: React.FC<RoomListProps> = ({
           } : {}),
           transition: 'border-color 0.2s ease, padding 0.2s ease, box-shadow 0.3s ease',
         }}>
-          <svg width={searchFocused ? 16 : 14} height={searchFocused ? 16 : 14} viewBox="0 0 16 16" fill="none" style={{
+          <svg width={searchFocused ? 16 : 14} height={searchFocused ? 16 : 14} viewBox="0 0 16 16" fill="none" aria-hidden="true" style={{
             flexShrink: 0,
             transition: 'all 0.2s ease',
           }}>
-            <circle cx="7" cy="7" r="5" stroke={searchFocused ? '#58a6ff' : '#484f58'} strokeWidth="1.5" fill="none" />
-            <path d="M11 11l3.5 3.5" stroke={searchFocused ? '#58a6ff' : '#484f58'} strokeWidth="1.5" strokeLinecap="round" />
+            <circle cx="7" cy="7" r="5" stroke={searchFocused ? '#58a6ff' : '#8b949e'} strokeWidth="1.5" fill="none" />
+            <path d="M11 11l3.5 3.5" stroke={searchFocused ? '#58a6ff' : '#8b949e'} strokeWidth="1.5" strokeLinecap="round" />
           </svg>
           <input
             ref={searchInputRef}
@@ -641,7 +681,7 @@ const styles: Record<string, React.CSSProperties> = {
   searchClear: {
     background: 'none',
     border: 'none',
-    color: '#484f58',
+    color: '#8b949e',
     fontSize: 10,
     cursor: 'pointer',
     padding: '2px 4px',
@@ -653,7 +693,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '16px',
     textAlign: 'center',
     fontSize: 13,
-    color: '#484f58',
+    color: '#8b949e',
   },
   emptyContainer: {
     display: 'flex',
@@ -671,13 +711,13 @@ const styles: Record<string, React.CSSProperties> = {
   emptyHint: {
     margin: '8px 0 0',
     fontSize: 12,
-    color: '#484f58',
+    color: '#8b949e',
   },
   sectionHeader: {
     padding: '10px 16px 4px',
     fontSize: 11,
     fontWeight: 600,
-    color: '#484f58',
+    color: '#8b949e',
     textTransform: 'uppercase' as const,
     letterSpacing: '0.05em',
     display: 'flex',
@@ -738,7 +778,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   timestamp: {
     fontSize: 11,
-    color: '#484f58',
+    color: '#8b949e',
     flexShrink: 0,
     marginLeft: 8,
   },
@@ -749,7 +789,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   memberCount: {
     fontSize: 11,
-    color: '#484f58',
+    color: '#8b949e',
     marginTop: 1,
   },
   previewText: {
@@ -810,7 +850,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderTop: '1px solid #21262d',
     cursor: 'pointer',
     fontSize: 12,
-    color: '#484f58',
+    color: '#8b949e',
     fontFamily: 'inherit',
     width: '100%',
     textAlign: 'left',

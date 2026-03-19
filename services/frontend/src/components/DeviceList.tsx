@@ -260,7 +260,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
       {/* Confirmation dialog for device removal */}
       {confirmRemoveId && (
         <div style={styles.confirmOverlay}>
-          <div style={styles.confirmDialog}>
+          <div style={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-label="Confirm device removal">
             <p style={styles.confirmText}>
               Remove device <strong>{DOMPurify.sanitize(confirmRemoveId.slice(0, 12), PURIFY_CONFIG)}...</strong>? This will revoke its access.
             </p>

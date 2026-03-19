@@ -8,7 +8,7 @@
  * and pulsing red border for urgency (Signal / WhatsApp inspired).
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
@@ -80,15 +80,49 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
   onIgnore,
 }) => {
   const isMobile = useIsMobile();
+  const modalRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => { injectKeyframes(); }, []);
+
+  // Focus management: capture trigger, focus modal, return focus on close
+  useEffect(() => {
+    triggerRef.current = document.activeElement as HTMLElement;
+    // Focus the first action button
+    const firstButton = modalRef.current?.querySelector<HTMLElement>('button');
+    firstButton?.focus();
+    return () => { triggerRef.current?.focus(); };
+  }, []);
+
+  // Focus trap
+  useEffect(() => {
+    const modal = modalRef.current;
+    if (!modal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') {
+        const focusable = modal.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+        } else {
+          if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <div style={{
       ...styles.overlay,
       ...(isMobile ? { padding: 0 } : {}),
     }}>
-      <div style={{
+      <div ref={modalRef} style={{
         ...styles.modal,
         ...(isMobile ? {
           maxWidth: '100%',
@@ -100,7 +134,7 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
           flexDirection: 'column' as const,
           justifyContent: 'center',
         } : {}),
-      }} role="alertdialog" aria-labelledby="device-alert-title" aria-describedby="device-alert-desc">
+      }} role="alertdialog" aria-modal="true" aria-labelledby="device-alert-title" aria-describedby="device-alert-desc">
         {/* Warning header */}
         <div style={styles.header}>
           <span style={styles.warningIcon} aria-hidden="true">
@@ -154,11 +188,12 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
         </div>
 
         {/* Actions */}
-        <div style={styles.actions}>
+        <div style={styles.actions} role="group" aria-label="Device actions">
           <button
             type="button"
             style={styles.verifyButton}
             onClick={() => onVerify(device.deviceId)}
+            aria-label="Verify this device"
           >
             Verify
           </button>
@@ -166,6 +201,7 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
             type="button"
             style={styles.removeButton}
             onClick={() => onRemove(device.deviceId)}
+            aria-label="Remove this device"
           >
             Remove Device
           </button>
@@ -173,6 +209,7 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
             type="button"
             style={styles.ignoreButton}
             onClick={() => onIgnore(device.deviceId)}
+            aria-label="Ignore this device (not recommended)"
           >
             Ignore (not recommended)
           </button>

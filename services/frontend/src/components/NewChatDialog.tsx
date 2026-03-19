@@ -120,16 +120,51 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   const [invitedUsers, setInvitedUsers] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const typeSelectorRef = useRef<HTMLDivElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
 
   // Inject animation keyframes
   useEffect(() => {
     injectNewChatKeyframes();
   }, []);
 
-  // Auto-focus the input on mount
+  // Capture the trigger element and auto-focus the input on mount
   useEffect(() => {
+    triggerRef.current = document.activeElement as HTMLElement;
     inputRef.current?.focus();
+    return () => {
+      // Return focus to trigger on unmount
+      triggerRef.current?.focus();
+    };
   }, []);
+
+  // Focus trap: keep Tab cycling within the modal
+  useEffect(() => {
+    const modal = modalRef.current;
+    if (!modal) return;
+    const handleFocusTrap = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const focusable = modal.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleFocusTrap);
+    return () => document.removeEventListener('keydown', handleFocusTrap);
+  }, [showSuccess]);
 
   // Prevent background scrolling
   useEffect(() => {
@@ -371,6 +406,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       animation: 'frame-dialog-overlay-fade 0.2s ease-out',
     }} onClick={handleOverlayClick}>
       <div
+        ref={modalRef}
         style={{
           ...styles.modal,
           animation: isMobile
@@ -390,6 +426,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
           } : {}),
         }}
         role="dialog"
+        aria-modal="true"
         aria-labelledby="new-chat-title"
         onKeyDown={handleKeyDown}
       >
@@ -654,7 +691,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                   fontSize: 13,
                   fontWeight: 600,
                   backgroundColor: username.trim() ? 'rgba(88, 166, 255, 0.15)' : '#21262d',
-                  color: username.trim() ? '#58a6ff' : '#484f58',
+                  color: username.trim() ? '#58a6ff' : '#8b949e',
                   border: `1px solid ${username.trim() ? 'rgba(88, 166, 255, 0.4)' : '#30363d'}`,
                   borderRadius: 6,
                   cursor: username.trim() ? 'pointer' : 'not-allowed',
@@ -826,7 +863,7 @@ const styles: Record<string, React.CSSProperties> = {
   typeHint: {
     margin: '4px 0 0',
     fontSize: 12,
-    color: '#484f58',
+    color: '#8b949e',
     fontStyle: 'italic',
   },
   inputWrapper: {
@@ -847,7 +884,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   fieldHint: {
     fontSize: 11,
-    color: '#484f58',
+    color: '#8b949e',
     marginTop: 2,
   },
   actions: {

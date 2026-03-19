@@ -17,7 +17,7 @@
  * without an explicit user action.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { generateFingerprint } from '../crypto/cryptoUtils';
@@ -296,8 +296,42 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
   const [oldFingerprint, setOldFingerprint] = useState<string>('');
   const [newFingerprint, setNewFingerprint] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => { injectKeyframes(); }, []);
+
+  // Focus management
+  useEffect(() => {
+    triggerRef.current = document.activeElement as HTMLElement;
+    return () => { triggerRef.current?.focus(); };
+  }, []);
+
+  // Focus trap
+  useEffect(() => {
+    const modal = modalRef.current;
+    if (!modal || loading) return;
+    // Focus first button when content loads
+    const firstButton = modal.querySelector<HTMLElement>('button');
+    firstButton?.focus();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Tab') {
+        const focusable = modal.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey) {
+          if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+        } else {
+          if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [loading]);
 
   useEffect(() => {
     let cancelled = false;
@@ -370,7 +404,9 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
             justifyContent: 'center',
           } : {}),
         }}
+        ref={modalRef}
         role="alertdialog"
+        aria-modal="true"
         aria-labelledby="key-change-title"
         aria-describedby="key-change-desc"
         onClick={(e) => e.stopPropagation()}

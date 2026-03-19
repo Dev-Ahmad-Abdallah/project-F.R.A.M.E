@@ -20,16 +20,18 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { AuthResponse } from '@frame/shared';
-import LandingPage from './pages/LandingPage';
 import SignInPage from './pages/SignInPage';
 import ChatWindow from './components/ChatWindow';
 import ToastContainer from './components/Toast';
-import DeviceList from './components/DeviceList';
 import RoomList from './components/RoomList';
 import NewChatDialog from './components/NewChatDialog';
-import RoomSettings from './components/RoomSettings';
-import FingerprintUI from './verification/fingerprintUI';
-import DeviceLinking from './devices/deviceLinking';
+
+// Lazy-load components not needed on initial render — reduces main bundle size
+const LandingPage = React.lazy(() => import('./pages/LandingPage'));
+const DeviceList = React.lazy(() => import('./components/DeviceList'));
+const RoomSettings = React.lazy(() => import('./components/RoomSettings'));
+const FingerprintUI = React.lazy(() => import('./verification/fingerprintUI'));
+const DeviceLinking = React.lazy(() => import('./devices/deviceLinking'));
 import DeviceAlert from './devices/deviceAlert';
 import type { UnknownDeviceInfo } from './devices/deviceAlert';
 import KeyChangeAlert from './verification/keyChangeAlert';
@@ -52,6 +54,7 @@ import { useToast } from './hooks/useToast';
 import SessionSettings from './components/SessionSettings';
 import ProfileSettings from './components/ProfileSettings';
 import { useSessionTimeout, getAutoLock } from './hooks/useSessionTimeout';
+import { useInstallPrompt } from './hooks/useInstallPrompt';
 
 // ── Types ──
 
@@ -105,6 +108,9 @@ function App() {
 
   // Toast notifications
   const { toasts, showToast, dismissToast } = useToast();
+
+  // PWA install prompt
+  const { showBanner: showInstallBanner, promptInstall, dismissBanner: dismissInstall } = useInstallPrompt();
 
   // Track previous connection state for reconnection toast
   const prevConnectionLostRef = useRef(false);
@@ -505,7 +511,71 @@ function App() {
 
   // ── Page: Landing ──
   if (currentPage === 'landing') {
-    return (<div key="page-landing" style={fadeTransitionStyle}><LandingPage onGetStarted={() => setCurrentPage('auth')} /></div>);
+    return (
+      <div key="page-landing" style={fadeTransitionStyle}>
+        <React.Suspense fallback={<div />}>
+          <LandingPage onGetStarted={() => setCurrentPage('auth')} />
+        </React.Suspense>
+        {showInstallBanner && (
+          <div style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            padding: '12px 20px',
+            backgroundColor: '#161b22',
+            borderTop: '1px solid #30363d',
+            zIndex: 1000,
+            animation: 'frame-fade-in 0.3s ease-out',
+          }}>
+            <svg width="20" height="20" viewBox="0 0 64 64" fill="none">
+              <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="3" fill="rgba(88,166,255,0.08)" />
+              <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            </svg>
+            <span style={{ fontSize: 14, color: '#c9d1d9', fontFamily: 'system-ui, sans-serif' }}>
+              Install F.R.A.M.E. for offline access
+            </span>
+            <button
+              type="button"
+              onClick={() => void promptInstall()}
+              style={{
+                padding: '6px 16px',
+                fontSize: 13,
+                fontWeight: 600,
+                backgroundColor: '#58a6ff',
+                color: '#fff',
+                border: 'none',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontFamily: 'system-ui, sans-serif',
+              }}
+            >
+              Install
+            </button>
+            <button
+              type="button"
+              onClick={dismissInstall}
+              style={{
+                padding: '6px 12px',
+                fontSize: 13,
+                color: '#8b949e',
+                backgroundColor: 'transparent',
+                border: '1px solid #30363d',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontFamily: 'system-ui, sans-serif',
+              }}
+            >
+              Not now
+            </button>
+          </div>
+        )}
+      </div>
+    );
   }
 
   // ── Page: Auth ──
@@ -542,13 +612,16 @@ function App() {
           <h2 style={styles.lockTitle}>Session Locked</h2>
           <p style={styles.lockSubtitle}>Enter your user ID to unlock</p>
           {lockError && <div style={styles.lockErrorBanner}>{DOMPurify.sanitize(lockError, PURIFY_CONFIG)}</div>}
+          <label htmlFor="lock-passphrase" className="sr-only" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>User ID to unlock</label>
           <input
+            id="lock-passphrase"
             type="password"
             style={styles.lockInput}
             value={lockPassphrase}
             onChange={(e) => setLockPassphrase(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleUnlock(); }}
             placeholder="User ID (e.g. @alice:example.com)"
+            aria-label="User ID to unlock"
             autoFocus
           />
           <div style={styles.lockActions}>
@@ -639,13 +712,14 @@ function App() {
                   <path d="M8 5v3M8 10h.01" stroke="#d29922" strokeWidth="1.2" strokeLinecap="round" />
                 </svg>
                 <span style={{ fontSize: 13, color: '#d29922', flex: 1 }}>Verify your device for enhanced security</span>
-                <button type="button" onClick={() => setSettingsVerifyBannerDismissed(true)} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1 }} title="Dismiss">&#215;</button>
+                <button type="button" onClick={() => setSettingsVerifyBannerDismissed(true)} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1 }} title="Dismiss" aria-label="Dismiss verification banner">&#215;</button>
               </div>
             )}
             <ProfileSettings userId={auth.userId} />
             <div style={{ borderTop: '1px solid #30363d', width: '100%', maxWidth: 440, margin: '8px 0 20px' }} />
             <SessionSettings />
             <div style={{ borderTop: '1px solid #30363d', width: '100%', maxWidth: 440, margin: '8px 0 20px' }} />
+            <React.Suspense fallback={<div style={{ padding: 16, color: '#8b949e' }}>Loading devices...</div>}>
             <DeviceList
               userId={auth.userId}
               currentDeviceId={auth.deviceId}
@@ -657,6 +731,7 @@ function App() {
                 })
               }
             />
+            </React.Suspense>
             <button
               type="button"
               style={{
@@ -683,6 +758,7 @@ function App() {
       case 'verify':
         return (
           <div style={styles.centeredContainer}>
+            <React.Suspense fallback={<div />}>
             <FingerprintUI
               userId={keyChangeInfo?.userId || ''}
               deviceId=""
@@ -690,12 +766,14 @@ function App() {
               ownPublicKey={ownPublicKey}
               onVerified={() => setActiveView('chat')}
             />
+            </React.Suspense>
           </div>
         );
 
       case 'link-device':
         return (
           <div style={styles.centeredContainer}>
+            <React.Suspense fallback={<div />}>
             <DeviceLinking
               devicePublicKey={ownPublicKey}
               onApprove={(fingerprint) => {
@@ -719,6 +797,7 @@ function App() {
                 setActiveView('settings');
               }}
             />
+            </React.Suspense>
           </div>
         );
 
@@ -867,7 +946,7 @@ function App() {
             </div>
             <div style={styles.userDetails}>
               <span style={styles.userName}>{DOMPurify.sanitize(formatDisplayName(auth.userId), PURIFY_CONFIG)}</span>
-              <span style={styles.userStatus}>
+              <span style={styles.userStatus} role="status" aria-live="polite">
                 <span style={{
                   display: 'inline-block',
                   width: 7,
@@ -876,7 +955,7 @@ function App() {
                   backgroundColor: connectionLost ? '#d29922' : '#3fb950',
                   marginRight: 5,
                   verticalAlign: 'middle',
-                }} />
+                }} aria-hidden="true" />
                 {connectionLost ? 'Reconnecting...' : 'Online'}
               </span>
               <span style={styles.userDevice}>
@@ -888,7 +967,7 @@ function App() {
               </span>
             </div>
             {unreadCount > 0 && (
-              <span style={styles.totalUnreadBadge}>
+              <span style={styles.totalUnreadBadge} role="status" aria-live="polite" aria-label={`${unreadCount} unread messages`}>
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
@@ -960,7 +1039,7 @@ function App() {
               aria-label="Settings"
               title="Settings"
             >
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
                 <circle cx="9" cy="9" r="2.5" stroke="#8b949e" strokeWidth="1.5" fill="none" />
                 <path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.34 3.34l1.42 1.42M13.24 13.24l1.42 1.42M3.34 14.66l1.42-1.42M13.24 4.76l1.42-1.42" stroke="#8b949e" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
@@ -972,7 +1051,7 @@ function App() {
               aria-label="Log out"
               title="Log out"
             >
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
                 <path d="M6 15H4a1 1 0 01-1-1V4a1 1 0 011-1h2M12 12l3-3-3-3M7 9h8" stroke="#8b949e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
@@ -1050,7 +1129,7 @@ function App() {
       {/* Leave conversation confirm */}
       {showLeaveConfirm && (
         <div style={styles.leaveOverlay} onClick={() => setShowLeaveConfirm(false)}>
-          <div style={styles.leaveModal} onClick={(e) => e.stopPropagation()}>
+          <div style={styles.leaveModal} onClick={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" aria-label="Leave conversation confirmation">
             <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 600, color: '#f0f6fc' }}>Leave Conversation?</h3>
             <p style={{ margin: '0 0 20px', fontSize: 13, color: '#8b949e', lineHeight: 1.5 }}>
               You will no longer receive messages from this conversation. This cannot be undone.
@@ -1065,6 +1144,7 @@ function App() {
 
       {/* Room settings panel */}
       {showRoomSettings && selectedRoom && (
+        <React.Suspense fallback={<div />}>
         <RoomSettings
           room={selectedRoom}
           currentUserId={auth.userId}
@@ -1073,6 +1153,7 @@ function App() {
           onRoomRenamed={handleRoomRenamed}
           onMemberInvited={() => void handleRetryRoomFetch()}
         />
+        </React.Suspense>
       )}
       </div>
     </div>
@@ -1391,7 +1472,7 @@ const styles: Record<string, React.CSSProperties> = {
   emptyHelpText: {
     marginTop: 10,
     fontSize: 12,
-    color: '#484f58',
+    color: '#8b949e',
   },
 
   // ── Settings / centered views ──
@@ -1558,7 +1639,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'inherit',
   },
   skipToContent: { position: 'absolute' as const, top: -100, left: 8, zIndex: 10001, padding: '8px 16px', backgroundColor: '#58a6ff', color: '#0d1117', fontSize: 13, fontWeight: 600, borderRadius: 6, textDecoration: 'none', transition: 'top 0.2s ease' },
-  shortcutsHelpButton: { padding: '6px 10px', fontSize: 13, fontWeight: 700, backgroundColor: 'transparent', color: '#484f58', border: '1px solid #30363d', borderRadius: 6, cursor: 'pointer', lineHeight: 1, fontFamily: 'inherit', transition: 'border-color 0.15s, color 0.15s' },
+  shortcutsHelpButton: { padding: '6px 10px', fontSize: 13, fontWeight: 700, backgroundColor: 'transparent', color: '#8b949e', border: '1px solid #30363d', borderRadius: 6, cursor: 'pointer', lineHeight: 1, fontFamily: 'inherit', transition: 'border-color 0.15s, color 0.15s' },
   shortcutsPopup: { position: 'absolute' as const, bottom: 44, right: 0, width: 240, padding: 16, backgroundColor: '#161b22', border: '1px solid #30363d', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 100 },
   shortcutsPopupTitle: { fontSize: 13, fontWeight: 600, color: '#e6edf3', marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid #21262d' },
   shortcutsPopupRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', fontSize: 12, color: '#8b949e' },

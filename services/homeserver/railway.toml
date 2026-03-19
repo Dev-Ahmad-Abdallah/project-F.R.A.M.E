@@ -5,6 +5,6 @@ watchPatterns = ["services/homeserver/**", "shared/**"]
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5

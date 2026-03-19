@@ -91,6 +91,8 @@ export interface ProfileResponse {
   username: string;
   displayName: string | null;
   homeserver: string;
+  status?: UserStatus;
+  statusMessage?: string | null;
 }
 
 /**
@@ -110,4 +112,35 @@ export async function updateProfile(
     method: 'PUT',
     body: { displayName },
   });
+}
+
+export type UserStatus = 'online' | 'away' | 'busy' | 'offline';
+
+export interface StatusResponse {
+  status: UserStatus;
+  statusMessage: string | null;
+}
+
+/**
+ * Update the current user's presence status.
+ */
+export async function updateStatus(
+  status: UserStatus,
+  statusMessage?: string,
+): Promise<StatusResponse> {
+  return apiRequest<StatusResponse>('/auth/status', {
+    method: 'PUT',
+    body: { status, statusMessage },
+  });
+}
+
+/**
+ * Get a user's presence status.
+ */
+export async function getUserStatus(
+  userId: string,
+): Promise<{ userId: string } & StatusResponse> {
+  return apiRequest<{ userId: string } & StatusResponse>(
+    `/auth/status/${encodeURIComponent(userId)}`,
+  );
 }

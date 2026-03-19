@@ -373,7 +373,7 @@ const styles: Record<string, React.CSSProperties> = {
   hint: {
     margin: '2px 0 16px',
     fontSize: 12,
-    color: '#8b949e',
+    color: '#9ea7b3',
     lineHeight: 1.4,
   },
   toggle: {

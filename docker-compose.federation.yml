@@ -1,0 +1,182 @@
+# docker-compose.federation.yml
+#
+# Local federation testing environment.
+# Runs two independent homeservers with their own databases,
+# pre-configured to federate with each other.
+#
+# Usage:
+#   # Generate federation keys first
+#   ./scripts/generate-federation-keys.sh
+#
+#   # Start the federation environment
+#   docker compose -f docker-compose.federation.yml up --build
+#
+#   # Run federation tests against local servers
+#   ./scripts/test-federation.sh http://localhost:3000 http://localhost:3001
+#
+#   # Tear down
+#   docker compose -f docker-compose.federation.yml down -v
+
+networks:
+  federation-net:
+    driver: bridge
+
+volumes:
+  fed_pg_a_data:
+  fed_pg_b_data:
+  fed_redis_a_data:
+  fed_redis_b_data:
+
+services:
+
+  # ── Homeserver A (port 3000) ────────────────────────────────
+  homeserver-a:
+    build:
+      context: .
+      dockerfile: services/homeserver/Dockerfile
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@fed-postgres-a:5432/frame_fed_a
+      REDIS_URL: redis://fed-redis-a:6379
+      PORT: 3000
+      NODE_ENV: development
+      JWT_SECRET: fed-dev-secret-homeserver-a-must-be-at-least-32-chars-long-xxxxx
+      BCRYPT_SALT_ROUNDS: 4
+      HOMESERVER_DOMAIN: localhost:3000
+      # Replace with output from: ./scripts/generate-federation-keys.sh
+      # This is a dev-only placeholder key. Generate real keys before testing.
+      FEDERATION_SIGNING_KEY: ${FEDERATION_SIGNING_KEY_A:-MC4CAQAwBQYDK2VwBCIEIBl5dOAMBmQJHkfVKcLmKYF3MZWB5eH2jJZGWC3kNOr}
+      FEDERATION_PEERS: homeserver-b:3000
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3002
+    depends_on:
+      fed-postgres-a:
+        condition: service_healthy
+      fed-redis-a:
+        condition: service_healthy
+    networks:
+      - federation-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+  # ── Homeserver B (port 3001) ────────────────────────────────
+  homeserver-b:
+    build:
+      context: .
+      dockerfile: services/homeserver/Dockerfile
+    ports:
+      - "127.0.0.1:3001:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@fed-postgres-b:5432/frame_fed_b
+      REDIS_URL: redis://fed-redis-b:6379
+      PORT: 3000
+      NODE_ENV: development
+      JWT_SECRET: fed-dev-secret-homeserver-b-must-be-at-least-32-chars-long-xxxxx
+      BCRYPT_SALT_ROUNDS: 4
+      HOMESERVER_DOMAIN: localhost:3001
+      # Replace with output from: ./scripts/generate-federation-keys.sh
+      # This is a dev-only placeholder key. Generate real keys before testing.
+      FEDERATION_SIGNING_KEY: ${FEDERATION_SIGNING_KEY_B:-MC4CAQAwBQYDK2VwBCIEIGh5g2TbKnS8OEv8JqR7mN3xFwA6c5yPzV1kU9h2bWQm}
+      FEDERATION_PEERS: homeserver-a:3000
+      CORS_ORIGINS: http://localhost:5173
+    depends_on:
+      fed-postgres-b:
+        condition: service_healthy
+      fed-redis-b:
+        condition: service_healthy
+    networks:
+      - federation-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+
+  # ── PostgreSQL A ────────────────────────────────────────────
+  fed-postgres-a:
+    image: postgres:16.3-alpine
+    environment:
+      POSTGRES_DB: frame_fed_a
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:5440:5432"
+    volumes:
+      - fed_pg_a_data:/var/lib/postgresql/data
+    networks:
+      - federation-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d frame_fed_a"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── PostgreSQL B ────────────────────────────────────────────
+  fed-postgres-b:
+    image: postgres:16.3-alpine
+    environment:
+      POSTGRES_DB: frame_fed_b
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1:5441:5432"
+    volumes:
+      - fed_pg_b_data:/var/lib/postgresql/data
+    networks:
+      - federation-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d frame_fed_b"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Redis A ─────────────────────────────────────────────────
+  fed-redis-a:
+    image: redis:7.2.5-alpine
+    ports:
+      - "127.0.0.1:6390:6379"
+    volumes:
+      - fed_redis_a_data:/data
+    networks:
+      - federation-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      redis-server
+        --maxmemory 128mb
+        --maxmemory-policy allkeys-lru
+        --save ""
+
+  # ── Redis B ─────────────────────────────────────────────────
+  fed-redis-b:
+    image: redis:7.2.5-alpine
+    ports:
+      - "127.0.0.1:6391:6379"
+    volumes:
+      - fed_redis_b_data:/data
+    networks:
+      - federation-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: >
+      redis-server
+        --maxmemory 128mb
+        --maxmemory-policy allkeys-lru
+        --save ""

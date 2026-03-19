@@ -91,12 +91,14 @@
 | `PORT` | Railway auto-set | `3000` | |
 | `NODE_ENV` | Manual set | `production` | `development`, `production`, or `test` |
 | `JWT_SECRET` | Manual set (Railway dashboard) | Random 64-char string | Minimum 32 characters (Zod-validated) |
-| `BCRYPT_SALT_ROUNDS` | Manual set or default | `12` | Range: 10-15 (default: 12) |
+| `BCRYPT_SALT_ROUNDS` | Manual set or default | `12` | Range: 10-15 (default: 12). Use `4` for local dev speed |
 | `HOMESERVER_DOMAIN` | Manual set | `frame-a.up.railway.app` | |
 | `FEDERATION_SIGNING_KEY` | Manual set | Ed25519 private key | Used for signing federation events |
 | `FEDERATION_PEERS` | Manual set | `frame-b.up.railway.app` | Comma-separated list of trusted peer domains |
 | `CORS_ORIGINS` | Manual set | `https://frame.up.railway.app` | Comma-separated list of allowed origins |
 | `DB_SSL_REJECT_UNAUTHORIZED` | Manual set (optional) | `true` | Default: `true`. Set to `false` for Railway PostgreSQL if needed |
+| `VAPID_PUBLIC_KEY` | Manual set (optional) | VAPID key string | Required for Web Push notifications. Empty = push disabled |
+| `VAPID_PRIVATE_KEY` | Manual set (optional) | VAPID key string | Required for Web Push notifications. Empty = push disabled |
 
 ### Frontend
 
@@ -135,7 +137,7 @@ project-frame/
 │   │   ├── railway.toml
 │   │   ├── jest.config.js
 │   │   ├── .env.example
-│   │   ├── migrations/        # SQL migrations (001-006)
+│   │   ├── migrations/        # SQL migrations (001-009)
 │   │   ├── src/               # Source code
 │   │   └── tests/             # Unit tests
 │   └── frontend/              # Frontend (workspace: @frame/frontend)

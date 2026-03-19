@@ -146,3 +146,27 @@ export async function getReadReceipts(
     `/messages/read-receipts/${encodeURIComponent(roomId)}`,
   );
 }
+
+/**
+ * Set typing indicator for the current user in a room.
+ */
+export async function setTyping(
+  roomId: string,
+  isTyping: boolean,
+): Promise<void> {
+  return apiRequest<void>('/messages/typing', {
+    method: 'POST',
+    body: { roomId, isTyping },
+  });
+}
+
+/**
+ * Get users currently typing in a room.
+ */
+export async function getTypingUsers(
+  roomId: string,
+): Promise<{ typingUserIds: string[] }> {
+  return apiRequest<{ typingUserIds: string[] }>(
+    `/messages/typing/${encodeURIComponent(roomId)}`,
+  );
+}

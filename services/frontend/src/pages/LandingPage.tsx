@@ -23,7 +23,7 @@ const C = {
   darkerBg: '#0e1116',
   border: '#30363d',
   text: '#c9d1d9',
-  textSecondary: '#8b949e',
+  textSecondary: '#9ea7b3',
   accent: '#58a6ff',
   success: '#3fb950',
   white: '#f0f6fc',
@@ -95,7 +95,7 @@ function useTypewriter(text: string, speed = 90, startDelay = 600) {
 // ── Inline SVG icons ──
 
 const ShieldIcon = () => (
-  <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke={C.accent} strokeWidth="2" fill="rgba(88,166,255,0.08)" />
     <path d="M26 32l4 4 8-8" stroke={C.success} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
   </svg>
@@ -266,7 +266,8 @@ function MobileMenu({ scrollTo }: { scrollTo: (id: string) => void }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        aria-label="Menu"
+        aria-label={open ? 'Close menu' : 'Open menu'}
+        aria-expanded={open}
         style={{
           background: 'none',
           border: 'none',
@@ -279,7 +280,7 @@ function MobileMenu({ scrollTo }: { scrollTo: (id: string) => void }) {
           justifyContent: 'center',
         }}
       >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M3 6h18M3 12h18M3 18h18" stroke={C.text} strokeWidth="2" strokeLinecap="round" />
         </svg>
       </button>
@@ -1051,7 +1052,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           <p style={{
             margin: 0,
             fontSize: 12,
-            color: '#484f58',
+            color: '#8b949e',
           }}>
             &copy; {new Date().getFullYear()} F.R.A.M.E. &mdash; Federated, Resilient, Authenticated Messaging with Encryption
           </p>

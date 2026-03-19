@@ -8,6 +8,7 @@
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "test": "jest --passWithNoTests",
+    "test:security": "jest --config jest.security.config.js --runInBand --forceExit",
     "lint": "eslint src/",
     "migrate": "sh migrate.sh"
   },

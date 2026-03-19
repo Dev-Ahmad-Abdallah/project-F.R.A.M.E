@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
-import { sendMessage, deleteMessage, syncMessages, SyncEvent, reactToMessage, markAsRead, ReactionData } from '../api/messagesAPI';
-import { renameRoom } from '../api/roomsAPI';
+import { sendMessage, deleteMessage, syncMessages, SyncEvent, reactToMessage, markAsRead, ReactionData, setTyping, getTypingUsers } from '../api/messagesAPI';
+import { renameRoom, listRooms } from '../api/roomsAPI';
+import type { RoomSummary } from '../api/roomsAPI';
 import { formatDisplayName } from '../utils/displayName';
 import {
   encryptForRoom,
@@ -195,6 +196,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [showNewMessagesPill, setShowNewMessagesPill] = useState(false);
   const isNearBottomRef = useRef(true);
 
+  // Typing indicator state
+  const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastTypingSentRef = useRef<number>(0);
+
+  // Message forwarding state
+  const [forwardEventId, setForwardEventId] = useState<string | null>(null);
+  const [forwardRooms, setForwardRooms] = useState<RoomSummary[]>([]);
+  const [showForwardDialog, setShowForwardDialog] = useState(false);
+
   // Inline rename state
   const [isEditingName, setIsEditingName] = useState(false);
   const [editNameValue, setEditNameValue] = useState('');
@@ -310,7 +322,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
           40% { transform: translateY(-4px); opacity: 1; }
         }
-        textarea::placeholder { color: #484f58; }
+        textarea::placeholder { color: #8b949e; }
         @keyframes frame-msg-slide-up {
           0% { opacity: 0; transform: translateY(20px); }
           100% { opacity: 1; transform: translateY(0); }
@@ -687,7 +699,90 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     const lineHeight = 20;
     const maxHeight = lineHeight * 5 + 16;
     ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`;
+
+    // Send typing indicator (throttled to every 3 seconds)
+    const now = Date.now();
+    if (e.target.value.trim() && now - lastTypingSentRef.current > 3000) {
+      lastTypingSentRef.current = now;
+      setTyping(roomId, true).catch(() => undefined);
+    }
+
+    // Clear typing after 3 seconds of no input
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    if (e.target.value.trim()) {
+      typingTimeoutRef.current = setTimeout(() => {
+        setTyping(roomId, false).catch(() => undefined);
+      }, 3000);
+    } else {
+      setTyping(roomId, false).catch(() => undefined);
+    }
   };
+
+  // ── Typing indicator polling ──
+  useEffect(() => {
+    const pollTyping = async () => {
+      try {
+        const result = await getTypingUsers(roomId);
+        setTypingUsers(result.typingUserIds);
+      } catch { /* ignore polling errors */ }
+    };
+    void pollTyping();
+    const interval = setInterval(() => void pollTyping(), 2000);
+    return () => {
+      clearInterval(interval);
+      setTypingUsers([]);
+    };
+  }, [roomId]);
+
+  // Cleanup typing state on unmount or room change
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
+      setTyping(roomId, false).catch(() => undefined);
+    };
+  }, [roomId]);
+
+  // ── Message forwarding ──
+  const handleForwardMessage = useCallback(async (eventId: string) => {
+    setContextMenuEventId(null);
+    setContextMenuPos(null);
+    setForwardEventId(eventId);
+    try {
+      const rooms = await listRooms();
+      setForwardRooms(rooms.filter((r) => r.roomId !== roomId));
+      setShowForwardDialog(true);
+    } catch (err) {
+      console.error('Failed to load rooms for forwarding:', err);
+    }
+  }, [roomId]);
+
+  const handleForwardToRoom = useCallback(async (targetRoomId: string, targetRoomName: string) => {
+    if (!forwardEventId) return;
+    const msg = messages.find((m) => m.event.eventId === forwardEventId);
+    if (!msg || !msg.plaintext) return;
+
+    const body = typeof msg.plaintext.body === 'string' ? msg.plaintext.body : JSON.stringify(msg.plaintext);
+    try {
+      const plaintext: Record<string, unknown> = {
+        msgtype: 'm.text',
+        body,
+      };
+      const encryptedContent = await encryptForRoom(
+        targetRoomId,
+        'm.room.message',
+        plaintext,
+        memberUserIds,
+      );
+      await sendMessage(targetRoomId, 'm.room.encrypted', encryptedContent);
+      showToast?.('success', `Message forwarded to ${targetRoomName}`);
+    } catch (err) {
+      console.error('Failed to forward message:', err);
+      showToast?.('error', 'Failed to forward message');
+    }
+    setShowForwardDialog(false);
+    setForwardEventId(null);
+  }, [forwardEventId, messages, memberUserIds, showToast]);
 
   // ── Reaction handlers ──
 
@@ -740,9 +835,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleMessageContextMenu = (
     e: React.MouseEvent,
     eventId: string,
-    senderId: string,
+    _senderId: string,
   ) => {
-    if (senderId !== currentUserId) return;
     if (deletedEventIds.has(eventId)) return;
     e.preventDefault();
     setContextMenuEventId(eventId);
@@ -813,7 +907,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     ? DOMPurify.sanitize(roomDisplayName, PURIFY_CONFIG)
     : DOMPurify.sanitize(roomId, PURIFY_CONFIG);
 
-  const renderMessages = () => {
+  // Memoize message rendering — avoids recomputing grouping/date separators on
+  // unrelated state changes (emoji picker, context menu, textarea focus, etc.)
+  const renderedMessages = useMemo(() => {
     const elements: React.ReactNode[] = [];
     let lastSenderId: string | null = null;
     let lastTimestamp: Date | null = null;
@@ -950,10 +1046,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     <button
                       key={emoji}
                       type="button"
+                      // eslint-disable-next-line security/detect-object-injection
                       style={{ ...styles.reactionBadge, ...(reactions[emoji].users.includes(currentUserId) ? styles.reactionBadgeOwn : {}) }}
                       onClick={() => void handleReact(event.eventId, emoji)}
+                      // eslint-disable-next-line security/detect-object-injection
                       title={reactions[emoji].users.map((u: string) => formatDisplayName(u)).join(', ')}
                     >
+                      {/* eslint-disable-next-line security/detect-object-injection */}
                       {emoji} {reactions[emoji].count}
                     </button>
                   ))}
@@ -973,7 +1072,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     return elements;
-  };
+  }, [messages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, isMobile]);
 
   const renderWelcome = () => {
     if (messages.length > 0 || optimisticMessages.length > 0) return null;
@@ -1086,7 +1185,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             </>
           )}
           {!isMobile && (
-            <button type="button" style={styles.infoButton} title="Room info" onClick={() => onOpenSettings?.()}>i</button>
+            <button type="button" style={styles.infoButton} title="Room info" aria-label="Room info" onClick={() => onOpenSettings?.()}>i</button>
           )}
         </div>
       </div>
@@ -1112,7 +1211,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         ) : (
           <>
         {renderWelcome()}
-        {renderMessages()}
+        {renderedMessages}
         {optimisticMessages.map((om) => (
           <div key={om.id} style={{ ...styles.messageBubble, ...(isMobile ? { maxWidth: '85%' } : {}), ...styles.ownMessage, ...(om.status === 'sending' ? styles.optimisticSending : {}), ...(om.status === 'failed' ? styles.optimisticFailed : {}), alignSelf: 'flex-end' as const, ...(recentlySentIds.has(om.id) ? { animation: 'frame-msg-slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}) }}>
             <div style={styles.messageBody}>
@@ -1127,11 +1226,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
           </div>
         ))}
-        <div style={styles.typingIndicator} aria-label="Typing indicator">
-          <div style={styles.typingDot} />
-          <div style={{ ...styles.typingDot, animationDelay: '0.2s' }} />
-          <div style={{ ...styles.typingDot, animationDelay: '0.4s' }} />
-        </div>
+        {typingUsers.length > 0 && (
+          <div style={{ ...styles.typingIndicator, display: 'flex' }} aria-label="Typing indicator">
+            <div style={styles.typingDot} />
+            <div style={{ ...styles.typingDot, animationDelay: '0.2s' }} />
+            <div style={{ ...styles.typingDot, animationDelay: '0.4s' }} />
+            <span style={{ fontSize: 11, color: '#8b949e', marginLeft: 4 }}>
+              {typingUsers.map((u) => formatDisplayName(u)).join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing...
+            </span>
+          </div>
+        )}
         <div ref={messagesEndRef} />
           </>
         )}
@@ -1157,7 +1261,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           <textarea ref={textareaRef} style={{ flex: 1, padding: '8px 6px', border: 'none', backgroundColor: 'transparent', color: '#c9d1d9', fontSize: isMobile ? 16 : 14, fontFamily: 'inherit', resize: 'none' as const, lineHeight: '20px', minHeight: 36, maxHeight: 116, overflow: 'auto', outline: 'none' }} value={inputValue} onChange={handleTextareaChange} onKeyDown={handleKeyDown} onFocus={() => setIsTextareaFocused(true)} onBlur={() => setIsTextareaFocused(false)} placeholder={viewOnceMode ? 'View-once message...' : 'Type a message...'} disabled={isSending} aria-label="Message input" rows={1} />
           {/* Character count indicator */}
           {inputValue.length > 500 && (
-            <span style={{ position: 'absolute' as const, bottom: 6, right: inputValue.trim() ? 88 : 44, fontSize: 10, color: inputValue.length > 4500 ? '#f85149' : '#484f58', fontFamily: 'inherit', pointerEvents: 'none' as const, transition: 'color 0.2s' }}>{inputValue.length}/5000</span>
+            <span style={{ position: 'absolute' as const, bottom: 6, right: inputValue.trim() ? 88 : 44, fontSize: 10, color: inputValue.length > 4500 ? '#f85149' : '#8b949e', fontFamily: 'inherit', pointerEvents: 'none' as const, transition: 'color 0.2s' }} aria-live="polite">{inputValue.length}/5000</span>
           )}
           {/* Emoji picker */}
           <div ref={emojiPickerRef} style={{ position: 'relative' as const, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2 }}>
@@ -1183,7 +1287,39 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {contextMenuEventId && contextMenuPos && (
         <div style={{ ...styles.contextMenu, top: contextMenuPos.y, left: contextMenuPos.x }}>
-          <button type="button" className="frame-context-menu-item" style={styles.contextMenuItem} onClick={() => void handleDeleteMessage(contextMenuEventId)}>Delete</button>
+          <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#c9d1d9' }} onClick={() => void handleForwardMessage(contextMenuEventId)}>Forward</button>
+          {messages.find((m) => m.event.eventId === contextMenuEventId)?.event.senderId === currentUserId && (
+            <button type="button" className="frame-context-menu-item" style={styles.contextMenuItem} onClick={() => void handleDeleteMessage(contextMenuEventId)}>Delete</button>
+          )}
+        </div>
+      )}
+
+      {/* Forward room picker dialog */}
+      {showForwardDialog && (
+        <div style={styles.forwardOverlay} onClick={() => { setShowForwardDialog(false); setForwardEventId(null); }}>
+          <div style={styles.forwardDialog} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.forwardTitle}>Forward to...</div>
+            <div style={styles.forwardList}>
+              {forwardRooms.length === 0 ? (
+                <div style={{ padding: 16, color: '#8b949e', textAlign: 'center' as const, fontSize: 13 }}>No other rooms available</div>
+              ) : (
+                forwardRooms.map((r) => {
+                  const name = r.name || r.members.map((m) => formatDisplayName(m.userId)).join(', ') || r.roomId;
+                  return (
+                    <button key={r.roomId} type="button" style={styles.forwardRoomItem} onClick={() => void handleForwardToRoom(r.roomId, name)}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#1c2128'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'; }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: getAvatarColor(r.roomId), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600, color: '#fff', flexShrink: 0 }}>
+                        {name.charAt(0).toUpperCase()}
+                      </div>
+                      <span style={{ fontSize: 13, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{DOMPurify.sanitize(name, PURIFY_CONFIG)}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            <button type="button" style={styles.forwardCancel} onClick={() => { setShowForwardDialog(false); setForwardEventId(null); }}>Cancel</button>
+          </div>
         </div>
       )}
 
@@ -1209,7 +1345,7 @@ const styles: Record<string, React.CSSProperties> = {
   verifiedBadge: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: '50%', backgroundColor: 'rgba(35, 134, 54, 0.2)', color: '#3fb950', fontSize: 10, fontWeight: 700, flexShrink: 0 },
   headerSubRow: { display: 'flex', alignItems: 'center', gap: 8 },
   headerMemberCount: { fontSize: 12, color: '#8b949e' },
-  infoButton: { width: 28, height: 28, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#8b949e', fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'border-color 0.15s, color 0.15s' },
+  infoButton: { width: 28, height: 28, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#c9d1d9', fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'border-color 0.15s, color 0.15s' },
   renameInput: { fontSize: 15, fontWeight: 600, color: '#e6edf3', backgroundColor: '#0d1117', border: '1px solid #58a6ff', borderRadius: 4, padding: '2px 6px', fontFamily: 'inherit', outline: 'none', width: '100%', maxWidth: 240 },
   encryptionBadge: { fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 4, backgroundColor: 'rgba(35, 134, 54, 0.15)', color: '#3fb950' },
   roomLabel: { fontSize: 13, color: '#c9d1d9' },
@@ -1217,9 +1353,9 @@ const styles: Record<string, React.CSSProperties> = {
   messageList: { flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 2, scrollBehavior: 'smooth' as const, WebkitOverflowScrolling: 'touch' as const },
   dateSeparator: { display: 'flex', alignItems: 'center', gap: 12, margin: '16px 0 8px' },
   dateSeparatorLine: { flex: 1, height: 1, backgroundColor: '#21262d' },
-  dateSeparatorText: { fontSize: 11, fontWeight: 600, color: '#484f58', textTransform: 'uppercase' as const, letterSpacing: '0.05em', flexShrink: 0 },
+  dateSeparatorText: { fontSize: 11, fontWeight: 600, color: '#8b949e', textTransform: 'uppercase' as const, letterSpacing: '0.05em', flexShrink: 0 },
   timeGap: { display: 'flex', justifyContent: 'center', margin: '8px 0 4px' },
-  timeGapText: { fontSize: 10, color: '#484f58', backgroundColor: '#161b22', padding: '2px 10px', borderRadius: 10 },
+  timeGapText: { fontSize: 10, color: '#8b949e', backgroundColor: '#161b22', padding: '2px 10px', borderRadius: 10 },
   emptyState: { textAlign: 'center', color: '#8b949e', marginTop: 40, fontSize: 14 },
   messageBubble: { maxWidth: '70%', padding: '8px 12px', borderRadius: 12, fontSize: 14, lineHeight: 1.4, wordBreak: 'break-word' },
   ownMessage: { backgroundColor: '#58a6ff', color: '#ffffff' },
@@ -1265,6 +1401,12 @@ const styles: Record<string, React.CSSProperties> = {
   reactionPicker: { position: 'fixed' as const, zIndex: 9999, display: 'flex', gap: 2, padding: '4px 6px', backgroundColor: '#1c2128', border: '1px solid rgba(99, 110, 123, 0.35)', borderRadius: 20, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', animation: 'frame-context-menu-in 0.15s ease-out' },
   reactionPickerEmoji: { width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, backgroundColor: 'transparent', border: 'none', borderRadius: '50%', cursor: 'pointer', transition: 'background-color 0.12s, transform 0.12s', fontFamily: 'inherit' },
   readReceiptIcon: { fontSize: 11, color: '#3fb950', opacity: 0.8, marginLeft: 2 },
+  forwardOverlay: { position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  forwardDialog: { backgroundColor: '#161b22', border: '1px solid #30363d', borderRadius: 12, width: 320, maxHeight: 420, display: 'flex', flexDirection: 'column' as const, boxShadow: '0 16px 48px rgba(0,0,0,0.5)', animation: 'frame-context-menu-in 0.15s ease-out' },
+  forwardTitle: { fontSize: 15, fontWeight: 600, color: '#e6edf3', padding: '16px 16px 12px', borderBottom: '1px solid #30363d' },
+  forwardList: { flex: 1, overflowY: 'auto' as const, padding: '4px 0' },
+  forwardRoomItem: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 16px', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const, transition: 'background-color 0.12s' },
+  forwardCancel: { padding: '10px', fontSize: 13, fontWeight: 600, color: '#8b949e', backgroundColor: 'transparent', border: 'none', borderTop: '1px solid #30363d', cursor: 'pointer', fontFamily: 'inherit', borderRadius: '0 0 12px 12px', transition: 'color 0.12s' },
 };
 
-export default ChatWindow;
+export default React.memo(ChatWindow);

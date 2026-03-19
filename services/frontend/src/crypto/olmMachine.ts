@@ -14,8 +14,17 @@
  *           Private key material never leaves the WASM boundary.
  */
 
-import * as sdk from '@matrix-org/matrix-sdk-crypto-wasm';
+// Type-only import — zero runtime cost, erased by TypeScript compiler
+import type * as SdkTypes from '@matrix-org/matrix-sdk-crypto-wasm';
 import { apiRequest } from '../api/client';
+
+// Lazy-load the WASM module — saves 2MB+ on initial page load.
+// The static `import * as sdk` was pulling ~2MB of WASM into the initial bundle.
+let sdk: typeof import('@matrix-org/matrix-sdk-crypto-wasm');
+async function loadSdk() {
+  if (!sdk) sdk = await import('@matrix-org/matrix-sdk-crypto-wasm');
+  return sdk;
+}
 
 // ── Types ──
 
@@ -27,7 +36,7 @@ export interface IdentityKeys {
 }
 
 /** Request types produced by OlmMachine.outgoingRequests() */
-type OutgoingRequest = sdk.KeysUploadRequest | sdk.KeysQueryRequest | sdk.KeysClaimRequest | sdk.ToDeviceRequest;
+type OutgoingRequest = SdkTypes.KeysUploadRequest | SdkTypes.KeysQueryRequest | SdkTypes.KeysClaimRequest | SdkTypes.ToDeviceRequest;
 
 // ── Mutex ──
 
@@ -113,7 +122,7 @@ function teardownBroadcastChannel(): void {
 
 // ── Singleton state ──
 
-let machine: sdk.OlmMachine | null = null;
+let machine: SdkTypes.OlmMachine | null = null;
 let currentUserId: string | null = null;
 let currentDeviceId: string | null = null;
 let wasmInitialised = false;
@@ -145,9 +154,10 @@ export async function initCrypto(
     );
   }
 
-  // Initialise WASM runtime once
+  // Lazy-load + initialise WASM runtime once
+  const sdkModule = await loadSdk();
   if (!wasmInitialised) {
-    await sdk.initAsync();
+    await sdkModule.initAsync();
     wasmInitialised = true;
   }
 
@@ -163,14 +173,14 @@ export async function initCrypto(
     destroyCrypto();
   }
 
-  const uid = new sdk.UserId(userId);
-  const did = new sdk.DeviceId(deviceId);
+  const uid = new sdkModule.UserId(userId);
+  const did = new sdkModule.DeviceId(deviceId);
 
   // Use IndexedDB-backed store for persistent E2EE state across sessions.
   // The store name is unique per user/device to avoid key confusion.
   const storeName = `frame-crypto-${userId}-${deviceId}`;
   const storePassphrase = `${userId}:${deviceId}:frame-olm-store`;
-  machine = await sdk.OlmMachine.initialize(uid, did, storeName, storePassphrase);
+  machine = await sdkModule.OlmMachine.initialize(uid, did, storeName, storePassphrase);
   currentUserId = userId;
   currentDeviceId = deviceId;
 
@@ -183,7 +193,7 @@ export async function initCrypto(
  *
  * @throws Error if `initCrypto()` has not been called yet.
  */
-export function getOlmMachine(): sdk.OlmMachine {
+export function getOlmMachine(): SdkTypes.OlmMachine {
   if (machine === null) {
     throw new Error(
       'OlmMachine not initialised. Call initCrypto() first.',
@@ -320,26 +330,27 @@ export function destroyCrypto(): void {
  * `markRequestAsSent`.
  */
 async function sendOutgoingRequest(request: OutgoingRequest): Promise<string> {
+  const sdkModule = await loadSdk();
   const body = JSON.parse(request.body) as Record<string, unknown>;
   switch (request.type) {
-    case sdk.RequestType.KeysUpload:
+    case sdkModule.RequestType.KeysUpload:
       return JSON.stringify(
         await apiRequest<Record<string, unknown>>('/keys/upload', { method: 'POST', body }),
       );
 
-    case sdk.RequestType.KeysQuery:
+    case sdkModule.RequestType.KeysQuery:
       return JSON.stringify(
         await apiRequest<Record<string, unknown>>('/keys/query', { method: 'POST', body }),
       );
 
-    case sdk.RequestType.KeysClaim:
+    case sdkModule.RequestType.KeysClaim:
       return JSON.stringify(
         await apiRequest<Record<string, unknown>>('/keys/claim', { method: 'POST', body }),
       );
 
-    case sdk.RequestType.ToDevice: {
+    case sdkModule.RequestType.ToDevice: {
       // ToDeviceRequest has event_type and txn_id properties
-      const toDeviceReq = request as sdk.ToDeviceRequest;
+      const toDeviceReq = request as SdkTypes.ToDeviceRequest;
       const eventType = toDeviceReq.event_type;
       const txnId = toDeviceReq.txn_id;
       return JSON.stringify(

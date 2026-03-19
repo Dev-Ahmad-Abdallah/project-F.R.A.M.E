@@ -47,13 +47,80 @@ frame-frontend ──HTTPS──► frame-homeserver-a ◄──Federation──
 | `CORS_ORIGINS` | `https://frame.up.railway.app` | Manual |
 
 ### frame-homeserver-b
-Same variables, different values pointing to PG-B, Redis-B, domain `frame-b`.
+| Variable | Value | Source |
+|----------|-------|--------|
+| `DATABASE_URL` | `postgresql://...` | Railway auto-injected (linked to PG-B) |
+| `REDIS_URL` | `redis://...` | Railway auto-injected (linked to Redis-B) |
+| `PORT` | `3000` | Railway auto-set |
+| `NODE_ENV` | `production` | Manual |
+| `JWT_SECRET` | `<random 64 chars>` (unique, different from Server A) | Manual |
+| `BCRYPT_SALT_ROUNDS` | `12` | Manual |
+| `HOMESERVER_DOMAIN` | `frame-b.up.railway.app` | Manual |
+| `FEDERATION_SIGNING_KEY` | `<Ed25519 private key>` (unique, different from Server A) | Manual |
+| `FEDERATION_PEERS` | `frame-a.up.railway.app` | Manual |
+| `CORS_ORIGINS` | `https://frame.up.railway.app` | Manual |
+
+> Generate signing keys with `./scripts/generate-federation-keys.sh`. Each server must have its own unique key. See `docs/operations/federation-deployment.md` for the full deployment guide.
 
 ### frame-frontend
 | Variable | Value | Source |
 |----------|-------|--------|
 | `REACT_APP_HOMESERVER_URL` | `https://frame-a.up.railway.app` | Manual (build-time) |
 | `PORT` | `80` | Railway auto-set |
+
+---
+
+## Federation Network Topology
+
+```
+                    Public Internet (HTTPS/TLS)
+                           │
+          ┌────────────────┼────────────────┐
+          │                │                │
+          ▼                ▼                ▼
+  ┌──────────────┐  ┌──────────────┐  ┌──────────┐
+  │ Homeserver A │  │ Homeserver B │  │ Frontend │
+  │ :3000        │  │ :3000        │  │ :80      │
+  │ frame-a.up.  │  │ frame-b.up.  │  │ frame.up.│
+  │ railway.app  │  │ railway.app  │  │ rail.app │
+  └──────┬───────┘  └──────┬───────┘  └────┬─────┘
+         │                 │               │
+    ┌────┴────┐       ┌────┴────┐          │
+    │  PG-A   │       │  PG-B   │     Connects to
+    │ Redis-A │       │ Redis-B │     Homeserver A
+    └─────────┘       └─────────┘
+
+  Homeserver A ◄─── Federation (HTTPS) ───► Homeserver B
+  FEDERATION_PEERS:                        FEDERATION_PEERS:
+  frame-b.up.railway.app                   frame-a.up.railway.app
+```
+
+Federation traffic flows over the public internet using Railway's automatic TLS. Each homeserver discovers its peer via `GET /.well-known/frame/server`, which returns the peer's host, port, and Ed25519 public key. Events are relayed via `POST /federation/send` with Ed25519 signatures for authentication.
+
+---
+
+## Build Configuration Per Service
+
+### frame-homeserver-a and frame-homeserver-b
+
+Both homeserver services share the same build configuration:
+
+| Setting | Value |
+|---------|-------|
+| Builder | Dockerfile |
+| Dockerfile Path | `services/homeserver/Dockerfile` |
+| Watch Patterns | `services/homeserver/**`, `shared/**` |
+| Health Check Path | `/health` |
+| Health Check Timeout | 30s |
+| Restart Policy | `ON_FAILURE` (max 5 retries) |
+
+### frame-frontend
+
+| Setting | Value |
+|---------|-------|
+| Builder | Dockerfile |
+| Dockerfile Path | `services/frontend/Dockerfile` |
+| Watch Patterns | `services/frontend/**`, `shared/**` |
 
 ---
 

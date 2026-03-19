@@ -51,7 +51,7 @@ jest.mock('../../src/config', () => ({
   }),
 }));
 
-import { createRoom, inviteToRoom, getRoomMemberList, renameRoom, updateSettings, leaveRoom } from '../../src/services/roomService';
+import { createRoom, inviteToRoom, getRoomMemberList, renameRoom, updateSettings, leaveRoom, joinRoom, joinRoomWithPassword } from '../../src/services/roomService';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -379,5 +379,181 @@ describe('leaveRoom', () => {
       statusCode: 404,
       code: 'M_NOT_FOUND',
     });
+  });
+});
+
+// ── joinRoom() ──
+
+describe('joinRoom', () => {
+  it('throws 403 for private rooms', async () => {
+    mockPoolQuery.mockResolvedValue({
+      rows: [{ room_id: '!private:test.frame.local', settings: { isPrivate: true } }],
+    });
+    mockIsRoomMember.mockResolvedValue(false);
+
+    await expect(
+      joinRoom('!private:test.frame.local', '@bob:test.frame.local'),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'M_FORBIDDEN',
+    });
+
+    expect(mockAddRoomMember).not.toHaveBeenCalled();
+  });
+
+  it('throws 403 for password-protected rooms without password', async () => {
+    mockPoolQuery.mockResolvedValue({
+      rows: [{ room_id: '!pw:test.frame.local', settings: { passwordHash: '$2b$10$hashedpw' } }],
+    });
+    mockIsRoomMember.mockResolvedValue(false);
+
+    await expect(
+      joinRoom('!pw:test.frame.local', '@bob:test.frame.local'),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'M_FORBIDDEN',
+    });
+
+    expect(mockAddRoomMember).not.toHaveBeenCalled();
+  });
+
+  it('returns joined:true if already a member', async () => {
+    mockPoolQuery.mockResolvedValue({
+      rows: [{ room_id: '!room:test.frame.local', settings: {} }],
+    });
+    mockIsRoomMember.mockResolvedValue(true);
+
+    const result = await joinRoom('!room:test.frame.local', '@alice:test.frame.local');
+
+    expect(result.joined).toBe(true);
+    expect(mockAddRoomMember).not.toHaveBeenCalled();
+  });
+
+  it('throws 404 when room does not exist', async () => {
+    mockPoolQuery.mockResolvedValue({ rows: [] });
+
+    await expect(
+      joinRoom('!nonexistent:test.frame.local', '@bob:test.frame.local'),
+    ).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'M_NOT_FOUND',
+    });
+  });
+});
+
+// ── joinRoomWithPassword() ──
+
+describe('joinRoomWithPassword', () => {
+  it('succeeds with correct password', async () => {
+    const bcrypt = require('bcrypt');
+    const passwordHash = await bcrypt.hash('secret123', 10);
+
+    mockPoolQuery.mockResolvedValue({
+      rows: [{ settings: { passwordHash } }],
+    });
+    mockIsRoomMember.mockResolvedValue(false);
+    mockAddRoomMember.mockResolvedValue(undefined);
+
+    const result = await joinRoomWithPassword(
+      '!room:test.frame.local',
+      '@bob:test.frame.local',
+      'secret123',
+    );
+
+    expect(result.joined).toBe(true);
+    expect(mockAddRoomMember).toHaveBeenCalledWith(
+      '!room:test.frame.local',
+      '@bob:test.frame.local',
+      'member',
+    );
+  });
+
+  it('throws 403 with wrong password', async () => {
+    const bcrypt = require('bcrypt');
+    const passwordHash = await bcrypt.hash('correctPassword', 10);
+
+    mockPoolQuery.mockResolvedValue({
+      rows: [{ settings: { passwordHash } }],
+    });
+    mockIsRoomMember.mockResolvedValue(false);
+
+    await expect(
+      joinRoomWithPassword('!room:test.frame.local', '@bob:test.frame.local', 'wrongPassword'),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'M_FORBIDDEN',
+    });
+
+    expect(mockAddRoomMember).not.toHaveBeenCalled();
+  });
+
+  it('throws 403 for invite-only room without password', async () => {
+    mockPoolQuery.mockResolvedValue({
+      rows: [{ settings: { isPrivate: true } }],
+    });
+    mockIsRoomMember.mockResolvedValue(false);
+
+    await expect(
+      joinRoomWithPassword('!room:test.frame.local', '@bob:test.frame.local', 'anypass'),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'M_FORBIDDEN',
+    });
+
+    expect(mockAddRoomMember).not.toHaveBeenCalled();
+  });
+
+  it('throws 403 when password-protected room and no password provided', async () => {
+    const bcrypt = require('bcrypt');
+    const passwordHash = await bcrypt.hash('secret', 10);
+
+    mockPoolQuery.mockResolvedValue({
+      rows: [{ settings: { passwordHash } }],
+    });
+    mockIsRoomMember.mockResolvedValue(false);
+
+    await expect(
+      joinRoomWithPassword('!room:test.frame.local', '@bob:test.frame.local'),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'M_FORBIDDEN',
+    });
+
+    expect(mockAddRoomMember).not.toHaveBeenCalled();
+  });
+
+  it('returns joined:true if already a member', async () => {
+    mockPoolQuery.mockResolvedValue({
+      rows: [{ settings: { passwordHash: 'hash' } }],
+    });
+    mockIsRoomMember.mockResolvedValue(true);
+
+    const result = await joinRoomWithPassword(
+      '!room:test.frame.local',
+      '@alice:test.frame.local',
+      'any',
+    );
+
+    expect(result.joined).toBe(true);
+    expect(mockAddRoomMember).not.toHaveBeenCalled();
+  });
+});
+
+// ── inviteToRoom() — non-existent user ──
+
+describe('inviteToRoom - non-existent user', () => {
+  it('throws 404 when target user does not exist', async () => {
+    mockIsRoomMember
+      .mockResolvedValueOnce(true); // requester is member
+    mockFindUserById.mockResolvedValue(null); // target doesn't exist
+
+    await expect(
+      inviteToRoom('!room:test.frame.local', '@alice:test.frame.local', '@ghost:test.frame.local'),
+    ).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'M_NOT_FOUND',
+    });
+
+    expect(mockAddRoomMember).not.toHaveBeenCalled();
   });
 });
