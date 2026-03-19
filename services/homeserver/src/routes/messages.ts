@@ -226,7 +226,7 @@ messagesRouter.get(
     const keys = await redisClient.keys(pattern);
     const typingUserIds = keys
       .map((k) => k.replace(`typing:${roomId}:`, ''))
-      .filter((userId) => userId !== req.auth!.sub);
+      .filter((userId) => userId !== req.auth?.sub);
 
     res.json({ typingUserIds });
   })

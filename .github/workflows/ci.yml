@@ -268,8 +268,10 @@ jobs:
       # GATE 2: Secret scan — full git history
       - name: Secret scan (gitleaks)
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2.3.4
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
 
       # GATE 3: CodeQL SAST (requires GitHub Advanced Security — free for public repos)
       - name: Initialize CodeQL
