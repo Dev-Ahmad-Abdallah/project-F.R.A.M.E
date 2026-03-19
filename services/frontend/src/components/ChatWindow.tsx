@@ -194,6 +194,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [voiceStream, setVoiceStream] = useState<MediaStream | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [contextMenuEventId, setContextMenuEventId] = useState<string | null>(null);
@@ -2367,7 +2368,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         <div style={{ padding: 8, borderTop: '1px solid #f85149', backgroundColor: 'rgba(248,81,73,0.05)' }}>
           <VoiceRecorder
             onSend={(audio, dur, mime) => { void handleVoiceSend(audio, dur, mime); }}
-            onCancel={() => setIsRecordingVoice(false)}
+            onCancel={() => { setIsRecordingVoice(false); setVoiceStream(null); }}
+            stream={voiceStream}
           />
         </div>
       ) : (
@@ -2441,7 +2443,20 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
           {/* Mic button — show when no text typed */}
           {!inputValue.trim() && (
-            <button type="button" onClick={() => setIsRecordingVoice(true)} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2, borderRadius: 8, transition: 'color 0.15s, background-color 0.15s', minWidth: 44, minHeight: 44 }} title="Record voice message" aria-label="Record voice message" onMouseEnter={(e) => { e.currentTarget.style.color = '#3fb950'; e.currentTarget.style.backgroundColor = 'rgba(63,185,80,0.1)'; }} onMouseLeave={(e) => { e.currentTarget.style.color = '#8b949e'; e.currentTarget.style.backgroundColor = 'transparent'; }}>
+            <button type="button" onClick={async () => {
+              // Acquire mic stream IN the click handler to preserve user gesture chain.
+              // Browsers block getUserMedia if called outside a direct user interaction.
+              try {
+                (window as unknown as Record<string, unknown>).__framePermissionPending = true;
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                (window as unknown as Record<string, unknown>).__framePermissionPending = false;
+                setVoiceStream(stream);
+                setIsRecordingVoice(true);
+              } catch {
+                (window as unknown as Record<string, unknown>).__framePermissionPending = false;
+                showToast?.('error', 'Microphone access denied. Check your browser permissions.', { duration: 5000 });
+              }
+            }} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2, borderRadius: 8, transition: 'color 0.15s, background-color 0.15s', minWidth: 44, minHeight: 44 }} title="Record voice message" aria-label="Record voice message" onMouseEnter={(e) => { e.currentTarget.style.color = '#3fb950'; e.currentTarget.style.backgroundColor = 'rgba(63,185,80,0.1)'; }} onMouseLeave={(e) => { e.currentTarget.style.color = '#8b949e'; e.currentTarget.style.backgroundColor = 'transparent'; }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
             </button>
           )}

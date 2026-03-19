@@ -3,6 +3,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 interface VoiceRecorderProps {
   onSend: (audioBase64: string, durationMs: number, mimeType: string) => void;
   onCancel: () => void;
+  /** Pre-acquired MediaStream from the parent's click handler (preserves user gesture chain) */
+  stream?: MediaStream | null;
 }
 
 const MAX_DURATION_S = 60;
@@ -29,7 +31,7 @@ function getErrorMessage(err: unknown): string {
   return 'Could not start recording';
 }
 
-const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onCancel }) => {
+const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onCancel, stream: preAcquiredStream }) => {
   const [state, setState] = useState<'starting' | 'requesting' | 'recording' | 'error'>('starting');
   const [elapsed, setElapsed] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
@@ -179,14 +181,14 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onCancel }) => {
     }
   }, [cleanup, beginRecordingWithStream]);
 
-  // On mount: show a brief "starting" state, then request mic access.
-  // The component is rendered in response to a user gesture (mic button click),
-  // so getUserMedia is allowed by the browser.
+  // On mount: use pre-acquired stream if available (preserves user gesture chain),
+  // otherwise fall back to requesting mic access (may fail in strict browsers).
   useEffect(() => {
-    const timer = setTimeout(() => {
+    if (preAcquiredStream) {
+      beginRecordingWithStream(preAcquiredStream);
+    } else {
       void requestMicAccess();
-    }, 100);
-    return () => clearTimeout(timer);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
