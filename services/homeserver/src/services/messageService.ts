@@ -100,16 +100,31 @@ export async function syncMessages(
   since: number,
   limit: number,
   timeout: number
-): Promise<{ events: Record<string, unknown>[]; nextBatch: string; hasMore: boolean }> {
-  // First check for pending events
+): Promise<{ events: Record<string, unknown>[]; nextBatch: string; hasMore: boolean; to_device?: unknown[] }> {
+  // Fetch pending to-device messages (Megolm key shares, etc.)
+  const toDeviceResult = await pool.query(
+    `DELETE FROM to_device_messages
+     WHERE recipient_user_id = $1 AND recipient_device_id = $2
+     RETURNING sender_user_id, sender_device_id, event_type, content`,
+    [userId, deviceId]
+  );
+
+  const toDeviceEvents = toDeviceResult.rows.map((row: { sender_user_id: string; sender_device_id: string; event_type: string; content: unknown }) => ({
+    sender: row.sender_user_id,
+    sender_device: row.sender_device_id,
+    type: row.event_type,
+    content: row.content,
+  }));
+
+  // Check for pending room events
   let events = await getEventsByUser(userId, since, limit);
 
-  // Long-polling: if no events and timeout > 0, wait for new events
-  if (events.length === 0 && timeout > 0) {
+  // Long-polling: if no events and no to-device messages and timeout > 0, wait
+  if (events.length === 0 && toDeviceEvents.length === 0 && timeout > 0) {
     events = await waitForEvents(userId, deviceId, since, limit, timeout);
   }
 
-  // Mark as delivered in batch (fixes N+1 sequential updates)
+  // Mark as delivered in batch
   if (events.length > 0) {
     const eventIds = events.map((e) => e.event_id);
     await pool.query(
@@ -134,6 +149,7 @@ export async function syncMessages(
     })),
     nextBatch: String(lastSeq),
     hasMore: events.length >= limit,
+    to_device: toDeviceEvents.length > 0 ? toDeviceEvents : undefined,
   };
 }
 

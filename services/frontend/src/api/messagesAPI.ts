@@ -28,10 +28,18 @@ export interface SyncEvent {
   sequenceId: number;
 }
 
+export interface ToDeviceEvent {
+  sender: string;
+  sender_device: string;
+  type: string;
+  content: Record<string, unknown>;
+}
+
 export interface SyncResponse {
   events: SyncEvent[];
   nextBatch: string;
   hasMore: boolean;
+  to_device?: ToDeviceEvent[];
 }
 
 /**

@@ -85,6 +85,9 @@ app.put('/sendToDevice/:eventType/:txnId', requireAuth, apiLimiter, asyncHandler
   let recipientCount = 0;
   const MAX_RECIPIENTS = 100;
 
+  // Collect all to-device messages for batch insert
+  const toDeviceRows: Array<[string, string, string, string, string, string]> = [];
+
   for (const [userId, devices] of Object.entries(messages)) {
     if (typeof devices !== 'object' || devices === null) continue;
     for (const [deviceId, content] of Object.entries(devices as Record<string, unknown>)) {
@@ -93,14 +96,35 @@ app.put('/sendToDevice/:eventType/:txnId', requireAuth, apiLimiter, asyncHandler
         res.status(400).json({ error: { code: 'M_BAD_JSON', message: 'Too many recipients' } });
         return;
       }
-      await redisClient.publish(`todevice:${userId}:${deviceId}`, JSON.stringify({
-        sender: req.auth!.sub,
-        senderDevice: req.auth!.deviceId,
-        type: req.params.eventType,
-        content,
-      }));
+      toDeviceRows.push([
+        userId, deviceId,
+        req.auth!.sub, req.auth!.deviceId,
+        req.params.eventType, JSON.stringify(content),
+      ]);
     }
   }
+
+  // Store to-device messages in DB for reliable delivery
+  if (toDeviceRows.length > 0) {
+    const values = toDeviceRows.map((_, i) => {
+      const offset = i * 6;
+      return `($${offset+1}, $${offset+2}, $${offset+3}, $${offset+4}, $${offset+5}, $${offset+6}::jsonb)`;
+    }).join(', ');
+
+    await pool.query(
+      `INSERT INTO to_device_messages (recipient_user_id, recipient_device_id, sender_user_id, sender_device_id, event_type, content)
+       VALUES ${values}`,
+      toDeviceRows.flat()
+    );
+
+    // Also notify via Redis pub/sub for instant delivery to online clients
+    await Promise.all(
+      toDeviceRows.map(([userId, deviceId]) =>
+        redisClient.publish(`device:${deviceId}`, JSON.stringify({ type: 'to_device' }))
+      )
+    );
+  }
+
   res.json({});
 }));
 
