@@ -1,12 +1,12 @@
 /**
- * DeviceVerificationGate — Full-screen overlay for new device verification.
+ * DeviceVerificationGate — Full-screen BLOCKING overlay for new device verification.
  *
- * Shown when a user logs in from a new/unrecognised device. Blocks access
- * to messages until the device is either verified or explicitly skipped.
+ * Shown when a user logs in from a new/unrecognised device AND other verified
+ * devices already exist. Blocks ALL access to messages until the device is
+ * verified via QR code or fingerprint comparison. There is NO skip option.
  *
- * Options:
- *   - "Verify with existing device" — opens the QR / fingerprint verification flow
- *   - "Skip for now" — marks device as skipped (unverified), shows persistent warning
+ * If this is the user's first/only device, it is auto-verified — the gate
+ * never appears.
  */
 
 import React, { useEffect } from 'react';
@@ -15,7 +15,6 @@ import { FONT_BODY, FONT_MONO } from '../globalStyles';
 // ── Local storage helpers ──
 
 const DEVICE_VERIFIED_PREFIX = 'frame-device-verified:';
-const DEVICE_SKIPPED_PREFIX = 'frame-device-skipped:';
 
 export function isDeviceVerified(deviceId: string): boolean {
   try {
@@ -28,24 +27,6 @@ export function isDeviceVerified(deviceId: string): boolean {
 export function setDeviceVerified(deviceId: string): void {
   try {
     localStorage.setItem(DEVICE_VERIFIED_PREFIX + deviceId, 'true');
-    // Clear skip flag if it was set
-    localStorage.removeItem(DEVICE_SKIPPED_PREFIX + deviceId);
-  } catch {
-    // localStorage not available
-  }
-}
-
-export function isDeviceSkipped(deviceId: string): boolean {
-  try {
-    return localStorage.getItem(DEVICE_SKIPPED_PREFIX + deviceId) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-export function setDeviceSkipped(deviceId: string): void {
-  try {
-    localStorage.setItem(DEVICE_SKIPPED_PREFIX + deviceId, 'true');
   } catch {
     // localStorage not available
   }
@@ -53,10 +34,10 @@ export function setDeviceSkipped(deviceId: string): void {
 
 /**
  * Check whether the current device needs verification gating.
- * Returns true if the device has NOT been verified and NOT been skipped.
+ * Returns true if the device has NOT been verified.
  */
 export function deviceNeedsVerification(deviceId: string): boolean {
-  return !isDeviceVerified(deviceId) && !isDeviceSkipped(deviceId);
+  return !isDeviceVerified(deviceId);
 }
 
 // ── Keyframes ──
@@ -78,8 +59,8 @@ function injectKeyframes() {
       100% { opacity: 1; }
     }
     @keyframes frameGatePulse {
-      0%, 100% { box-shadow: 0 0 30px rgba(88,166,255,0.15); }
-      50% { box-shadow: 0 0 50px rgba(88,166,255,0.3); }
+      0%, 100% { box-shadow: 0 0 30px rgba(63,185,80,0.15); }
+      50% { box-shadow: 0 0 50px rgba(63,185,80,0.3); }
     }
   `;
   document.head.appendChild(style);
@@ -90,7 +71,6 @@ function injectKeyframes() {
 interface DeviceVerificationGateProps {
   deviceId: string;
   onVerify: () => void;
-  onSkip: () => void;
 }
 
 // ── Component ──
@@ -98,35 +78,47 @@ interface DeviceVerificationGateProps {
 const DeviceVerificationGate: React.FC<DeviceVerificationGateProps> = ({
   deviceId,
   onVerify,
-  onSkip,
 }) => {
   useEffect(() => { injectKeyframes(); }, []);
+
+  // Block scrolling on the body while the gate is shown
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, []);
 
   return (
     <div style={gateStyles.overlay} role="alertdialog" aria-modal="true" aria-labelledby="device-gate-title">
       <div style={gateStyles.modal}>
+        {/* Scanline effect */}
+        <div style={gateStyles.scanlineOverlay} />
+
         {/* Shield icon */}
         <div style={gateStyles.iconContainer}>
-          <svg width="48" height="48" viewBox="0 0 64 64" fill="none">
-            <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="2.5" fill="rgba(88,166,255,0.08)" />
+          <svg width="56" height="56" viewBox="0 0 64 64" fill="none">
+            <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#3fb950" strokeWidth="2.5" fill="rgba(63,185,80,0.06)" />
             <path d="M32 20v12M32 38h.01" stroke="#d29922" strokeWidth="3" strokeLinecap="round" />
           </svg>
         </div>
 
-        <h2 id="device-gate-title" style={gateStyles.title}>New Device Detected</h2>
+        <h2 id="device-gate-title" style={gateStyles.title}>NEW DEVICE DETECTED</h2>
 
         <p style={gateStyles.description}>
-          This device has not been verified yet. For maximum security,
-          verify it with an existing trusted device.
+          This device must be verified before you can access your messages.
+        </p>
+
+        <p style={gateStyles.subdescription}>
+          Verify with an existing device by scanning a QR code or comparing fingerprints.
         </p>
 
         {/* Device ID display */}
         <div style={gateStyles.deviceIdBox}>
-          <span style={gateStyles.deviceIdLabel}>Device ID</span>
+          <span style={gateStyles.deviceIdLabel}>DEVICE ID</span>
           <code style={gateStyles.deviceIdValue}>{deviceId}</code>
         </div>
 
-        {/* Actions */}
+        {/* Single action — verify only */}
         <div style={gateStyles.actions}>
           <button
             type="button"
@@ -137,47 +129,17 @@ const DeviceVerificationGate: React.FC<DeviceVerificationGateProps> = ({
               <path d="M9 1.5L3 4.5v4.5c0 4.14 2.56 7.01 6 8.5 3.44-1.49 6-4.36 6-8.5V4.5L9 1.5z" stroke="#fff" strokeWidth="1.5" strokeLinejoin="round" fill="none" />
               <path d="M6.5 9.5l2 2 3.5-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
             </svg>
-            Verify with existing device
-          </button>
-
-          <button
-            type="button"
-            style={gateStyles.skipButton}
-            onClick={onSkip}
-          >
-            Skip for now
+            VERIFY DEVICE
           </button>
         </div>
 
         <p style={gateStyles.footnote}>
-          Messages remain end-to-end encrypted regardless of verification status.
-          Verification confirms this device is trusted by you.
+          Verification confirms this device is trusted by you. Access is blocked until verification is complete.
         </p>
       </div>
     </div>
   );
 };
-
-// ── Warning Banner Component ──
-
-interface UnverifiedBannerProps {
-  onVerify: () => void;
-}
-
-export const UnverifiedDeviceBanner: React.FC<UnverifiedBannerProps> = ({ onVerify }) => (
-  <div style={bannerStyles.container} role="alert">
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-      <path d="M8 1.5L3 4.5v4c0 3.5 2.1 5.8 5 7 2.9-1.2 5-3.5 5-7v-4L8 1.5z" stroke="#d29922" strokeWidth="1.2" strokeLinejoin="round" fill="none" />
-      <path d="M8 5v3M8 10h.01" stroke="#d29922" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
-    <span style={bannerStyles.text}>
-      This device is unverified. Verify to ensure message security.
-    </span>
-    <button type="button" style={bannerStyles.verifyBtn} onClick={onVerify}>
-      Verify
-    </button>
-  </div>
-);
 
 // ── Styles ──
 
@@ -188,40 +150,70 @@ const gateStyles: Record<string, React.CSSProperties> = {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    backgroundColor: '#0d1117',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 10000,
+    zIndex: 999999,
     padding: 16,
     animation: 'frameGateOverlayFade 0.3s ease-out',
   },
   modal: {
+    position: 'relative' as const,
     backgroundColor: '#161b22',
     border: '1px solid #30363d',
-    borderRadius: 16,
-    padding: 32,
+    borderTop: '2px solid #3fb950',
+    borderRadius: 2,
+    padding: '40px 32px 32px',
     maxWidth: 440,
     width: '100%',
     fontFamily: FONT_BODY,
     color: '#c9d1d9',
     textAlign: 'center' as const,
+    overflow: 'hidden',
     animation: 'frameGateEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1), frameGatePulse 3s ease-in-out infinite',
+  },
+  scanlineOverlay: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    pointerEvents: 'none' as const,
+    background: 'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(63,185,80,0.008) 3px, rgba(63,185,80,0.008) 4px)',
+    zIndex: 0,
   },
   iconContainer: {
     marginBottom: 20,
+    position: 'relative' as const,
+    zIndex: 1,
   },
   title: {
     margin: '0 0 12px',
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: 700,
     color: '#f0f6fc',
+    letterSpacing: '0.15em',
+    textTransform: 'uppercase' as const,
+    position: 'relative' as const,
+    zIndex: 1,
   },
   description: {
-    margin: '0 0 20px',
+    margin: '0 0 8px',
     fontSize: 14,
     lineHeight: 1.6,
+    color: '#c9d1d9',
+    fontWeight: 500,
+    position: 'relative' as const,
+    zIndex: 1,
+  },
+  subdescription: {
+    margin: '0 0 20px',
+    fontSize: 13,
+    lineHeight: 1.5,
     color: '#8b949e',
+    position: 'relative' as const,
+    zIndex: 1,
   },
   deviceIdBox: {
     display: 'flex',
@@ -230,19 +222,21 @@ const gateStyles: Record<string, React.CSSProperties> = {
     padding: 14,
     backgroundColor: '#0d1117',
     border: '1px solid #30363d',
-    borderRadius: 8,
+    borderRadius: 2,
     marginBottom: 24,
+    position: 'relative' as const,
+    zIndex: 1,
   },
   deviceIdLabel: {
     fontSize: 10,
-    fontWeight: 600,
+    fontWeight: 700,
     color: '#8b949e',
     textTransform: 'uppercase' as const,
-    letterSpacing: '0.5px',
+    letterSpacing: '0.12em',
   },
   deviceIdValue: {
     fontSize: 13,
-    color: '#58a6ff',
+    color: '#3fb950',
     fontFamily: FONT_MONO,
     wordBreak: 'break-all' as const,
   },
@@ -251,69 +245,32 @@ const gateStyles: Record<string, React.CSSProperties> = {
     flexDirection: 'column' as const,
     gap: 10,
     marginBottom: 20,
+    position: 'relative' as const,
+    zIndex: 1,
   },
   verifyButton: {
     padding: '14px 20px',
-    fontSize: 15,
-    fontWeight: 600,
+    fontSize: 14,
+    fontWeight: 700,
     backgroundColor: '#238636',
     color: '#ffffff',
-    border: 'none',
-    borderRadius: 8,
+    border: '1px solid rgba(63,185,80,0.3)',
+    borderRadius: 2,
     cursor: 'pointer',
     width: '100%',
     minHeight: 48,
     transition: 'background-color 0.15s',
     fontFamily: 'inherit',
-  },
-  skipButton: {
-    padding: '12px 20px',
-    fontSize: 14,
-    fontWeight: 500,
-    backgroundColor: 'transparent',
-    color: '#8b949e',
-    border: '1px solid #30363d',
-    borderRadius: 8,
-    cursor: 'pointer',
-    width: '100%',
-    minHeight: 44,
-    transition: 'border-color 0.15s, color 0.15s',
-    fontFamily: 'inherit',
+    letterSpacing: '0.1em',
+    textTransform: 'uppercase' as const,
   },
   footnote: {
     margin: 0,
     fontSize: 12,
     lineHeight: 1.5,
     color: '#6e7681',
-  },
-};
-
-const bannerStyles: Record<string, React.CSSProperties> = {
-  container: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 10,
-    padding: '8px 16px',
-    backgroundColor: 'rgba(210, 153, 34, 0.1)',
-    borderBottom: '1px solid rgba(210, 153, 34, 0.25)',
-    fontSize: 13,
-    color: '#d29922',
-    flexShrink: 0,
-  },
-  text: {
-    flex: 1,
-  },
-  verifyBtn: {
-    padding: '4px 14px',
-    fontSize: 12,
-    fontWeight: 600,
-    backgroundColor: 'rgba(210, 153, 34, 0.15)',
-    color: '#d29922',
-    border: '1px solid rgba(210, 153, 34, 0.3)',
-    borderRadius: 6,
-    cursor: 'pointer',
-    whiteSpace: 'nowrap' as const,
-    fontFamily: 'inherit',
+    position: 'relative' as const,
+    zIndex: 1,
   },
 };
 

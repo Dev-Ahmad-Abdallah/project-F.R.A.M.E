@@ -1662,7 +1662,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                           />
                         ) : null;
                       })()
-                    : <span>{(() => {
+                    : <span className={isOwn ? 'frame-msg-text-own' : 'frame-msg-text'}>{(() => {
                       const text = renderMessageContent(decrypted);
                       if (!searchQuery.trim()) return text;
                       const q = searchQuery.toLowerCase();
@@ -2083,7 +2083,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         {optimisticMessages.map((om) => (
           <div key={om.id} style={{ ...styles.messageBubble, ...(isMobile ? { maxWidth: '85%', padding: '10px 14px', fontSize: 'clamp(14px, 3.8vw, 16px)' } : { maxWidth: 'clamp(200px, 75%, 600px)' }), ...styles.ownMessage, ...(om.status === 'sending' ? styles.optimisticSending : {}), ...(om.status === 'failed' ? styles.optimisticFailed : {}), alignSelf: 'flex-end' as const, ...(recentlySentIds.has(om.id) ? { animation: 'frame-msg-slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}) }}>
             <div style={styles.messageBody}>
-              <span>{DOMPurify.sanitize(om.body, PURIFY_CONFIG)}</span>
+              <span className="frame-msg-text-own">{DOMPurify.sanitize(om.body, PURIFY_CONFIG)}</span>
             </div>
             <div style={styles.timestampRow}>
               <span style={styles.timestamp}>{formatRelativeTime(new Date(om.timestamp))}</span>
