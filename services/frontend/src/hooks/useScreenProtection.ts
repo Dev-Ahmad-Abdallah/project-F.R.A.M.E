@@ -321,14 +321,34 @@ export function useScreenProtection(): ScreenProtectionState {
   }, []);
 
   // ── 7. Window blur/focus ──
+  // Delay blur activation by 500ms to avoid triggering on browser permission
+  // dialogs (mic, camera, notifications) which steal focus briefly.
+  // The global window.__framePermissionPending flag is set by components
+  // that call getUserMedia/requestPermission so blur is suppressed entirely
+  // during permission flows.
   useEffect(() => {
-    const handleBlur = () => setIsBlurred(true);
-    const handleFocus = () => setIsBlurred(false);
+    let blurTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const handleBlur = () => {
+      // Don't activate if a permission dialog is pending
+      if ((window as unknown as Record<string, unknown>).__framePermissionPending) return;
+      blurTimer = setTimeout(() => {
+        // Re-check: focus may have returned during the delay
+        if (!document.hasFocus() && !(window as unknown as Record<string, unknown>).__framePermissionPending) {
+          setIsBlurred(true);
+        }
+      }, 500);
+    };
+    const handleFocus = () => {
+      if (blurTimer) { clearTimeout(blurTimer); blurTimer = null; }
+      setIsBlurred(false);
+    };
 
     window.addEventListener('blur', handleBlur);
     window.addEventListener('focus', handleFocus);
 
     return () => {
+      if (blurTimer) clearTimeout(blurTimer);
       window.removeEventListener('blur', handleBlur);
       window.removeEventListener('focus', handleFocus);
     };
