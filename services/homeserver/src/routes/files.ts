@@ -24,6 +24,8 @@ const ALLOWED_MIME_TYPES = new Set([
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/json',
   'text/csv',
+  'application/zip',
+  'application/x-zip-compressed',
 ]);
 
 // ── Multer setup (memory storage — encrypted blob goes straight to PG) ──

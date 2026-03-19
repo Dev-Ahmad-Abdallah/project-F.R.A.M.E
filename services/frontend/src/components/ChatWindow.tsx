@@ -22,7 +22,8 @@ import VoiceRecorder from './VoiceRecorder';
 import AudioPlayer from './AudioPlayer';
 import FileAttachment from './FileAttachment';
 import { encryptFile } from '../crypto/fileEncryption';
-import { uploadFile, ALLOWED_FILE_TYPES, MAX_FILE_SIZE, FRIENDLY_FILE_TYPES } from '../api/filesAPI';
+import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE, MAX_INLINE_FILE_SIZE, FRIENDLY_FILE_TYPES, FILE_ACCEPT_STRING } from '../api/filesAPI';
+import { formatFileSize } from '../crypto/fileEncryption';
 
 // ── Reaction Picker ──
 
@@ -259,6 +260,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Pending file preview (selected via picker, paste, or drag-drop)
+  const [pendingFile, setPendingFile] = useState<{
+    file: File;
+    previewUrl: string | null; // object URL for image thumbnails
+  } | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounterRef = useRef(0);
 
   // Contact status for DM header
   const [contactStatus, setContactStatus] = useState<UserStatus>('offline');
@@ -968,24 +977,58 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [roomId, memberUserIds]);
 
-  // ── File attachment handler ──
-  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    // Reset input so the same file can be re-selected
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    if (!file || !roomId) return;
+  // ── File attachment: staging ──
 
+  /** Validate and stage a file for preview before sending */
+  const stageFile = useCallback((file: File) => {
     // Validate file type
     if (!ALLOWED_FILE_TYPES.has(file.type)) {
       showToast?.('error', `File type not allowed. Supported: ${FRIENDLY_FILE_TYPES}`, { duration: 5000 });
       return;
     }
-
     // Validate file size
     if (file.size > MAX_FILE_SIZE) {
-      showToast?.('error', 'File too large. Maximum 10MB.', { duration: 4000 });
+      showToast?.('error', 'File too large. Maximum 10 MB.', { duration: 4000 });
       return;
     }
+    // For inline sending, enforce 5MB limit
+    if (file.size > MAX_INLINE_FILE_SIZE) {
+      showToast?.('error', 'File too large for inline sending (max 5 MB). Server upload coming soon.', { duration: 5000 });
+      return;
+    }
+
+    // Create preview URL for images
+    const isImage = file.type.startsWith('image/');
+    const previewUrl = isImage ? URL.createObjectURL(file) : null;
+
+    // Revoke previous preview URL if any
+    if (pendingFile?.previewUrl) {
+      URL.revokeObjectURL(pendingFile.previewUrl);
+    }
+
+    setPendingFile({ file, previewUrl });
+  }, [showToast, pendingFile]);
+
+  /** Cancel pending file */
+  const cancelPendingFile = useCallback(() => {
+    if (pendingFile?.previewUrl) {
+      URL.revokeObjectURL(pendingFile.previewUrl);
+    }
+    setPendingFile(null);
+  }, [pendingFile]);
+
+  /** File input change handler — stages the file for preview */
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (!file) return;
+    stageFile(file);
+  }, [stageFile]);
+
+  /** Send the pending file — encrypt inline as base64 */
+  const handleSendFile = useCallback(async () => {
+    if (!pendingFile || !roomId || isUploadingFile) return;
+    const file = pendingFile.file;
 
     setIsUploadingFile(true);
     setUploadStatus('Encrypting...');
@@ -995,26 +1038,28 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       const arrayBuffer = await file.arrayBuffer();
       const plainBytes = new Uint8Array(arrayBuffer);
 
-      // Encrypt client-side
+      // Encrypt client-side with AES-256-GCM
       const { encryptedBytes, key: fileKey, iv: fileIv } = await encryptFile(plainBytes);
-
-      setUploadStatus('Uploading...');
-
-      // Upload encrypted blob
-      const result = await uploadFile(encryptedBytes, roomId, file.name, file.type);
 
       setUploadStatus('Sending...');
 
-      // Build E2EE message with file metadata + decryption key
+      // Encode encrypted bytes as base64 for inline transport
+      const fileDataBase64 = btoa(
+        encryptedBytes.reduce((acc, byte) => acc + String.fromCharCode(byte), ''),
+      );
+
+      const isImage = file.type.startsWith('image/');
+
+      // Build E2EE message with inline file data
       const plaintext: Record<string, unknown> = {
-        msgtype: 'm.file',
+        msgtype: isImage ? 'm.image' : 'm.file',
         body: file.name,
-        fileId: result.fileId,
-        fileName: result.fileName,
-        mimeType: result.mimeType,
-        fileSize: result.fileSize,
+        filename: file.name,
+        fileData: fileDataBase64,
         fileKey,
         fileIv,
+        mimeType: file.type || 'application/octet-stream',
+        fileSize: file.size,
       };
 
       const encryptedContent = await encryptForRoom(
@@ -1026,17 +1071,80 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       await sendMessage(roomId, 'm.room.encrypted', encryptedContent);
 
+      // Clean up
+      if (pendingFile.previewUrl) URL.revokeObjectURL(pendingFile.previewUrl);
+      setPendingFile(null);
       playSendSound();
-      showToast?.('success', `File sent: ${file.name}`, { duration: 3000 });
     } catch (err) {
-      console.error('[FileAttach] Upload failed:', err);
+      console.error('[FileAttach] Send failed:', err);
       playErrorSound();
       showToast?.('error', 'Failed to send file. Please try again.', { duration: 4000, dedupeKey: 'file-fail' });
     } finally {
       setIsUploadingFile(false);
       setUploadStatus(null);
     }
-  }, [roomId, memberUserIds, showToast]);
+  }, [pendingFile, roomId, isUploadingFile, memberUserIds, showToast]);
+
+  // ── Paste handler: capture images from clipboard ──
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      if (!e.clipboardData) return;
+      const items = e.clipboardData.items;
+      for (let i = 0; i < items.length; i++) {
+        // eslint-disable-next-line security/detect-object-injection
+        const item = items[i];
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (file) {
+            // Give pasted images a descriptive name
+            const ext = file.type.split('/')[1] || 'png';
+            const namedFile = new File([file], `pasted-image-${Date.now()}.${ext}`, { type: file.type });
+            stageFile(namedFile);
+          }
+          return;
+        }
+      }
+    };
+
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [stageFile]);
+
+  // ── Drag and drop handlers ──
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragOver(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      stageFile(files[0]);
+    }
+  }, [stageFile]);
 
   const handleRetry = (om: OptimisticMessage) => {
     setOptimisticMessages((prev) => prev.filter((m) => m.id !== om.id));
@@ -1304,31 +1412,36 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   function isFileMessage(content: unknown): boolean {
     const obj = parseContentIfString(content);
-    return obj != null && obj.msgtype === 'm.file' && typeof obj.fileId === 'string';
+    if (obj == null) return false;
+    const mt = obj.msgtype;
+    if (mt !== 'm.file' && mt !== 'm.image') return false;
+    // Support both inline (fileData) and server-hosted (fileId)
+    return typeof obj.fileId === 'string' || typeof obj.fileData === 'string';
   }
 
   function getFileContent(content: unknown): {
-    fileId: string; fileName: string; mimeType: string;
+    fileId?: string; fileData?: string; fileName: string; mimeType: string;
     fileSize: number; fileKey: string; fileIv: string;
   } | null {
     const obj = parseContentIfString(content);
-    if (
-      obj != null && obj.msgtype === 'm.file' &&
-      typeof obj.fileId === 'string' &&
-      typeof obj.fileName === 'string' &&
-      typeof obj.fileKey === 'string' &&
-      typeof obj.fileIv === 'string'
-    ) {
-      return {
-        fileId: String(obj.fileId),
-        fileName: String(obj.fileName),
-        mimeType: typeof obj.mimeType === 'string' ? String(obj.mimeType) : 'application/octet-stream',
-        fileSize: typeof obj.fileSize === 'number' ? Number(obj.fileSize) : 0,
-        fileKey: String(obj.fileKey),
-        fileIv: String(obj.fileIv),
-      };
-    }
-    return null;
+    if (obj == null) return null;
+    const mt = obj.msgtype;
+    if (mt !== 'm.file' && mt !== 'm.image') return null;
+    const hasFileId = typeof obj.fileId === 'string';
+    const hasFileData = typeof obj.fileData === 'string';
+    if (!hasFileId && !hasFileData) return null;
+    if (typeof obj.fileKey !== 'string' || typeof obj.fileIv !== 'string') return null;
+    return {
+      fileId: hasFileId ? String(obj.fileId) : undefined,
+      fileData: hasFileData ? String(obj.fileData) : undefined,
+      fileName: typeof obj.fileName === 'string' ? String(obj.fileName)
+        : typeof obj.filename === 'string' ? String(obj.filename)
+        : typeof obj.body === 'string' ? String(obj.body) : 'file',
+      mimeType: typeof obj.mimeType === 'string' ? String(obj.mimeType) : 'application/octet-stream',
+      fileSize: typeof obj.fileSize === 'number' ? Number(obj.fileSize) : 0,
+      fileKey: String(obj.fileKey),
+      fileIv: String(obj.fileIv),
+    };
   }
 
   const renderEncryptionIcon = (decrypted: DecryptedEvent): React.ReactNode => {
@@ -1642,6 +1755,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                         return fc ? (
                           <FileAttachment
                             fileId={fc.fileId}
+                            fileData={fc.fileData}
                             fileName={fc.fileName}
                             mimeType={fc.mimeType}
                             fileSize={fc.fileSize}
@@ -1797,7 +1911,37 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   return (
-    <div style={styles.container}>
+    <div
+      style={styles.container}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drag-and-drop overlay */}
+      {isDragOver && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(63, 185, 80, 0.08)',
+          border: '2px dashed #3fb950',
+          borderRadius: 3,
+          zIndex: 9000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+            color: '#3fb950', fontWeight: 600, fontSize: 15,
+          }}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#3fb950" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
+            DROP FILE TO ATTACH
+          </div>
+        </div>
+      )}
       {/* Secure channel green accent line */}
       <div style={{ height: 2, backgroundColor: '#3fb950', boxShadow: '0 0 8px rgba(63,185,80,0.4)', flexShrink: 0 }} />
       {/* Room header -- compact on mobile (item 2) */}
@@ -2133,6 +2277,77 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
       )}
 
+      {/* Pending file preview bar */}
+      {pendingFile && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px',
+          borderTop: '1px solid #30363d', backgroundColor: '#161b22',
+        }}>
+          {/* Thumbnail or file icon */}
+          {pendingFile.previewUrl ? (
+            <img
+              src={pendingFile.previewUrl}
+              alt={pendingFile.file.name}
+              style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4, border: '1px solid #30363d', flexShrink: 0 }}
+            />
+          ) : (
+            <div style={{
+              width: 48, height: 48, borderRadius: 4, border: '1px solid #30363d',
+              backgroundColor: '#0d1117', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+            </div>
+          )}
+          {/* File info */}
+          <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#c9d1d9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {pendingFile.file.name}
+            </div>
+            <div style={{ fontSize: 11, color: '#8b949e', marginTop: 1 }}>
+              {formatFileSize(pendingFile.file.size)}
+            </div>
+          </div>
+          {/* Cancel button */}
+          <button
+            type="button"
+            onClick={cancelPendingFile}
+            style={{
+              background: 'none', border: '1px solid #30363d', color: '#8b949e',
+              fontSize: 12, cursor: 'pointer', padding: '4px 10px', borderRadius: 4,
+              fontFamily: 'inherit', fontWeight: 600, flexShrink: 0,
+              transition: 'color 0.15s, border-color 0.15s',
+            }}
+            title="Remove attachment"
+            aria-label="Remove attachment"
+          >
+            CANCEL
+          </button>
+          {/* Send button */}
+          <button
+            type="button"
+            onClick={() => { void handleSendFile(); }}
+            disabled={isUploadingFile}
+            style={{
+              padding: '6px 14px', borderRadius: 3,
+              border: '1px solid rgba(63,185,80,0.3)', backgroundColor: '#238636',
+              color: '#fff', fontSize: 12, fontWeight: 700, cursor: isUploadingFile ? 'not-allowed' : 'pointer',
+              fontFamily: '"SF Mono", "Fira Code", monospace',
+              transition: 'background-color 0.15s, opacity 0.15s',
+              flexShrink: 0, opacity: isUploadingFile ? 0.5 : 1,
+              letterSpacing: '0.05em', textTransform: 'uppercase' as const,
+              boxShadow: '0 0 6px rgba(63,185,80,0.15)',
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}
+          >
+            {isUploadingFile ? (uploadStatus || 'SENDING...') : 'SEND'}
+          </button>
+        </div>
+      )}
+
       {/* Input area — unified bar with all controls inside */}
       {isRecordingVoice ? (
         <div style={{ padding: 8, borderTop: '1px solid #f85149', backgroundColor: 'rgba(248,81,73,0.05)' }}>
@@ -2148,9 +2363,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept={FILE_ACCEPT_STRING}
             style={{ display: 'none' }}
-            onChange={(e) => { void handleFileSelect(e); }}
+            onChange={handleFileSelect}
           />
           <button
             type="button"
