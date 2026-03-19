@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 
 interface VoiceRecorderProps {
-  onSend: (audioBase64: string, durationMs: number) => void;
+  onSend: (audioBase64: string, durationMs: number, mimeType: string) => void;
   onCancel: () => void;
 }
 
@@ -125,12 +125,13 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onCancel }) => {
 
     recorder.onstop = () => {
       const durationMs = Date.now() - startTimeRef.current;
-      const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+      const actualMimeType = recorder.mimeType || 'audio/webm';
+      const blob = new Blob(chunksRef.current, { type: actualMimeType });
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64 = (reader.result as string).split(',')[1];
         if (base64) {
-          onSend(base64, durationMs);
+          onSend(base64, durationMs, actualMimeType);
         }
       };
       reader.readAsDataURL(blob);
