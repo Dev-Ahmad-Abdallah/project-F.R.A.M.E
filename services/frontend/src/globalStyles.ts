@@ -19,17 +19,17 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 /* Focus visible */
 button:focus-visible, input:focus-visible, textarea:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px #58a6ff;
+  box-shadow: 0 0 0 2px #3fb950;
 }
 
 /* Input placeholder */
 input::placeholder { color: #8b949e; }
 
-/* Scrollbar styling for dark theme */
-::-webkit-scrollbar { width: 8px; }
+/* Scrollbar styling for dark theme — thin, precise */
+::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: #0d1117; }
-::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #484f58; }
+::-webkit-scrollbar-thumb { background: #1c2128; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #30363d; }
 
 /* Modal entrance animation */
 @keyframes frame-modal-enter {
@@ -41,6 +41,11 @@ input::placeholder { color: #8b949e; }
 @keyframes frame-scanline {
   0% { transform: translateY(-100%); }
   100% { transform: translateY(100%); }
+}
+
+/* Precision font weight for UI labels */
+button, label, span, [role="button"] {
+  font-weight: 500;
 }
 
 /* Smooth transitions */

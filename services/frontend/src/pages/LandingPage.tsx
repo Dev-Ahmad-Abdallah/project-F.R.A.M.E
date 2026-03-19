@@ -509,14 +509,15 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
             <button type="button" onClick={onGetStarted} style={{
               padding: '8px 20px',
               fontSize: 14,
-              fontWeight: 600,
+              fontWeight: 700,
               backgroundColor: C.accent,
               color: '#fff',
               border: 'none',
-              borderRadius: 6,
+              borderRadius: 4,
               cursor: 'pointer',
               fontFamily: C.font,
               minHeight: 44,
+              letterSpacing: '0.02em',
             }}>
               Sign In
             </button>
@@ -543,18 +544,27 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
             pointerEvents: 'none',
           }} />
 
-          {/* Subtle grid pattern */}
+          {/* Hexagonal cybersecurity grid pattern */}
           <div style={{
             position: 'absolute',
             inset: 0,
-            backgroundImage: `linear-gradient(${C.border}22 1px, transparent 1px), linear-gradient(90deg, ${C.border}22 1px, transparent 1px)`,
-            backgroundSize: '48px 48px',
+            backgroundImage: `radial-gradient(circle, ${C.border}18 1px, transparent 1px)`,
+            backgroundSize: '24px 28px',
             pointerEvents: 'none',
-            opacity: 0.5,
+            opacity: 0.4,
+          }} />
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            backgroundImage: `radial-gradient(circle, ${C.border}18 1px, transparent 1px)`,
+            backgroundSize: '24px 28px',
+            backgroundPosition: '12px 14px',
+            pointerEvents: 'none',
+            opacity: 0.4,
           }} />
 
-          {/* Shield icon with float animation */}
-          <div style={{ animation: 'frame-float 4s ease-in-out infinite', marginBottom: 24, position: 'relative', zIndex: 1 }}>
+          {/* Shield icon with float animation and defined glow */}
+          <div style={{ animation: 'frame-float 4s ease-in-out infinite', marginBottom: 24, position: 'relative', zIndex: 1, filter: 'drop-shadow(0 0 12px rgba(88,166,255,0.35)) drop-shadow(0 0 24px rgba(88,166,255,0.15))' }}>
             <ShieldIcon />
           </div>
 
@@ -600,31 +610,33 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
             <button type="button" onClick={onGetStarted} style={{
               padding: '14px 36px',
               fontSize: 16,
-              fontWeight: 600,
+              fontWeight: 700,
               backgroundColor: C.accent,
               color: '#fff',
               border: 'none',
-              borderRadius: 8,
+              borderRadius: 4,
               cursor: 'pointer',
               fontFamily: C.font,
               transition: 'transform 0.15s',
               animation: 'frame-cta-pulse 2.5s ease-in-out infinite',
               minHeight: 48,
+              letterSpacing: '0.02em',
             }}>
               Get Started
             </button>
             <button type="button" onClick={() => scrollTo('features')} style={{
               padding: '14px 36px',
               fontSize: 16,
-              fontWeight: 600,
+              fontWeight: 700,
               backgroundColor: 'transparent',
               color: C.accent,
               border: `1px solid ${C.accent}`,
-              borderRadius: 8,
+              borderRadius: 4,
               cursor: 'pointer',
               fontFamily: C.font,
               transition: 'background-color 0.15s',
               minHeight: 48,
+              letterSpacing: '0.02em',
             }}>
               Learn More
             </button>
@@ -640,7 +652,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
                 fontWeight: 500,
                 backgroundColor: 'rgba(88,166,255,0.06)',
                 border: `1px solid ${C.border}`,
-                borderRadius: 8,
+                borderRadius: 4,
                 color: C.textSecondary,
                 cursor: 'pointer',
                 fontFamily: C.font,
@@ -948,15 +960,16 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
             <button type="button" onClick={onGetStarted} style={{
               padding: '14px 48px',
               fontSize: 16,
-              fontWeight: 600,
+              fontWeight: 700,
               backgroundColor: C.accent,
               color: '#fff',
               border: 'none',
-              borderRadius: 8,
+              borderRadius: 4,
               cursor: 'pointer',
               fontFamily: C.font,
               animation: 'frame-cta-pulse 2.5s ease-in-out infinite',
               minHeight: 48,
+              letterSpacing: '0.02em',
             }}>
               Get Started
             </button>

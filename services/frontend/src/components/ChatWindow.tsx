@@ -1177,7 +1177,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     if (decrypted.decryptionError) {
       return (
         <span style={styles.previousSessionLock} title="Encrypted with keys from a previous session">
-          &#128274;
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" style={{ verticalAlign: 'middle' }}>
+            <path d="M8 1L2 4v4.5c0 3.5 2.5 6.2 6 7.5 3.5-1.3 6-4 6-7.5V4L8 1z" stroke="#8b949e" strokeWidth="1.2" fill="rgba(139,148,158,0.08)" />
+          </svg>
         </span>
       );
     }
@@ -1190,7 +1192,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         }}
         title="Encrypted"
       >
-        &#128274;
+        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" style={{ verticalAlign: 'middle' }}>
+          <path d="M8 1L2 4v4.5c0 3.5 2.5 6.2 6 7.5 3.5-1.3 6-4 6-7.5V4L8 1z" stroke="#3fb950" strokeWidth="1.2" fill="rgba(63,185,80,0.1)" />
+          <path d="M6 8.5l1.5 1.5L10.5 6" stroke="#3fb950" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        </svg>
       </span>
     );
   };
@@ -1200,7 +1205,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       case 'sending':
         return <span style={styles.statusIcon} title="Sending">&#128337;</span>;
       case 'sent':
-        return <span style={styles.statusIconSent} title="Sent">&#10003;</span>;
+        return <span style={{ ...styles.statusIconSent, color: '#3fb950' }} title="Sent">&#10003;</span>;
       case 'failed':
         return <span style={styles.statusIconFailed} title="Failed to send">&#10007;</span>;
       default:
@@ -1599,7 +1604,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           {isGroup ? 'Messages in this group are end-to-end encrypted.' : 'Messages are secured with end-to-end encryption.'}
         </div>
         <div style={{ ...styles.welcomeE2eeBadge, backgroundColor: 'rgba(63,185,80,0.1)', border: '1px solid rgba(63,185,80,0.2)' }}>
-          <span style={{ fontSize: 12, filter: 'drop-shadow(0 0 3px rgba(63,185,80,0.5))' }}>&#128274;</span> F.R.A.M.E. E2EE
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style={{ filter: 'drop-shadow(0 0 3px rgba(63,185,80,0.5))' }}><path d="M8 1L2 4v4.5c0 3.5 2.5 6.2 6 7.5 3.5-1.3 6-4 6-7.5V4L8 1z" stroke="#3fb950" strokeWidth="1.2" fill="rgba(63,185,80,0.1)" /><path d="M6 8.5l1.5 1.5L10.5 6" stroke="#3fb950" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg> F.R.A.M.E. E2EE
         </div>
       </div>
     );
@@ -1862,9 +1867,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
       )}
 
+      {/* Vignette depth gradient overlays */}
+      <div style={{ position: 'absolute' as const, top: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(180deg, rgba(13,17,23,0.6) 0%, transparent 100%)', pointerEvents: 'none' as const, zIndex: 2 }} />
+      <div style={{ position: 'absolute' as const, bottom: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(0deg, rgba(13,17,23,0.6) 0%, transparent 100%)', pointerEvents: 'none' as const, zIndex: 2 }} />
+
       <div ref={messageListRef} style={{ ...styles.messageList, position: 'relative' as const }} onScroll={handleScroll}>
         {/* Subtle F.R.A.M.E. watermark */}
-        <div style={{ position: 'fixed' as const, bottom: 80, right: 24, pointerEvents: 'none' as const, opacity: 0.03, zIndex: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ position: 'fixed' as const, bottom: 80, right: 24, pointerEvents: 'none' as const, opacity: 0.05, zIndex: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
           <svg width="20" height="20" viewBox="0 0 64 64" fill="none" aria-hidden="true">
             <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="4" fill="rgba(88,166,255,0.15)" />
             <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
@@ -2101,7 +2110,7 @@ const styles: Record<string, React.CSSProperties> = {
   headerMemberCount: { fontSize: 12, color: '#8b949e' },
   infoButton: { width: 28, height: 28, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#c9d1d9', fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'border-color 0.15s, color 0.15s' },
   renameInput: { fontSize: 15, fontWeight: 600, color: '#e6edf3', backgroundColor: '#0d1117', border: '1px solid #58a6ff', borderRadius: 4, padding: '2px 6px', fontFamily: 'inherit', outline: 'none', width: '100%', maxWidth: 240 },
-  encryptionBadge: { fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 4, backgroundColor: 'rgba(35, 134, 54, 0.15)', color: '#3fb950' },
+  encryptionBadge: { fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 2, backgroundColor: 'rgba(63, 185, 80, 0.12)', color: '#3fb950', border: '1px solid rgba(63, 185, 80, 0.25)', textTransform: 'uppercase' as const, letterSpacing: '0.08em', boxShadow: '0 0 4px rgba(63,185,80,0.15)' },
   roomLabel: { fontSize: 13, color: '#c9d1d9' },
   syncErrorIndicator: { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 14px', backgroundColor: 'rgba(210, 153, 34, 0.08)', borderBottom: '1px solid rgba(210, 153, 34, 0.15)' },
   messageList: { flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 2, scrollBehavior: 'smooth' as const, WebkitOverflowScrolling: 'touch' as const },
@@ -2112,7 +2121,7 @@ const styles: Record<string, React.CSSProperties> = {
   timeGapText: { fontSize: 10, color: '#8b949e', backgroundColor: '#161b22', padding: '2px 10px', borderRadius: 10 },
   emptyState: { textAlign: 'center', color: '#8b949e', marginTop: 40, fontSize: 14 },
   messageBubble: { maxWidth: 'clamp(200px, 75%, 600px)', minWidth: 80, padding: '8px 12px', borderRadius: 12, fontSize: 'clamp(13px, 1.4vw, 16px)', lineHeight: 1.4, wordBreak: 'break-word' as const, overflowWrap: 'break-word' as const },
-  ownMessage: { backgroundColor: '#58a6ff', color: '#ffffff' },
+  ownMessage: { backgroundColor: '#4A90D9', color: '#ffffff' },
   otherMessage: { backgroundColor: '#21262d', color: '#c9d1d9' },
   errorMessage: { opacity: 0.7, borderLeft: '3px solid #f85149' },
   previousSessionMessage: { opacity: 0.6, borderLeft: '2px solid #484f58' },
@@ -2133,7 +2142,7 @@ const styles: Record<string, React.CSSProperties> = {
   decryptErrorInline: { display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'help' },
   errorText: { fontStyle: 'italic', opacity: 0.8, fontSize: 13, color: '#8b949e' },
   timestampRow: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 3 },
-  timestamp: { fontSize: 10, opacity: 0.55, textAlign: 'right', color: 'inherit', letterSpacing: '0.01em' },
+  timestamp: { fontSize: 10, opacity: 0.55, textAlign: 'right', color: 'inherit', letterSpacing: '0.03em', fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", "Consolas", monospace' },
   statusIcon: { fontSize: 10, opacity: 0.6 },
   statusIconSent: { fontSize: 11, color: '#ffffff', opacity: 0.8 },
   statusIconFailed: { fontSize: 12, color: '#f85149' },
