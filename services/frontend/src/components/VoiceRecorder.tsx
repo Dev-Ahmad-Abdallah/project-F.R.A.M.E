@@ -162,21 +162,9 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onCancel }) => {
     setErrorMsg('');
     chunksRef.current = [];
 
-    // Check permission state first if the API is available
-    try {
-      if (navigator.permissions && navigator.permissions.query) {
-        const permResult = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-        if (permResult.state === 'denied') {
-          setState('error');
-          setErrorMsg('Microphone is blocked. Click the lock icon in your address bar \u2192 Site settings \u2192 Allow Microphone');
-          return;
-        }
-        // 'granted' or 'prompt' — proceed to getUserMedia
-      }
-    } catch {
-      // permissions.query may not support 'microphone' in all browsers — continue anyway
-    }
-
+    // Always try getUserMedia directly — the Permission API for microphone
+    // is unreliable across browsers (may report 'denied' when it's actually
+    // 'prompt'). Let the browser handle the permission prompt natively.
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       beginRecordingWithStream(stream);
