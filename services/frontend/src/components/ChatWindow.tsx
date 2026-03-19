@@ -209,7 +209,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   }, [handleConfirmRename, handleCancelRename]);
 
   const nextBatchRef = useRef<string | undefined>(undefined);
-  const abortRef = useRef(false);
   const syncGenRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
@@ -401,9 +400,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       void syncLoop(gen);
     }, 0);
 
+    // Capture ref for cleanup (React warns about stale refs in cleanup)
+    const ref = syncGenRef;
     return () => {
       // Bump generation again so the loop exits on next check
-      syncGenRef.current++;
+      ref.current++;
       clearTimeout(timer);
     };
   }, [roomId, syncLoop]);

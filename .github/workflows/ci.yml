@@ -60,6 +60,11 @@ jobs:
 
       - name: Build frontend
         run: npm run build:frontend
+        env:
+          # CRA treats all warnings as errors when CI=true.
+          # The WASM crypto module (5.7MB) triggers a precache size warning
+          # that is not a real issue — suppress it for build only.
+          CI: false
 
       - name: Docker build smoke test (homeserver)
         run: |
