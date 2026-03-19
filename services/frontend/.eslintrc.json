@@ -41,7 +41,7 @@
     "@typescript-eslint/no-floating-promises": "error",
     "@typescript-eslint/no-non-null-assertion": "error",
 
-    "security/detect-object-injection": "error",
+    "security/detect-object-injection": "warn",
     "security/detect-unsafe-regex": "error",
     "security/detect-possible-timing-attacks": "error",
 

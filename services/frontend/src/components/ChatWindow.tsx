@@ -898,9 +898,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       deleteMessage(eventId).catch((err) =>
         console.error('[ViewOnce] Failed to delete from server:', err),
       );
-      delete viewOnceTimersRef.current[eventId]; // eslint-disable-line security/detect-object-injection
+      delete viewOnceTimersRef.current[eventId];
     }, duration);
-    viewOnceTimersRef.current[eventId] = timer; // eslint-disable-line security/detect-object-injection
+    viewOnceTimersRef.current[eventId] = timer;
   }, [getViewOnceDuration]);
 
   // Track scroll position
@@ -1143,7 +1143,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Scroll to a referenced message
   const scrollToMessage = useCallback((eventId: string) => {
-    const el = messageRefs.current[eventId]; // eslint-disable-line security/detect-object-injection
+    const el = messageRefs.current[eventId];
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       el.style.transition = 'background-color 0.3s';
@@ -1641,13 +1641,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const handleMessageClick = useCallback((e: React.MouseEvent, eventId: string) => {
     const now = Date.now();
-    const lastClick = lastClickTimeRef.current[eventId] || 0; // eslint-disable-line security/detect-object-injection
+    const lastClick = lastClickTimeRef.current[eventId] || 0;
     if (now - lastClick < 350) {
       // Double-click detected — toggle heart reaction
       void handleReactRef.current?.(eventId, '\u2764\uFE0F');
-      lastClickTimeRef.current[eventId] = 0; // eslint-disable-line security/detect-object-injection
+      lastClickTimeRef.current[eventId] = 0;
     } else {
-      lastClickTimeRef.current[eventId] = now; // eslint-disable-line security/detect-object-injection
+      lastClickTimeRef.current[eventId] = now;
     }
   }, []);
 
@@ -1886,9 +1886,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     if (!searchQuery.trim() || filteredMessages.length === 0) return;
     const clampedIndex = Math.min(searchMatchIndex, filteredMessages.length - 1);
-    const targetEvent = filteredMessages[clampedIndex]; // eslint-disable-line security/detect-object-injection
+    const targetEvent = filteredMessages[clampedIndex];
     if (targetEvent) {
-      const el = messageRefs.current[targetEvent.event.eventId]; // eslint-disable-line security/detect-object-injection
+      const el = messageRefs.current[targetEvent.event.eventId];
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
@@ -1910,7 +1910,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       let runStart = -1;
       let runCount = 0;
       for (let j = 0; j <= msgsToRender.length; j++) {
-        const msg = j < msgsToRender.length ? msgsToRender[j] : null; // eslint-disable-line security/detect-object-injection
+        const msg = j < msgsToRender.length ? msgsToRender[j] : null;
         const isUndecryptable = msg !== null && msg.decryptionError !== null && !deletedEventIds.has(msg.event.eventId) && !expiredEventIds.has(msg.event.eventId);
         if (isUndecryptable) {
           if (runStart === -1) { runStart = j; runCount = 1; }
@@ -2101,7 +2101,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             marginTop: isFirstInGroup ? 8 : 2,
             position: 'relative' as const,
             ...(hasPopIn ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}),
-            ...(searchQuery.trim() && filteredMessages.length > 0 && searchMatchIndex < filteredMessages.length && filteredMessages[searchMatchIndex]?.event.eventId === event.eventId ? { outline: '2px solid rgba(210, 153, 34, 0.7)', outlineOffset: 2, borderRadius: 12 } : {}), // eslint-disable-line security/detect-object-injection
+            ...(searchQuery.trim() && filteredMessages.length > 0 && searchMatchIndex < filteredMessages.length && filteredMessages[searchMatchIndex]?.event.eventId === event.eventId ? { outline: '2px solid rgba(210, 153, 34, 0.7)', outlineOffset: 2, borderRadius: 12 } : {}),
           }}
           onTouchStart={isMobile ? () => handleTouchStart(event.eventId, event.senderId) : undefined}
           onTouchEnd={isMobile ? handleTouchEnd : undefined}
@@ -2246,7 +2246,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                       // Determine if this message is the current search match
                       const isCurrentMatch = filteredMessages.length > 0 &&
                         searchMatchIndex < filteredMessages.length &&
-                        filteredMessages[searchMatchIndex]?.event.eventId === event.eventId; // eslint-disable-line security/detect-object-injection
+                        filteredMessages[searchMatchIndex]?.event.eventId === event.eventId;
                       // Highlight ALL occurrences of the search term
                       const parts: React.ReactNode[] = [];
                       let cursor = 0;
@@ -2522,11 +2522,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     width: 8,
                     height: 8,
                     borderRadius: '50%',
-                    backgroundColor: STATUS_COLORS[contactStatus], // eslint-disable-line security/detect-object-injection
+                    backgroundColor: STATUS_COLORS[contactStatus],
                     display: 'inline-block',
                     flexShrink: 0,
                   }}
-                  title={STATUS_LABELS[contactStatus]} // eslint-disable-line security/detect-object-injection
+                  title={STATUS_LABELS[contactStatus]}
                 />
                 {contactStatusHovered && (
                   <span style={{
