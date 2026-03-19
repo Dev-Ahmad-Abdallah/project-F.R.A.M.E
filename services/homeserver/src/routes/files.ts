@@ -173,10 +173,11 @@ filesRouter.post(
       throw new ApiError(400, 'M_BAD_MIME_TYPE', 'File type is not allowed');
     }
 
-    // Validate file content magic bytes match claimed MIME type
-    if (!validateMagicBytes(file.buffer, mimeTypeValue)) {
-      throw new ApiError(400, 'M_BAD_MIME_TYPE', 'File content does not match claimed MIME type');
-    }
+    // NOTE: Magic byte validation is intentionally skipped. Files are encrypted
+    // client-side (AES-256-GCM) before upload, so the encrypted blob contains
+    // ciphertext that will never match plaintext magic byte signatures. The MIME
+    // type is validated against the allowlist above; content-type verification
+    // happens client-side before encryption.
 
     // Validate file size (belt-and-suspenders — multer also enforces this)
     if (file.size > MAX_FILE_SIZE) {
