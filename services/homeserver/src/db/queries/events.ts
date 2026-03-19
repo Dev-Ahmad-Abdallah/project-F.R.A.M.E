@@ -138,7 +138,8 @@ export async function addReaction(
     throw new Error('Event not found');
   }
 
-  const reactions = current.rows[0].reactions || {};
+  const reactions: Record<string, { users: string[]; count: number }> = current.rows[0].reactions || {};
+  // eslint-disable-next-line security/detect-object-injection -- emoji is user input validated by route handler
   const entry = reactions[emoji] || { users: [], count: 0 };
 
   if (entry.users.includes(userId)) {
@@ -146,14 +147,17 @@ export async function addReaction(
     entry.users = entry.users.filter((u: string) => u !== userId);
     entry.count = entry.users.length;
     if (entry.count === 0) {
+      // eslint-disable-next-line security/detect-object-injection -- emoji validated above
       delete reactions[emoji];
     } else {
+      // eslint-disable-next-line security/detect-object-injection -- emoji validated above
       reactions[emoji] = entry;
     }
   } else {
     // Add reaction
     entry.users.push(userId);
     entry.count = entry.users.length;
+    // eslint-disable-next-line security/detect-object-injection -- emoji validated above
     reactions[emoji] = entry;
   }
 

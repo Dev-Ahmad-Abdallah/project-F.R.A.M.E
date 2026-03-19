@@ -30,6 +30,11 @@
     "no-implied-eval": "error",
     "no-new-func": "error",
 
+    "@typescript-eslint/no-unused-vars": ["warn", {
+      "argsIgnorePattern": "^_",
+      "varsIgnorePattern": "^_",
+      "destructuredArrayIgnorePattern": "^_"
+    }],
     "@typescript-eslint/no-explicit-any": "error",
     "@typescript-eslint/no-unsafe-assignment": "error",
     "@typescript-eslint/no-floating-promises": "error",

@@ -114,6 +114,7 @@ interface ChatWindowProps {
   onOpenSettings?: () => void;
   onRoomRenamed?: (roomId: string, newName: string) => void;
   onLeave?: () => void;
+  showToast?: (type: 'success' | 'error' | 'info' | 'warning', message: string, options?: { persistent?: boolean; dedupeKey?: string; duration?: number }) => void;
   // E2EE is always enabled — no plaintext bypass allowed (Security Finding 1)
 }
 
@@ -145,6 +146,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   onOpenSettings,
   onRoomRenamed,
   onLeave,
+  showToast,
 }) => {
   const isMobile = useIsMobile();
   const [messages, setMessages] = useState<DecryptedEvent[]>([]);
@@ -255,6 +257,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [sendButtonAnimating, setSendButtonAnimating] = useState(false);
   // Emoji picker state
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // Mobile "more" menu state (for auto-delete / leave)
+  const [showMobileMoreMenu, setShowMobileMoreMenu] = useState(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -693,6 +698,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           om.id === optimisticId ? { ...om, status: 'failed' as const } : om,
         ),
       );
+      showToast?.('error', 'Failed to send. Tap message to retry.', {
+        dedupeKey: 'send-fail',
+        duration: 4000,
+      });
     } finally {
       setIsSending(false);
     }
@@ -1020,9 +1029,25 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 <>
                   {isViewOnce && <span style={styles.viewOnceIcon} title="View-once message">&#128065;</span>}
                   {renderEncryptionIcon(decrypted)}
-                  <span style={hasError ? styles.errorText : undefined}>
-                    {renderMessageContent(decrypted)}
-                  </span>
+                  {hasError ? (
+                    <span style={styles.decryptErrorInline}>
+                      <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
+                        <circle cx="7" cy="7" r="6" stroke="#f85149" strokeWidth="1.2" fill="rgba(248,81,73,0.15)" />
+                        <path d="M7 4v3" stroke="#f85149" strokeWidth="1.2" strokeLinecap="round" />
+                        <circle cx="7" cy="9.5" r="0.6" fill="#f85149" />
+                      </svg>
+                      <span
+                        style={styles.errorText}
+                        title={decrypted.decryptionError
+                          ? `Decryption failed: ${decrypted.decryptionError}. The sender may need to re-share session keys.`
+                          : 'Message content could not be decrypted. The encryption session may have expired.'}
+                      >
+                        Unable to decrypt
+                      </span>
+                    </span>
+                  ) : (
+                    <span>{renderMessageContent(decrypted)}</span>
+                  )}
                 </>
               )}
             </div>
@@ -1094,13 +1119,31 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // ── Welcome message for empty rooms ──
 
+  const [e2eeExpanded, setE2eeExpanded] = useState(false);
+
   const renderWelcome = () => {
     if (messages.length > 0 || optimisticMessages.length > 0) return null;
 
     const isGroup = roomType === 'group';
+    const otherUserId = !isGroup ? memberUserIds.find((id) => id !== currentUserId) : undefined;
+    const avatarInitial = headerName ? headerName.charAt(0).toUpperCase() : '?';
+    const avatarColor = otherUserId ? getAvatarColor(otherUserId) : '#58a6ff';
 
     return (
       <div style={styles.welcomeContainer}>
+        {/* Avatar + name for DMs, icon for groups */}
+        {!isGroup && (
+          <div style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'center', marginBottom: 8 }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: '50%', backgroundColor: avatarColor,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 22, fontWeight: 700, color: '#ffffff', marginBottom: 8,
+            }}>
+              {avatarInitial}
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 600, color: '#e6edf3' }}>{headerName}</div>
+          </div>
+        )}
         <div style={{
           ...styles.welcomeIconWrap,
           animation: 'frame-welcome-float 3s ease-in-out infinite',
@@ -1131,6 +1174,45 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         <div style={styles.welcomeE2eeBadge}>
           <span style={{ fontSize: 12 }}>&#128274;</span> E2EE
         </div>
+
+        {/* Expandable E2EE explainer */}
+        <button
+          type="button"
+          onClick={() => setE2eeExpanded((v) => !v)}
+          style={{
+            marginTop: 16, background: 'none', border: '1px solid #30363d', borderRadius: 8,
+            padding: '8px 14px', color: '#8b949e', fontSize: 12, cursor: 'pointer',
+            fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
+            transition: 'border-color 0.15s, color 0.15s',
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#58a6ff'; e.currentTarget.style.color = '#c9d1d9'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#30363d'; e.currentTarget.style.color = '#8b949e'; }}
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: e2eeExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+            <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          What makes this conversation secure?
+        </button>
+        {e2eeExpanded && (
+          <div style={{
+            marginTop: 8, padding: '12px 16px', backgroundColor: 'rgba(88,166,255,0.04)',
+            border: '1px solid #30363d', borderRadius: 8, textAlign: 'left' as const,
+            maxWidth: 340, width: '100%',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ marginTop: 2, flexShrink: 0 }}><rect x="2" y="6" width="10" height="7" rx="1.5" stroke="#3fb950" strokeWidth="1.2" fill="none" /><path d="M4.5 6V4.5a2.5 2.5 0 0 1 5 0V6" stroke="#3fb950" strokeWidth="1.2" fill="none" /></svg>
+              <span style={{ fontSize: 12, color: '#c9d1d9', lineHeight: 1.5 }}>Messages are encrypted on your device before sending and can only be decrypted by the recipient.</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ marginTop: 2, flexShrink: 0 }}><path d="M7 1L2 3.5v3.5c0 3 1.8 5 5 6 3.2-1 5-3 5-6V3.5L7 1z" stroke="#58a6ff" strokeWidth="1.2" strokeLinejoin="round" fill="none" /></svg>
+              <span style={{ fontSize: 12, color: '#c9d1d9', lineHeight: 1.5 }}>The server never has access to your encryption keys or message content.</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ marginTop: 2, flexShrink: 0 }}><circle cx="7" cy="7" r="5.5" stroke="#bc8cff" strokeWidth="1.2" fill="none" /><path d="M5 7l1.5 1.5L9.5 5" stroke="#bc8cff" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>
+              <span style={{ fontSize: 12, color: '#c9d1d9', lineHeight: 1.5 }}>Verify your contact&apos;s fingerprint to ensure you are talking to the right person.</span>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -1138,7 +1220,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   return (
     <div style={{ ...styles.container, ...(isMobile ? { borderRadius: 0, border: 'none' } : {}) }}>
       {/* Room header */}
-      <div style={styles.header}>
+      <div style={{
+        ...styles.header,
+        ...(isMobile ? { padding: '6px 10px', gap: 4 } : {}),
+      }}>
         <div style={styles.headerLeft}>
           <div style={styles.headerNameRow}>
             {/* Stacked member avatars for group rooms */}
@@ -1217,7 +1302,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               <span
                 style={{
                   ...styles.headerName,
-                  ...(isMobile ? { maxWidth: '60vw' } : {}),
+                  ...(isMobile ? { maxWidth: '50vw', fontSize: 13 } : {}),
                   cursor: 'pointer',
                 }}
                 onClick={handleStartRename}
@@ -1239,6 +1324,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             >
               E2EE
             </span>
+            {isSyncing && <SyncIndicator />}
             {roomType === 'group' && memberCount != null && memberCount > 0 && (
               <span style={styles.headerMemberCount}>
                 {memberCount} member{memberCount !== 1 ? 's' : ''}
@@ -1246,8 +1332,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'relative' as const }}>
-          <button
+        <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 6, position: 'relative' as const }}>
+          {!isMobile && <button
             type="button"
             style={{
               ...styles.disappearingButton,
@@ -1257,7 +1343,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             onClick={() => setShowDisappearingMenu(!showDisappearingMenu)}
           >
             {disappearingSettings?.enabled ? 'Auto-delete ON' : 'Auto-delete'}
-          </button>
+          </button>}
           {showDisappearingMenu && (
             <div style={styles.disappearingMenu}>
               <div style={styles.disappearingMenuTitle}>Disappearing Messages</div>
@@ -1301,7 +1387,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               ))}
             </div>
           )}
-          {onLeave && (
+          {!isMobile && onLeave && (
             <button
               type="button"
               style={styles.leaveButton}
@@ -1311,19 +1397,59 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               Leave
             </button>
           )}
-          <button
-            type="button"
-            style={styles.infoButton}
-            title="Room info"
-            onClick={() => onOpenSettings?.()}
-          >
-            i
-          </button>
+          {/* Mobile: "..." more menu for auto-delete, settings, leave */}
+          {isMobile && (
+            <>
+              <button
+                type="button"
+                style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#8b949e', fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', flexShrink: 0, minWidth: 44, minHeight: 44 }}
+                title="More options"
+                onClick={() => setShowMobileMoreMenu(!showMobileMoreMenu)}
+                aria-label="More options"
+              >
+                &#8943;
+              </button>
+              {showMobileMoreMenu && (
+                <div style={{ position: 'absolute' as const, top: '100%', right: 0, marginTop: 4, backgroundColor: '#21262d', border: '1px solid #30363d', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', padding: 6, zIndex: 100, minWidth: 170, animation: 'frame-context-menu-in 0.15s ease-out' }}>
+                  <button type="button" style={{ display: 'block', width: '100%', padding: '10px 12px', fontSize: 13, color: disappearingSettings?.enabled ? '#d29922' : '#c9d1d9', backgroundColor: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', minHeight: 44 }} onClick={() => { setShowMobileMoreMenu(false); setShowDisappearingMenu(!showDisappearingMenu); }}>
+                    {disappearingSettings?.enabled ? 'Auto-delete ON' : 'Auto-delete'}
+                  </button>
+                  <button type="button" style={{ display: 'block', width: '100%', padding: '10px 12px', fontSize: 13, color: '#c9d1d9', backgroundColor: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', minHeight: 44 }} onClick={() => { setShowMobileMoreMenu(false); onOpenSettings?.(); }}>
+                    Room Settings
+                  </button>
+                  {onLeave && (
+                    <button type="button" style={{ display: 'block', width: '100%', padding: '10px 12px', fontSize: 13, color: '#f85149', backgroundColor: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', minHeight: 44 }} onClick={() => { setShowMobileMoreMenu(false); onLeave(); }}>
+                      Leave Conversation
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+          {!isMobile && (
+            <button
+              type="button"
+              style={styles.infoButton}
+              title="Room info"
+              onClick={() => onOpenSettings?.()}
+            >
+              i
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Sync error banner */}
-      {syncError && <div style={styles.errorBanner}>{syncError}</div>}
+      {/* Sync error — subtle inline indicator instead of blocking banner */}
+      {syncError && (
+        <div style={styles.syncErrorIndicator}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+            <circle cx="7" cy="7" r="6" stroke="#d29922" strokeWidth="1.2" fill="rgba(210,153,34,0.1)" />
+            <path d="M7 4v3.5" stroke="#d29922" strokeWidth="1.2" strokeLinecap="round" />
+            <circle cx="7" cy="10" r="0.7" fill="#d29922" />
+          </svg>
+          <span style={{ fontSize: 11, color: '#d29922' }}>Sync paused — retrying</span>
+        </div>
+      )}
 
       {/* Message list */}
       <div
@@ -1331,6 +1457,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         style={styles.messageList}
         onScroll={handleScroll}
       >
+        {showRoomSkeleton ? (
+          /* Skeleton loading state: 3 placeholder bubbles while room loads */
+          <div style={{ display: 'flex', flexDirection: 'column', padding: '16px 12px', gap: 4 }}>
+            <SkeletonMessageBubble align="left" widthPercent={55} />
+            <SkeletonMessageBubble align="right" widthPercent={45} />
+            <SkeletonMessageBubble align="left" widthPercent={50} />
+          </div>
+        ) : (
+          <>
         {renderWelcome()}
 
         {renderMessages()}
@@ -1381,6 +1516,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
 
         <div ref={messagesEndRef} />
+          </>
+        )}
       </div>
 
       {/* "New messages" pill when user has scrolled up */}
@@ -1396,11 +1533,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {/* Input area — textarea with auto-grow, Shift+Enter for newlines */}
       <div style={{ ...styles.inputArea, ...(isMobile ? { padding: '8px 10px', gap: 6 } : {}) }}>
+        {/* View-once toggle — smaller on mobile */}
         <button
           type="button"
           style={{
             ...styles.viewOnceToggle,
             ...(viewOnceMode ? styles.viewOnceToggleActive : {}),
+            ...(isMobile ? { padding: '4px 6px', fontSize: 12, width: 28, height: 28, minWidth: 28, minHeight: 28 } : {}),
           }}
           onClick={() => setViewOnceMode((v) => !v)}
           title={viewOnceMode ? 'View-once enabled — recipient can only view this once' : 'Enable view-once mode'}
@@ -1412,7 +1551,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           ref={textareaRef}
           style={{
             ...styles.textarea,
-            ...(isMobile ? { padding: '10px 12px', fontSize: 16 } : {}),
+            ...(isMobile ? { padding: '12px 14px', fontSize: 16, minHeight: 48 } : {}),
             ...(isTextareaFocused
               ? {
                   borderColor: '#58a6ff',
@@ -1613,11 +1752,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     color: '#c9d1d9',
   },
-  errorBanner: {
-    padding: '6px 12px',
-    backgroundColor: '#3d1f28',
-    color: '#f85149',
-    fontSize: 13,
+  syncErrorIndicator: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '4px 14px',
+    backgroundColor: 'rgba(210, 153, 34, 0.08)',
+    borderBottom: '1px solid rgba(210, 153, 34, 0.15)',
   },
   messageList: {
     flex: 1,
@@ -1720,9 +1861,17 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     marginTop: -1,
   },
+  decryptErrorInline: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 5,
+    cursor: 'help',
+  },
   errorText: {
     fontStyle: 'italic',
     opacity: 0.8,
+    fontSize: 13,
+    borderBottom: '1px dotted rgba(248, 81, 73, 0.4)',
   },
   timestampRow: {
     display: 'flex',

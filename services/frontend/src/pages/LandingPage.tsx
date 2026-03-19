@@ -245,6 +245,10 @@ const keyframesCSS = `
   to { opacity: 1; transform: translateY(0); }
 }
 html { scroll-behavior: smooth; }
+@keyframes frame-menu-slide-down {
+  0% { opacity: 0; transform: translateY(-8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
 `;
 
 // ── Mobile hamburger menu ──
@@ -295,6 +299,7 @@ function MobileMenu({ scrollTo }: { scrollTo: (id: string) => void }) {
           gap: 4,
           zIndex: 200,
           boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          animation: 'frame-menu-slide-down 0.2s ease-out',
         }}>
           {['features', 'how-it-works', 'security'].map((id) => (
             <button

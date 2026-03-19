@@ -43,6 +43,7 @@ COPY --from=builder --chown=appuser:appgroup /app/shared/dist/ shared/dist/
 COPY --from=builder --chown=appuser:appgroup /app/services/homeserver/package.json services/homeserver/
 COPY --from=builder --chown=appuser:appgroup /app/services/homeserver/dist/ services/homeserver/dist/
 COPY --from=builder --chown=appuser:appgroup /app/services/homeserver/migrations/ services/homeserver/migrations/
+COPY --from=builder --chown=appuser:appgroup /app/services/homeserver/migrate.sh services/homeserver/migrate.sh
 COPY --from=builder --chown=appuser:appgroup /app/node_modules/ node_modules/
 
 USER appuser

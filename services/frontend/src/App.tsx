@@ -18,11 +18,12 @@
  *             #c9d1d9 text, #58a6ff accent.
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { AuthResponse } from '@frame/shared';
 import LandingPage from './pages/LandingPage';
 import SignInPage from './pages/SignInPage';
 import ChatWindow from './components/ChatWindow';
+import ToastContainer from './components/Toast';
 import DeviceList from './components/DeviceList';
 import RoomList from './components/RoomList';
 import NewChatDialog from './components/NewChatDialog';
@@ -47,6 +48,7 @@ import { invalidateRoomSession } from './crypto/sessionManager';
 import { registerServiceWorker } from './notifications';
 import { initStorage } from './storage/secureStorage';
 import { useNotifications } from './hooks/useNotifications';
+import { useToast } from './hooks/useToast';
 import SessionSettings from './components/SessionSettings';
 import ProfileSettings from './components/ProfileSettings';
 import { useSessionTimeout, getAutoLock } from './hooks/useSessionTimeout';
@@ -81,6 +83,11 @@ function App() {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const [showRoomSettings, setShowRoomSettings] = useState(false);
+  /* eslint-disable @typescript-eslint/no-unused-vars */
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+  const [focusedRoomIndex, setFocusedRoomIndex] = useState<number | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  /* eslint-enable @typescript-eslint/no-unused-vars */
 
   // Lock screen state (auto-lock on inactivity)
   const [isLocked, setIsLocked] = useState(false);
@@ -95,6 +102,15 @@ function App() {
     clearUnread,
     setInitialUnread,
   } = useNotifications();
+
+  // Toast notifications
+  const { toasts, showToast, dismissToast } = useToast();
+
+  // Track previous connection state for reconnection toast
+  const prevConnectionLostRef = useRef(false);
+
+  // Settings: dismissible device verification banner
+  const [settingsVerifyBannerDismissed, setSettingsVerifyBannerDismissed] = useState(false);
 
   // Modal overlay state
   const [deviceAlertInfo, setDeviceAlertInfo] =
@@ -139,19 +155,41 @@ function App() {
     }
   }, [auth, lockPassphrase, resetTimer]);
 
-  // Online/offline detection (Fix 5)
+  // Online/offline detection (Fix 5) — now uses toast notifications
   useEffect(() => {
-    const handleOffline = () => setConnectionLost(true);
-    const handleOnline = () => setConnectionLost(false);
+    const handleOffline = () => {
+      setConnectionLost(true);
+      prevConnectionLostRef.current = true;
+      showToast('warning', 'Connection lost — messages may be delayed', {
+        persistent: true,
+        dedupeKey: 'connection-status',
+      });
+    };
+    const handleOnline = () => {
+      setConnectionLost(false);
+      if (prevConnectionLostRef.current) {
+        prevConnectionLostRef.current = false;
+        showToast('success', 'Connection restored', {
+          dedupeKey: 'connection-status',
+        });
+      }
+    };
     window.addEventListener('offline', handleOffline);
     window.addEventListener('online', handleOnline);
     // Set initial state
-    if (!navigator.onLine) setConnectionLost(true);
+    if (!navigator.onLine) {
+      setConnectionLost(true);
+      prevConnectionLostRef.current = true;
+      showToast('warning', 'Connection lost — messages may be delayed', {
+        persistent: true,
+        dedupeKey: 'connection-status',
+      });
+    }
     return () => {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('online', handleOnline);
     };
-  }, []);
+  }, [showToast]);
 
   // Inject spinner keyframes (Fix 3)
   useEffect(() => {
@@ -159,7 +197,25 @@ function App() {
     if (!document.getElementById(styleId)) {
       const style = document.createElement('style');
       style.id = styleId;
-      style.textContent = `@keyframes frame-spin { to { transform: rotate(360deg); } }`;
+      style.textContent = `
+        @keyframes frame-spin { to { transform: rotate(360deg); } }
+        @keyframes frame-tap-feedback {
+          0% { transform: scale(1); }
+          50% { transform: scale(0.95); }
+          100% { transform: scale(1); }
+        }
+        @keyframes frame-fade-in {
+          0% { opacity: 0; }
+          100% { opacity: 1; }
+        }
+        @media (max-width: 767px) {
+          button:active, [role="button"]:active {
+            animation: frame-tap-feedback 0.15s ease-out !important;
+          }
+        }
+        * { box-sizing: border-box; }
+        html, body, #root { max-width: 100vw; overflow-x: hidden; }
+      `;
       document.head.appendChild(style);
     }
   }, []);
@@ -180,6 +236,53 @@ function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // ── Keyboard shortcuts ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (currentPage !== 'app') return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === 'k') { e.preventDefault(); searchInputRef.current?.focus(); return; }
+      if (mod && e.key === 'n') { e.preventDefault(); setShowNewChatDialog(true); return; }
+      if (mod && e.key === ',') { e.preventDefault(); setActiveView('settings'); if (isMobile) setSidebarOpen(false); return; }
+      if (e.key === 'Escape') {
+        if (showShortcutsHelp) { setShowShortcutsHelp(false); return; }
+        if (showNewChatDialog) { setShowNewChatDialog(false); return; }
+        if (showRoomSettings) { setShowRoomSettings(false); return; }
+        if (showLeaveConfirm) { setShowLeaveConfirm(false); return; }
+        if (deviceAlertInfo) { setDeviceAlertInfo(null); return; }
+        if (keyChangeInfo) { setKeyChangeInfo(null); return; }
+        if (isMobile && !sidebarOpen) { setSidebarOpen(true); return; }
+        setFocusedRoomIndex(null);
+        return;
+      }
+      if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && rooms.length > 0) {
+        const t = (e.target as HTMLElement)?.tagName;
+        if (t === 'INPUT' || t === 'TEXTAREA') return;
+        e.preventDefault();
+        setFocusedRoomIndex((prev) => {
+          const mx = rooms.length - 1;
+          if (prev == null) return e.key === 'ArrowDown' ? 0 : mx;
+          if (e.key === 'ArrowDown') return prev < mx ? prev + 1 : 0;
+          return prev > 0 ? prev - 1 : mx;
+        });
+        return;
+      }
+      if (e.key === 'Enter' && focusedRoomIndex != null && rooms.length > 0) {
+        const t = (e.target as HTMLElement)?.tagName;
+        if (t === 'INPUT' || t === 'TEXTAREA' || t === 'BUTTON') return;
+        e.preventDefault();
+        if (focusedRoomIndex >= 0 && focusedRoomIndex < rooms.length) {
+          // eslint-disable-next-line security/detect-object-injection
+          handleSelectRoom(rooms[focusedRoomIndex].roomId);
+          setFocusedRoomIndex(null);
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, isMobile, sidebarOpen, rooms, focusedRoomIndex, showShortcutsHelp, showNewChatDialog, showRoomSettings, showLeaveConfirm, deviceAlertInfo, keyChangeInfo]);
 
   // ── Auth handler ──
 
@@ -239,6 +342,9 @@ function App() {
           } catch {
             console.warn('Failed to fetch rooms — API may not be ready.');
             setRoomFetchError('Failed to load conversations. Check your connection.');
+            showToast('error', 'Failed to load conversations. Check your connection.', {
+              dedupeKey: 'room-fetch',
+            });
           }
         }
 
@@ -246,9 +352,12 @@ function App() {
       } catch (err) {
         console.error('Initialization error:', err);
         if (!cancelled) {
-          setInitError(
-            err instanceof Error ? err.message : 'Initialization failed',
-          );
+          const msg = err instanceof Error ? err.message : 'Initialization failed';
+          setInitError(msg);
+          showToast('error', msg, {
+            persistent: true,
+            dedupeKey: 'init-error',
+          });
         }
       }
     }
@@ -257,7 +366,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [auth, setInitialUnread, requestNotifPermission]);
+  }, [auth, setInitialUnread, requestNotifPermission, showToast]);
 
   // ── Handlers ──
 
@@ -364,10 +473,14 @@ function App() {
         if (r.unreadCount > 0) initialUnread[r.roomId] = r.unreadCount;
       }
       setInitialUnread(initialUnread);
+      showToast('success', 'Conversations loaded', { dedupeKey: 'room-fetch' });
     } catch {
       setRoomFetchError('Failed to load conversations. Check your connection.');
+      showToast('error', 'Failed to load conversations. Check your connection.', {
+        dedupeKey: 'room-fetch',
+      });
     }
-  }, [setInitialUnread]);
+  }, [setInitialUnread, showToast]);
 
   const handleLeaveRoom = useCallback(async () => {
     if (!selectedRoomId) return;
@@ -387,24 +500,33 @@ function App() {
     }
   }, [selectedRoomId]);
 
+  // Fade transition style for page switches
+  const fadeTransitionStyle: React.CSSProperties = { animation: 'frame-fade-in 0.15s ease-out' };
+
   // ── Page: Landing ──
   if (currentPage === 'landing') {
-    return <LandingPage onGetStarted={() => setCurrentPage('auth')} />;
+    return (<div key="page-landing" style={fadeTransitionStyle}><LandingPage onGetStarted={() => setCurrentPage('auth')} /></div>);
   }
 
   // ── Page: Auth ──
   if (currentPage === 'auth') {
     return (
-      <SignInPage
-        onAuthenticated={handleAuthenticated}
-        onBack={() => setCurrentPage('landing')}
-      />
+      <div key="page-auth" style={fadeTransitionStyle}>
+        <SignInPage
+          onAuthenticated={handleAuthenticated}
+          onBack={() => setCurrentPage('landing')}
+        />
+      </div>
     );
   }
 
   // ── Page: App (not authenticated yet — shouldn't normally happen) ──
   if (!auth) {
-    return <SignInPage onAuthenticated={handleAuthenticated} onBack={() => setCurrentPage('landing')} />;
+    return (
+      <div key="page-auth-fallback" style={fadeTransitionStyle}>
+        <SignInPage onAuthenticated={handleAuthenticated} onBack={() => setCurrentPage('landing')} />
+      </div>
+    );
   }
 
   // ── Lock screen (auto-lock on inactivity) ──
@@ -502,6 +624,7 @@ function App() {
               onOpenSettings={handleOpenRoomSettings}
               onRoomRenamed={handleRoomRenamed}
               onLeave={() => setShowLeaveConfirm(true)}
+              showToast={showToast}
             />
           );
         }
@@ -509,6 +632,16 @@ function App() {
       case 'settings':
         return (
           <div style={styles.settingsContainer}>
+            {!settingsVerifyBannerDismissed && deviceAlertInfo && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', backgroundColor: 'rgba(210,153,34,0.08)', border: '1px solid rgba(210,153,34,0.3)', borderRadius: 8, marginBottom: 16, width: '100%', maxWidth: 440 }}>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+                  <path d="M8 1.5L3 4.5v4c0 3.5 2.1 5.8 5 7 2.9-1.2 5-3.5 5-7v-4L8 1.5z" stroke="#d29922" strokeWidth="1.2" strokeLinejoin="round" fill="none" />
+                  <path d="M8 5v3M8 10h.01" stroke="#d29922" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+                <span style={{ fontSize: 13, color: '#d29922', flex: 1 }}>Verify your device for enhanced security</span>
+                <button type="button" onClick={() => setSettingsVerifyBannerDismissed(true)} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1 }} title="Dismiss">&#215;</button>
+              </div>
+            )}
             <ProfileSettings userId={auth.userId} />
             <div style={{ borderTop: '1px solid #30363d', width: '100%', maxWidth: 440, margin: '8px 0 20px' }} />
             <SessionSettings />
@@ -595,34 +728,65 @@ function App() {
     }
   };
 
-  const renderEmptyState = () => (
-    <div style={styles.emptyMain}>
-      <div style={styles.emptyIcon}>
-        <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-          <rect x="6" y="10" width="44" height="32" rx="6" stroke="#30363d" strokeWidth="2" fill="rgba(88,166,255,0.04)" />
-          <path d="M6 16l22 14 22-14" stroke="#30363d" strokeWidth="2" fill="none" />
-        </svg>
+  const renderEmptyState = () => {
+    if (rooms.length === 0) {
+      return (
+        <div style={styles.emptyMain}>
+          <div style={styles.emptyIcon}>
+            <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+              <rect x="6" y="10" width="44" height="32" rx="6" stroke="#58a6ff" strokeWidth="2" fill="rgba(88,166,255,0.06)" />
+              <path d="M6 16l22 14 22-14" stroke="#58a6ff" strokeWidth="2" fill="none" />
+            </svg>
+          </div>
+          <h2 style={styles.emptyTitle}>Welcome to F.R.A.M.E.</h2>
+          <p style={styles.emptySubtitle}>Get started in three simple steps</p>
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 12, marginTop: 24, width: '100%', maxWidth: 340 }}>
+            <button type="button" onClick={() => setShowNewChatDialog(true)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', backgroundColor: 'rgba(88,166,255,0.06)', border: '1px solid #30363d', borderRadius: 10, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', transition: 'border-color 0.15s, background-color 0.15s' }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#58a6ff'; e.currentTarget.style.backgroundColor = 'rgba(88,166,255,0.1)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#30363d'; e.currentTarget.style.backgroundColor = 'rgba(88,166,255,0.06)'; }}>
+              <div style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(88,166,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 3v12M3 9h12" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" /></svg>
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 2 }}>Create your first conversation</div>
+                <div style={{ fontSize: 12, color: '#8b949e', display: 'flex', alignItems: 'center', gap: 4 }}>Click here or press <span style={{ color: '#58a6ff', fontWeight: 500 }}>+ New Chat</span> <span style={{ fontSize: 14 }}>&#8593;</span></div>
+              </div>
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', backgroundColor: 'rgba(63,185,80,0.04)', border: '1px solid #30363d', borderRadius: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(63,185,80,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="16" height="18" viewBox="0 0 16 18" fill="none"><rect x="2" y="7" width="12" height="10" rx="2" stroke="#3fb950" strokeWidth="1.5" fill="none" /><path d="M5 7V5a3 3 0 0 1 6 0v2" stroke="#3fb950" strokeWidth="1.5" strokeLinecap="round" fill="none" /></svg>
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 2 }}>Your messages are encrypted end-to-end</div>
+                <div style={{ fontSize: 12, color: '#8b949e' }}>Only you and the recipient can read them</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', backgroundColor: 'rgba(188,140,255,0.04)', border: '1px solid #30363d', borderRadius: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(188,140,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 1.5L3 4.5v4.5c0 4.14 2.56 7.01 6 8.5 3.44-1.49 6-4.36 6-8.5V4.5L9 1.5z" stroke="#bc8cff" strokeWidth="1.5" strokeLinejoin="round" fill="none" /><path d="M6.5 9.5l2 2 3.5-4" stroke="#bc8cff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 2 }}>Verify your contacts for maximum security</div>
+                <div style={{ fontSize: 12, color: '#8b949e' }}>Compare fingerprints to prevent impersonation</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div style={styles.emptyMain}>
+        <div style={styles.emptyIcon}>
+          <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+            <rect x="6" y="10" width="44" height="32" rx="6" stroke="#30363d" strokeWidth="2" fill="rgba(88,166,255,0.04)" />
+            <path d="M6 16l22 14 22-14" stroke="#30363d" strokeWidth="2" fill="none" />
+          </svg>
+        </div>
+        <h2 style={styles.emptyTitle}>Select a conversation</h2>
+        <p style={styles.emptySubtitle}>Choose a chat from the sidebar or start a new conversation</p>
+        <button type="button" style={styles.emptyNewChatButton} onClick={() => setShowNewChatDialog(true)}>+ New Chat</button>
+        <p style={styles.emptyHelpText}>Send encrypted messages to anyone on your server</p>
       </div>
-      <h2 style={styles.emptyTitle}>
-        {rooms.length === 0 ? 'Welcome to F.R.A.M.E.' : 'Select a conversation'}
-      </h2>
-      <p style={styles.emptySubtitle}>
-        {rooms.length === 0
-          ? 'Your conversations are end-to-end encrypted. Start by creating your first chat.'
-          : 'Choose a chat from the sidebar or start a new conversation'}
-      </p>
-      <button
-        type="button"
-        style={styles.emptyNewChatButton}
-        onClick={() => setShowNewChatDialog(true)}
-      >
-        + New Chat
-      </button>
-      <p style={styles.emptyHelpText}>
-        Send encrypted messages to anyone on your server
-      </p>
-    </div>
-  );
+    );
+  };
 
   // ── Layout ──
 
@@ -631,41 +795,70 @@ function App() {
 
   return (
     <div style={styles.appWrapper}>
+      {/* Skip to content link for keyboard/screen-reader users */}
+      <a
+        href="#main-content"
+        style={styles.skipToContent}
+        onFocus={(e) => { (e.target as HTMLElement).style.top = '8px'; }}
+        onBlur={(e) => { (e.target as HTMLElement).style.top = '-100px'; }}
+      >
+        Skip to content
+      </a>
       {/* Session timeout warning */}
       {isWarning && timeRemaining < Infinity && (
         <div style={styles.sessionWarningBanner} onClick={() => resetTimer()} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') resetTimer(); }}>
           Session expires in {Math.ceil(timeRemaining / 1000)} seconds — click to stay active
         </div>
       )}
-      {/* Connection lost banner (Fix 5) */}
-      {connectionLost && (
-        <div style={styles.connectionBanner}>
-          Connection lost — messages may be delayed
-        </div>
-      )}
+      {/* Toast notifications */}
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
-      <div style={styles.appContainer}>
-      {/* Sidebar */}
-      {showSidebar && (
+      <div style={{
+        ...styles.appContainer,
+        ...(isMobile ? {
+          position: 'relative' as const,
+          width: '200vw',
+          transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100vw)',
+          transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+        } : {}),
+      }}>
+      {/* Sidebar — always rendered on mobile for smooth slide */}
+      {(showSidebar || isMobile) && (
         <aside style={{
           ...styles.sidebar,
-          ...(isMobile ? styles.sidebarMobile : {}),
+          ...(isMobile ? { ...styles.sidebarMobile, flexShrink: 0 } : {}),
         }}>
-          {/* User info — enhanced with larger avatar and status indicator */}
-          <div style={styles.userInfo}>
+          {/* User info — click to open profile settings */}
+          <div
+            style={styles.userInfo}
+            onClick={() => {
+              setActiveView('settings');
+              if (isMobile) setSidebarOpen(false);
+            }}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                setActiveView('settings');
+                if (isMobile) setSidebarOpen(false);
+              }
+            }}
+          >
             <div style={{ position: 'relative' as const, flexShrink: 0 }}>
               <div style={styles.userAvatar}>
-                {auth.userId.charAt(0) === '@'
-                  ? auth.userId.charAt(1).toUpperCase()
-                  : auth.userId.charAt(0).toUpperCase()}
+                <div style={styles.userAvatarInner}>
+                  {auth.userId.charAt(0) === '@'
+                    ? auth.userId.charAt(1).toUpperCase()
+                    : auth.userId.charAt(0).toUpperCase()}
+                </div>
               </div>
-              {/* Online status indicator */}
+              {/* Online status indicator dot on avatar */}
               <div style={{
                 position: 'absolute' as const,
-                bottom: 0,
-                right: 0,
-                width: 12,
-                height: 12,
+                bottom: 1,
+                right: 1,
+                width: 13,
+                height: 13,
                 borderRadius: '50%',
                 backgroundColor: connectionLost ? '#d29922' : '#3fb950',
                 border: '2px solid #161b22',
@@ -675,10 +868,23 @@ function App() {
             <div style={styles.userDetails}>
               <span style={styles.userName}>{DOMPurify.sanitize(formatDisplayName(auth.userId), PURIFY_CONFIG)}</span>
               <span style={styles.userStatus}>
+                <span style={{
+                  display: 'inline-block',
+                  width: 7,
+                  height: 7,
+                  borderRadius: '50%',
+                  backgroundColor: connectionLost ? '#d29922' : '#3fb950',
+                  marginRight: 5,
+                  verticalAlign: 'middle',
+                }} />
                 {connectionLost ? 'Reconnecting...' : 'Online'}
               </span>
               <span style={styles.userDevice}>
-                Device: {DOMPurify.sanitize(auth.deviceId.slice(0, 8), PURIFY_CONFIG)}...
+                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" style={{ marginRight: 4, verticalAlign: 'middle' }}>
+                  <path d="M8 1L2 4v4.5c0 3.5 2.5 6.2 6 7.5 3.5-1.3 6-4 6-7.5V4L8 1z" stroke="#3fb950" strokeWidth="1.5" fill="rgba(63,185,80,0.1)" />
+                  <path d="M6 8.5l1.5 1.5L10.5 6" stroke="#3fb950" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                </svg>
+                Secured
               </span>
             </div>
             {unreadCount > 0 && (
@@ -688,15 +894,27 @@ function App() {
             )}
           </div>
 
-          {/* Init error */}
+          {/* Init error -- compact inline indicator (detail shown in toast) */}
           {initError && (
-            <div style={styles.initError}>{DOMPurify.sanitize(initError, PURIFY_CONFIG)}</div>
+            <div style={styles.initErrorCompact}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+                <circle cx="7" cy="7" r="6" stroke="#f85149" strokeWidth="1.2" fill="rgba(248,81,73,0.1)" />
+                <path d="M5 5l4 4M9 5l-4 4" stroke="#f85149" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {DOMPurify.sanitize(initError, PURIFY_CONFIG)}
+              </span>
+            </div>
           )}
 
-          {/* Room fetch error (Fix 2) */}
+          {/* Room fetch error -- compact inline with retry */}
           {roomFetchError && (
-            <div style={styles.roomFetchError}>
-              <span>{DOMPurify.sanitize(roomFetchError, PURIFY_CONFIG)}</span>
+            <div style={styles.roomFetchErrorCompact}>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+                <circle cx="7" cy="7" r="6" stroke="#f85149" strokeWidth="1.2" fill="rgba(248,81,73,0.1)" />
+                <path d="M5 5l4 4M9 5l-4 4" stroke="#f85149" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+              <span style={{ flex: 1, fontSize: 11, color: '#f85149' }}>Load failed</span>
               <button
                 type="button"
                 style={styles.roomRetryButton}
@@ -715,6 +933,9 @@ function App() {
               currentUserId={auth.userId}
               onSelectRoom={handleSelectRoom}
               unreadByRoom={unreadByRoom}
+              loading={initPhase !== 'done' && rooms.length === 0}
+              searchInputRef={searchInputRef}
+              focusedRoomIndex={focusedRoomIndex ?? undefined}
             />
             {/* Gradient overlay at the bottom indicating scrollability */}
             <div style={styles.scrollFadeOverlay} />
@@ -748,19 +969,37 @@ function App() {
               type="button"
               style={styles.logoutButton}
               onClick={handleLogout}
+              aria-label="Log out"
               title="Log out"
             >
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
                 <path d="M6 15H4a1 1 0 01-1-1V4a1 1 0 011-1h2M12 12l3-3-3-3M7 9h8" stroke="#8b949e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
+            <div style={{ position: 'relative' as const }}>
+              <button type="button" style={styles.shortcutsHelpButton} onClick={() => setShowShortcutsHelp((v) => !v)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts">?</button>
+              {showShortcutsHelp && (
+                <div style={styles.shortcutsPopup} role="dialog" aria-label="Keyboard shortcuts">
+                  <div style={styles.shortcutsPopupTitle}>Keyboard Shortcuts</div>
+                  <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>{navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}+K</kbd><span>Search conversations</span></div>
+                  <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>{navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}+N</kbd><span>New chat</span></div>
+                  <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>{navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}+,</kbd><span>Settings</span></div>
+                  <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>Esc</kbd><span>Close / Go back</span></div>
+                  <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>{'\u2191'}/{'\u2193'}</kbd><span>Navigate rooms</span></div>
+                  <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>Enter</kbd><span>Select room</span></div>
+                </div>
+              )}
+            </div>
           </div>
         </aside>
       )}
 
-      {/* Main content */}
-      {showMain && (
-        <main style={styles.mainContent}>
+      {/* Main content — always rendered on mobile for smooth slide */}
+      {(showMain || isMobile) && (
+        <main id="main-content" style={{
+          ...styles.mainContent,
+          ...(isMobile ? { width: '100vw', minWidth: '100vw', flexShrink: 0 } : {}),
+        }}>
           {/* Mobile back button */}
           {isMobile && (
             <button
@@ -774,7 +1013,9 @@ function App() {
               Back
             </button>
           )}
-          {renderMainContent()}
+          <div key={activeView} style={{ flex: 1, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden', animation: 'frame-fade-in 0.15s ease-out' }}>
+            {renderMainContent()}
+          </div>
         </main>
       )}
 
@@ -884,19 +1125,32 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 12,
     padding: '18px 16px 14px',
     borderBottom: '1px solid #30363d',
+    cursor: 'pointer',
+    transition: 'background-color 0.15s ease',
   },
   userAvatar: {
-    width: 42,
-    height: 42,
+    width: 48,
+    height: 48,
     borderRadius: '50%',
-    backgroundColor: '#30363d',
+    background: 'linear-gradient(135deg, #58a6ff 0%, #3fb950 100%)',
+    padding: 2,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: 700,
     color: '#58a6ff',
     flexShrink: 0,
+    boxShadow: '0 0 0 2px #161b22',
+  },
+  userAvatarInner: {
+    width: 44,
+    height: 44,
+    borderRadius: '50%',
+    backgroundColor: '#21262d',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   userDetails: {
     display: 'flex',
@@ -918,7 +1172,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
   userDevice: {
     fontSize: 10,
-    color: '#484f58',
+    color: '#3fb950',
+    display: 'flex',
+    alignItems: 'center',
+    marginTop: 1,
+    opacity: 0.85,
   },
   totalUnreadBadge: {
     backgroundColor: '#58a6ff',
@@ -931,18 +1189,6 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center',
     flexShrink: 0,
     marginLeft: 'auto',
-  },
-
-  // ── Connection banner (Fix 5) ──
-  connectionBanner: {
-    padding: '4px 12px',
-    backgroundColor: 'rgba(210, 153, 34, 0.15)',
-    color: '#d29922',
-    fontSize: 12,
-    fontWeight: 500,
-    textAlign: 'center',
-    flexShrink: 0,
-    width: '100%',
   },
 
   // ── Init overlay (Fix 3) ──
@@ -974,29 +1220,29 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
   },
 
-  // ── Init error ──
-  initError: {
-    padding: '6px 12px',
-    margin: '8px 12px 0',
-    backgroundColor: '#3d1f28',
-    border: '1px solid #6e3630',
+  // ── Init error (compact inline) ──
+  initErrorCompact: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '5px 12px',
+    margin: '6px 12px 0',
+    backgroundColor: 'rgba(248, 81, 73, 0.08)',
     borderRadius: 6,
-    fontSize: 12,
+    fontSize: 11,
     color: '#f85149',
   },
 
-  // ── Room fetch error (Fix 2) ──
-  roomFetchError: {
+  // ── Room fetch error (compact inline) ──
+  roomFetchErrorCompact: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    padding: '8px 12px',
-    margin: '8px 12px 0',
-    backgroundColor: '#3d1f28',
-    border: '1px solid #6e3630',
+    gap: 6,
+    padding: '5px 12px',
+    margin: '6px 12px 0',
+    backgroundColor: 'rgba(248, 81, 73, 0.08)',
     borderRadius: 6,
-    fontSize: 12,
+    fontSize: 11,
     color: '#f85149',
   },
   roomRetryButton: {
@@ -1311,6 +1557,12 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontFamily: 'inherit',
   },
+  skipToContent: { position: 'absolute' as const, top: -100, left: 8, zIndex: 10001, padding: '8px 16px', backgroundColor: '#58a6ff', color: '#0d1117', fontSize: 13, fontWeight: 600, borderRadius: 6, textDecoration: 'none', transition: 'top 0.2s ease' },
+  shortcutsHelpButton: { padding: '6px 10px', fontSize: 13, fontWeight: 700, backgroundColor: 'transparent', color: '#484f58', border: '1px solid #30363d', borderRadius: 6, cursor: 'pointer', lineHeight: 1, fontFamily: 'inherit', transition: 'border-color 0.15s, color 0.15s' },
+  shortcutsPopup: { position: 'absolute' as const, bottom: 44, right: 0, width: 240, padding: 16, backgroundColor: '#161b22', border: '1px solid #30363d', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 100 },
+  shortcutsPopupTitle: { fontSize: 13, fontWeight: 600, color: '#e6edf3', marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid #21262d' },
+  shortcutsPopupRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', fontSize: 12, color: '#8b949e' },
+  kbd: { display: 'inline-block', padding: '2px 6px', fontSize: 11, fontWeight: 600, fontFamily: 'monospace', color: '#c9d1d9', backgroundColor: '#21262d', border: '1px solid #30363d', borderRadius: 4, lineHeight: '16px' },
 };
 
 export default App;

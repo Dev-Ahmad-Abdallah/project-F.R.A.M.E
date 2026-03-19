@@ -13,6 +13,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { renameRoom, inviteToRoom, leaveRoom } from '../api/roomsAPI';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { RoomSummary, RoomMember } from '../api/roomsAPI';
 
 // ── Keyframes (injected once) ──
@@ -94,6 +95,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
   onRoomRenamed,
   onMemberInvited,
 }) => {
+  const isMobile = useIsMobile();
   // Rename state
   const [isEditingName, setIsEditingName] = useState(false);
   const [editNameValue, setEditNameValue] = useState(room.name || '');
@@ -217,7 +219,15 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
 
   return (
     <div style={styles.overlay} onClick={onClose}>
-      <div style={styles.panel} onClick={(e) => e.stopPropagation()}>
+      <div style={{
+        ...styles.panel,
+        ...(isMobile ? {
+          width: '100vw',
+          maxWidth: '100vw',
+          borderLeft: 'none',
+          borderRadius: 0,
+        } : {}),
+      }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={styles.panelHeader}>
           <span style={styles.panelTitle}>Room Settings</span>

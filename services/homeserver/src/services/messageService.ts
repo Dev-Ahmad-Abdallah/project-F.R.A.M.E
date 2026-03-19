@@ -160,8 +160,7 @@ export async function deleteMessage(eventId: string, userId: string): Promise<vo
   const event = result.rows[0];
 
   // Check if this is a view-once message (the encrypted wrapper stores viewOnce flag)
-  const isViewOnce = event.content &&
-    (event.content as Record<string, unknown>).viewOnce === true;
+  const isViewOnce = event.content?.viewOnce === true;
 
   if (event.sender_id !== userId) {
     if (isViewOnce) {
@@ -281,7 +280,7 @@ export async function syncMessages(
     // This ensures that even if the client fails to call DELETE, the server
     // removes the content so no future sync can retrieve it.
     const viewOnceEvents = events.filter(
-      (e) => e.content && (e.content as Record<string, unknown>).viewOnce === true
+      (e) => e.content?.viewOnce === true
     );
     if (viewOnceEvents.length > 0) {
       const viewOnceIds = viewOnceEvents.map((e) => e.event_id);

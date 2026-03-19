@@ -96,7 +96,7 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
  * @returns The PushSubscription, or `null` if subscription failed.
  */
 export async function subscribeToPush(
-  _homeserverUrl?: string,
+  _homeserverUrl?: string, // eslint-disable-line @typescript-eslint/no-unused-vars
 ): Promise<PushSubscription | null> {
   if (!swRegistration) {
     console.warn('Service worker not registered. Call registerServiceWorker() first.');

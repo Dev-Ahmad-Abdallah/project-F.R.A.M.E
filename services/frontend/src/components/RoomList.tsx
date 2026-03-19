@@ -23,6 +23,7 @@ import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import type { RoomSummary } from '../api/roomsAPI';
 import { formatDisplayName } from '../utils/displayName';
+import { SkeletonRoomItem } from './Skeleton';
 
 // ── Types ──
 
@@ -37,6 +38,12 @@ interface RoomListProps {
    * `room.unreadCount` from the API response.
    */
   unreadByRoom?: Record<string, number>;
+  /** When true, show skeleton loading placeholders instead of the room list. */
+  loading?: boolean;
+  /** Ref forwarded from parent so keyboard shortcuts can focus the search bar. */
+  searchInputRef?: React.RefObject<HTMLInputElement | null>;
+  /** Index of the room currently focused via keyboard navigation (arrow keys). */
+  focusedRoomIndex?: number;
 }
 
 // ── localStorage helpers ──
@@ -99,23 +106,28 @@ function truncate(text: string, maxLength: number): string {
 }
 
 /**
- * Format a timestamp for the room list (time if today, date otherwise).
+ * Format a timestamp as a relative time string (e.g., "2m ago", "Yesterday").
  */
-function formatTimestamp(isoDate: string): string {
+function formatRelativeTimestamp(isoDate: string): string {
   try {
     const date = new Date(isoDate);
     const now = new Date();
-    const isToday =
-      date.getFullYear() === now.getFullYear() &&
-      date.getMonth() === now.getMonth() &&
-      date.getDate() === now.getDate();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHr = Math.floor(diffMin / 60);
+    const diffDays = Math.floor(diffHr / 24);
 
-    if (isToday) {
-      return date.toLocaleTimeString(undefined, {
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    }
+    if (diffSec < 60) return 'now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffHr < 24) return `${diffHr}h ago`;
+
+    const isYesterday =
+      diffDays === 1 ||
+      (diffDays === 0 && date.getDate() !== now.getDate());
+    if (isYesterday && diffDays <= 1) return 'Yesterday';
+
+    if (diffDays < 7) return `${diffDays}d ago`;
 
     return date.toLocaleDateString(undefined, {
       month: 'short',
@@ -183,6 +195,9 @@ const RoomList: React.FC<RoomListProps> = ({
   currentUserId,
   onSelectRoom,
   unreadByRoom,
+  loading,
+  searchInputRef: externalSearchRef,
+  focusedRoomIndex,
 }) => {
   const [hoveredRoomId, setHoveredRoomId] = useState<string | null>(null);
   const [starredIds, setStarredIds] = useState<Set<string>>(() => getStoredSet(STARRED_KEY));
@@ -191,7 +206,20 @@ const RoomList: React.FC<RoomListProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [starAnimatingId, setStarAnimatingId] = useState<string | null>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const internalSearchRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = externalSearchRef || internalSearchRef;
+  const roomItemRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
+
+  // Scroll focused room into view when navigating with arrow keys
+  useEffect(() => {
+    if (focusedRoomIndex != null && focusedRoomIndex >= 0) {
+      const el = roomItemRefs.current.get(focusedRoomIndex);
+      if (el) {
+        el.scrollIntoView({ block: 'nearest' });
+        el.focus();
+      }
+    }
+  }, [focusedRoomIndex]);
 
   // Inject animation keyframes on mount
   useEffect(() => {
@@ -237,6 +265,17 @@ const RoomList: React.FC<RoomListProps> = ({
     });
   }, []);
 
+  // Show skeleton loading placeholders while rooms are loading
+  if (loading) {
+    return (
+      <div style={styles.container}>
+        <SkeletonRoomItem />
+        <SkeletonRoomItem />
+        <SkeletonRoomItem />
+      </div>
+    );
+  }
+
   if (rooms.length === 0) {
     return (
       <div style={styles.emptyContainer}>
@@ -272,6 +311,13 @@ const RoomList: React.FC<RoomListProps> = ({
     }
   }
 
+  // Build a flat visible-room list so we can map indexes for keyboard nav
+  const visibleRoomOrder: string[] = [
+    ...starredRooms.map((r) => r.roomId),
+    ...normalRooms.map((r) => r.roomId),
+    ...(showArchived ? archivedRooms.map((r) => r.roomId) : []),
+  ];
+
   const renderRoomItem = (room: RoomSummary) => {
     const isSelected = room.roomId === selectedRoomId;
     const isHovered = hoveredRoomId === room.roomId;
@@ -280,6 +326,8 @@ const RoomList: React.FC<RoomListProps> = ({
     const displayName = getRoomDisplayName(room, currentUserId);
     const unread = unreadByRoom?.[room.roomId] ?? room.unreadCount;
     const isStarAnimating = starAnimatingId === room.roomId;
+    const roomIndex = visibleRoomOrder.indexOf(room.roomId);
+    const isFocusedByKeyboard = focusedRoomIndex != null && roomIndex === focusedRoomIndex;
 
     // Simulate online presence from last message recency (within 5 min)
     const isOnline = room.lastMessage
@@ -289,11 +337,17 @@ const RoomList: React.FC<RoomListProps> = ({
     return (
       <button
         key={room.roomId}
+        ref={(el) => {
+          if (el) roomItemRefs.current.set(roomIndex, el);
+          else roomItemRefs.current.delete(roomIndex);
+        }}
         type="button"
+        role="listitem"
         style={{
           ...styles.roomItem,
           ...(isSelected ? styles.roomItemSelected : {}),
           ...(isHovered && !isSelected ? { backgroundColor: '#1c2128' } : {}),
+          ...(isFocusedByKeyboard && !isSelected ? { backgroundColor: '#1c2128', outline: '2px solid #58a6ff', outlineOffset: -2 } : {}),
           // Smooth transition for reordering
           transition: 'background-color 0.2s ease, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease',
           // Unread pulse animation
@@ -305,6 +359,8 @@ const RoomList: React.FC<RoomListProps> = ({
         onMouseEnter={() => setHoveredRoomId(room.roomId)}
         onMouseLeave={() => setHoveredRoomId(null)}
         aria-current={isSelected ? 'true' : undefined}
+        aria-label={`${displayName}${unread > 0 ? `, ${unread} unread` : ''}`}
+        tabIndex={isFocusedByKeyboard ? 0 : -1}
       >
         {/* Swipe hint left (star) */}
         {isHovered && !isStarred && (
@@ -355,7 +411,7 @@ const RoomList: React.FC<RoomListProps> = ({
                 ...styles.timestamp,
                 ...(unread > 0 ? { color: '#58a6ff' } : {}),
               }}>
-                {formatTimestamp(room.lastMessage.timestamp)}
+                {formatRelativeTimestamp(room.lastMessage.timestamp)}
               </span>
             )}
           </div>
@@ -370,7 +426,19 @@ const RoomList: React.FC<RoomListProps> = ({
               ...(unread > 0 ? { color: '#c9d1d9' } : {}),
             }}>
               {room.lastMessage
-                ? truncate(room.lastMessage.body, 40)
+                ? room.lastMessage.body
+                  ? (() => {
+                      const senderPrefix =
+                        room.roomType === 'group' && room.lastMessage.senderId
+                          ? `${DOMPurify.sanitize(
+                              room.members.find((m) => m.userId === room.lastMessage?.senderId)?.displayName
+                                || formatDisplayName(room.lastMessage.senderId),
+                              PURIFY_CONFIG,
+                            )}: `
+                          : '';
+                      return truncate(senderPrefix + (room.lastMessage?.body ?? ''), 40);
+                    })()
+                  : <em style={{ fontStyle: 'italic', color: '#8b949e' }}>Encrypted message</em>
                 : 'No messages yet'}
             </span>
             {unread > 0 && (
@@ -436,7 +504,7 @@ const RoomList: React.FC<RoomListProps> = ({
   };
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} role="list" aria-label="Conversations">
       {/* Search / filter bar with focus expand animation */}
       <div style={{
         ...styles.searchContainer,

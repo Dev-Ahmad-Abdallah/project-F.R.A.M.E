@@ -47,6 +47,14 @@ function injectNewChatKeyframes(): void {
         transform: translateY(0) scale(1);
       }
     }
+    @keyframes frame-dialog-slide-up-mobile {
+      0% {
+        transform: translateY(100%);
+      }
+      100% {
+        transform: translateY(0);
+      }
+    }
     @keyframes frame-dialog-overlay-fade {
       0% { opacity: 0; }
       100% { opacity: 1; }
@@ -75,6 +83,22 @@ function injectNewChatKeyframes(): void {
 
 // ── Component ──
 
+// ── Helpers ──
+
+const AVATAR_COLORS = ['#da3633', '#58a6ff', '#3fb950', '#d29922', '#bc8cff', '#f78166'];
+
+function getAvatarColor(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function extractShortName(userId: string): string {
+  // "@alice:server" → "alice"
+  const match = userId.match(/^@([^:]+)/);
+  return match ? match[1] : userId;
+}
+
 const NewChatDialog: React.FC<NewChatDialogProps> = ({
   currentUserId,
   onCreated,
@@ -90,7 +114,10 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [successRoom, setSuccessRoom] = useState<RoomSummary | null>(null);
+  // Multi-user chips for group mode
+  const [invitedUsers, setInvitedUsers] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const typeSelectorRef = useRef<HTMLDivElement>(null);
 
@@ -113,71 +140,150 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
     };
   }, []);
 
-  const handleCreate = useCallback(async () => {
-    const trimmedUsername = username.trim();
-    if (!trimmedUsername) {
-      setError('Please enter a username.');
+  // Add a user chip (group mode)
+  const handleAddUser = useCallback(() => {
+    const trimmed = username.trim();
+    if (!trimmed) return;
+    if (trimmed === currentUserId) {
+      setError('You cannot invite yourself.');
       return;
     }
-
-    // Prevent inviting yourself
-    if (trimmedUsername === currentUserId) {
-      setError('You cannot create a conversation with yourself.');
+    if (invitedUsers.includes(trimmed)) {
+      setError('User already added.');
       return;
     }
-
-    setLoading(true);
+    setInvitedUsers((prev) => [...prev, trimmed]);
+    setUsername('');
     setError(null);
+    inputRef.current?.focus();
+  }, [username, currentUserId, invitedUsers]);
 
-    try {
-      const result = await createRoom(
-        roomType,
-        [trimmedUsername],
-        roomType === 'group' && roomName.trim()
-          ? roomName.trim()
-          : undefined,
-        {
-          isPrivate: isPrivate || undefined,
-          password: roomPassword.trim() || undefined,
-        },
-      );
+  // Remove a user chip
+  const handleRemoveUser = useCallback((userId: string) => {
+    setInvitedUsers((prev) => prev.filter((u) => u !== userId));
+  }, []);
 
-      // Build a local RoomSummary for immediate UI update
-      const newRoom: RoomSummary = {
-        roomId: result.roomId,
-        roomType,
-        name:
-          roomType === 'group' && roomName.trim()
-            ? roomName.trim()
-            : undefined,
-        members: [
-          { userId: currentUserId },
-          { userId: trimmedUsername },
-        ],
-        unreadCount: 0,
-      };
+  // Compute default group name suggestion
+  const groupNameSuggestion = invitedUsers.length > 0
+    ? `Group with ${invitedUsers.map(extractShortName).join(', ')}`
+    : 'Group chat';
 
-      // Show success animation before closing
-      setSuccessRoom(newRoom);
-      setShowSuccess(true);
-      setTimeout(() => {
-        onCreated(newRoom);
-      }, 1200);
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Failed to create conversation.');
+  const handleCreate = useCallback(async () => {
+    if (roomType === 'group') {
+      // Group mode: use chips
+      if (invitedUsers.length === 0) {
+        setError('Please add at least one user to the group.');
+        return;
       }
-    } finally {
-      setLoading(false);
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const finalName = roomName.trim() || groupNameSuggestion;
+        const result = await createRoom(
+          roomType,
+          invitedUsers,
+          finalName,
+          {
+            isPrivate: isPrivate || undefined,
+            password: roomPassword.trim() || undefined,
+          },
+        );
+
+        const newRoom: RoomSummary = {
+          roomId: result.roomId,
+          roomType,
+          name: finalName,
+          members: [
+            { userId: currentUserId },
+            ...invitedUsers.map((u) => ({ userId: u })),
+          ],
+          unreadCount: 0,
+        };
+
+        setSuccessRoom(newRoom);
+        setShowSuccess(true);
+        setTimeout(() => {
+          onCreated(newRoom);
+        }, 1200);
+      } catch (err) {
+        if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError('Failed to create conversation.');
+        }
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // Direct mode: single user
+      const trimmedUsername = username.trim();
+      if (!trimmedUsername) {
+        setError('Please enter a username.');
+        return;
+      }
+
+      if (trimmedUsername === currentUserId) {
+        setError('You cannot create a conversation with yourself.');
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await createRoom(
+          roomType,
+          [trimmedUsername],
+          undefined,
+          {
+            isPrivate: isPrivate || undefined,
+            password: roomPassword.trim() || undefined,
+          },
+        );
+
+        const newRoom: RoomSummary = {
+          roomId: result.roomId,
+          roomType,
+          name: undefined,
+          members: [
+            { userId: currentUserId },
+            { userId: trimmedUsername },
+          ],
+          unreadCount: 0,
+        };
+
+        setSuccessRoom(newRoom);
+        setShowSuccess(true);
+        setTimeout(() => {
+          onCreated(newRoom);
+        }, 1200);
+      } catch (err) {
+        if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError('Failed to create conversation.');
+        }
+      } finally {
+        setLoading(false);
+      }
     }
-  }, [username, roomType, roomName, isPrivate, roomPassword, currentUserId, onCreated]);
+  }, [username, roomType, roomName, isPrivate, roomPassword, currentUserId, onCreated, invitedUsers, groupNameSuggestion]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      void handleCreate();
+      if (roomType === 'group' && username.trim()) {
+        // In group mode, Enter adds to chips instead of creating
+        handleAddUser();
+      } else {
+        void handleCreate();
+      }
+    }
+    if (e.key === 'Backspace' && roomType === 'group' && username === '' && invitedUsers.length > 0) {
+      // Remove last chip on backspace when input is empty
+      setInvitedUsers((prev) => prev.slice(0, -1));
     }
     if (e.key === 'Escape') {
       onClose();
@@ -261,23 +367,26 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   return (
     <div style={{
       ...styles.overlay,
-      ...(isMobile ? { padding: 0 } : {}),
+      ...(isMobile ? { padding: 0, alignItems: 'flex-end' } : {}),
       animation: 'frame-dialog-overlay-fade 0.2s ease-out',
     }} onClick={handleOverlayClick}>
       <div
         style={{
           ...styles.modal,
-          animation: 'frame-dialog-slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
+          animation: isMobile
+            ? 'frame-dialog-slide-up-mobile 0.35s cubic-bezier(0.16, 1, 0.3, 1)'
+            : 'frame-dialog-slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
           ...(isMobile ? {
             maxWidth: '100%',
             width: '100%',
-            height: '100%',
-            borderRadius: 0,
+            maxHeight: '92vh',
+            borderRadius: '16px 16px 0 0',
             border: 'none',
-            padding: '24px 20px',
+            borderTop: '1px solid #30363d',
+            padding: '16px 20px 24px',
             display: 'flex',
             flexDirection: 'column' as const,
-            animation: 'frame-dialog-slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+            overflowY: 'auto' as const,
           } : {}),
         }}
         role="dialog"
@@ -377,11 +486,11 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
           </p>
         </div>
 
-        {/* Room name (group only) */}
+        {/* Group name (always visible in group mode) */}
         {roomType === 'group' && (
           <div style={styles.fieldGroup}>
             <label style={styles.label} htmlFor="new-chat-room-name">
-              Group Name (optional)
+              Group Name
             </label>
             <input
               id="new-chat-room-name"
@@ -389,9 +498,12 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
               style={styles.input}
               value={roomName}
               onChange={(e) => setRoomName(e.target.value)}
-              placeholder="e.g. Project Team"
+              placeholder={groupNameSuggestion}
               disabled={loading}
             />
+            <span style={styles.fieldHint}>
+              {roomName.trim() ? '' : `Defaults to "${groupNameSuggestion}"`}
+            </span>
           </div>
         )}
 
@@ -443,37 +555,134 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         {/* Username input */}
         <div style={styles.fieldGroup}>
           <label style={styles.label} htmlFor="new-chat-username">
-            Username to invite
+            {roomType === 'group' ? 'Add members' : 'Username to invite'}
           </label>
-          <div style={styles.inputWrapper}>
-            <input
-              id="new-chat-username"
-              ref={inputRef}
-              type="text"
-              style={{
-                ...styles.input,
-                ...(username.trim() && /^@[^:]+:.+$/.test(username.trim())
-                  ? styles.inputValid
-                  : {}),
-                transition: 'border-color 0.2s ease',
-              }}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="e.g. @alice:frame.local"
-              disabled={loading}
-            />
-            {username.trim() && /^@[^:]+:.+$/.test(username.trim()) && (
-              <span style={styles.validIcon} title="Valid username format">
-                &#10003;
-              </span>
+
+          {/* Chips for group mode */}
+          {roomType === 'group' && invitedUsers.length > 0 && (
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap' as const,
+              gap: 6,
+              marginBottom: 4,
+            }}>
+              {invitedUsers.map((userId) => (
+                <div
+                  key={userId}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '4px 8px 4px 4px',
+                    borderRadius: 16,
+                    backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                    border: '1px solid rgba(88, 166, 255, 0.3)',
+                    fontSize: 12,
+                    color: '#c9d1d9',
+                    animation: 'frame-dialog-slide-up 0.2s ease-out',
+                  }}
+                >
+                  <div style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: '50%',
+                    backgroundColor: getAvatarColor(userId),
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: '#fff',
+                    flexShrink: 0,
+                  }}>
+                    {extractShortName(userId).charAt(0).toUpperCase()}
+                  </div>
+                  <span>{DOMPurify.sanitize(extractShortName(userId), PURIFY_CONFIG)}</span>
+                  <button
+                    type="button"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#8b949e',
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      padding: '0 2px',
+                      lineHeight: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                    }}
+                    onClick={() => handleRemoveUser(userId)}
+                    title={`Remove ${extractShortName(userId)}`}
+                    aria-label={`Remove ${extractShortName(userId)}`}
+                  >
+                    &#10005;
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <div style={{ ...styles.inputWrapper, flex: 1 }}>
+              <input
+                id="new-chat-username"
+                ref={inputRef}
+                type="text"
+                style={{
+                  ...styles.input,
+                  ...(username.trim() && /^@[^:]+:.+$/.test(username.trim())
+                    ? styles.inputValid
+                    : {}),
+                  transition: 'border-color 0.2s ease',
+                }}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="e.g. @alice:frame.local"
+                disabled={loading}
+              />
+              {username.trim() && /^@[^:]+:.+$/.test(username.trim()) && (
+                <span style={styles.validIcon} title="Valid username format">
+                  &#10003;
+                </span>
+              )}
+            </div>
+            {roomType === 'group' && (
+              <button
+                type="button"
+                style={{
+                  padding: '8px 12px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  backgroundColor: username.trim() ? 'rgba(88, 166, 255, 0.15)' : '#21262d',
+                  color: username.trim() ? '#58a6ff' : '#484f58',
+                  border: `1px solid ${username.trim() ? 'rgba(88, 166, 255, 0.4)' : '#30363d'}`,
+                  borderRadius: 6,
+                  cursor: username.trim() ? 'pointer' : 'not-allowed',
+                  fontFamily: 'inherit',
+                  flexShrink: 0,
+                  transition: 'all 0.15s ease',
+                  minHeight: 36,
+                }}
+                onClick={handleAddUser}
+                disabled={!username.trim() || loading}
+              >
+                Add
+              </button>
             )}
           </div>
           <span style={styles.fieldHint}>
-            {username.trim().length === 0
-              ? 'Format: @user:server'
-              : /^@[^:]+:.+$/.test(username.trim())
-                ? 'Valid username format'
-                : 'Expected format: @user:server'}
+            {roomType === 'group'
+              ? (username.trim().length === 0
+                  ? 'Format: @user:server \u2014 press Enter or Add to include'
+                  : /^@[^:]+:.+$/.test(username.trim())
+                    ? 'Press Enter to add this user'
+                    : 'Expected format: @user:server')
+              : (username.trim().length === 0
+                  ? 'Format: @user:server'
+                  : /^@[^:]+:.+$/.test(username.trim())
+                    ? 'Valid username format'
+                    : 'Expected format: @user:server')
+            }
           </span>
         </div>
 
@@ -494,11 +703,13 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
             type="button"
             style={{
               ...styles.createButton,
-              ...(loading || !username.trim() ? styles.buttonDisabled : {}),
+              ...(loading || (roomType === 'group' ? invitedUsers.length === 0 : !username.trim())
+                ? styles.buttonDisabled
+                : {}),
               transition: 'background-color 0.15s ease, opacity 0.15s ease, transform 0.1s ease',
             }}
             onClick={() => void handleCreate()}
-            disabled={loading || !username.trim()}
+            disabled={loading || (roomType === 'group' ? invitedUsers.length === 0 : !username.trim())}
           >
             {loading ? 'Creating...' : 'Create'}
           </button>
