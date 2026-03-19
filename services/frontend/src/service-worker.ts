@@ -120,17 +120,39 @@ function isApiRequest(request: Request): boolean {
   );
 }
 
+// ── App Shell URLs to pre-cache for offline mobile usage ──
+
+const APP_SHELL_URLS = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png',
+];
+
 // ── Install ──
 
 self.addEventListener('install', (event: ExtendableEvent) => {
   event.waitUntil(
-    caches.open(APP_SHELL_CACHE).then((cache) => {
+    caches.open(APP_SHELL_CACHE).then(async (cache) => {
       // Pre-cache the offline fallback page
-      return cache.put(
+      await cache.put(
         new Request(OFFLINE_PAGE_KEY),
         new Response(OFFLINE_HTML, {
           headers: { 'Content-Type': 'text/html; charset=utf-8' },
         }),
+      );
+      // Pre-cache the app shell for offline mobile usage.
+      // Failures are non-fatal — the shell will be cached on first visit via
+      // the stale-while-revalidate strategy in the fetch handler.
+      await Promise.allSettled(
+        APP_SHELL_URLS.map((url) =>
+          fetch(url).then((response) => {
+            if (response.ok) {
+              return cache.put(new Request(url), response);
+            }
+          }),
+        ),
       );
     }).then(() => self.skipWaiting()),
   );
