@@ -22,7 +22,7 @@ jobs:
           - name: homeserver
             health: https://project-frame-production.up.railway.app/health
           - name: frontend
-            health: https://frontend-production-29a3.up.railway.app
+            health: https://frame.up.railway.app
 
     steps:
       - name: Health check

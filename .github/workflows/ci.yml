@@ -360,7 +360,7 @@ jobs:
       - name: Health check — frontend
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            https://frontend-production-29a3.up.railway.app --max-time 15)
+            https://frame.up.railway.app --max-time 15)
           if [ "$STATUS" != "200" ]; then
             echo "FAILED — frontend returned HTTP $STATUS"
             exit 1

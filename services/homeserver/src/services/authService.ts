@@ -141,15 +141,22 @@ export async function login(params: LoginParams): Promise<AuthResult> {
       // Auto-evict oldest devices instead of blocking login
       // This prevents users from being permanently locked out after testing/multi-device usage
       const evictCount = deviceCount - 8; // Keep 8, make room for 2 new
-      await pool.query(
-        `DELETE FROM devices WHERE device_id IN (
-          SELECT device_id FROM devices
-          WHERE user_id = $1
-          ORDER BY last_seen ASC NULLS FIRST, created_at ASC
-          LIMIT $2
-        )`,
+      // Find oldest devices to evict
+      const staleDevices = await pool.query<{ device_id: string }>(
+        `SELECT device_id FROM devices
+         WHERE user_id = $1
+         ORDER BY last_seen ASC NULLS FIRST, created_at ASC
+         LIMIT $2`,
         [user.user_id, evictCount]
       );
+      const staleIds = staleDevices.rows.map((r) => r.device_id);
+      if (staleIds.length > 0) {
+        // Clean up foreign key references before deleting devices
+        await pool.query(`DELETE FROM delivery_state WHERE device_id = ANY($1::text[])`, [staleIds]);
+        await pool.query(`DELETE FROM key_bundles WHERE device_id = ANY($1::text[])`, [staleIds]);
+        await pool.query(`DELETE FROM to_device_messages WHERE recipient_device_id = ANY($1::text[])`, [staleIds]);
+        await pool.query(`DELETE FROM devices WHERE device_id = ANY($1::text[])`, [staleIds]);
+      }
       logger.info(`Auto-evicted ${evictCount} stale device(s) for ${user.user_id}`);
     }
   }
