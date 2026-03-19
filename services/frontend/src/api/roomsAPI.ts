@@ -25,6 +25,7 @@ export interface RoomSummary {
     timestamp: string;
   };
   unreadCount: number;
+  isAnonymous?: boolean;
 }
 
 export interface CreateRoomResponse {
@@ -44,7 +45,7 @@ export async function createRoom(
   roomType: 'direct' | 'group',
   inviteUserIds: string[],
   name?: string,
-  options?: { isPrivate?: boolean; password?: string },
+  options?: { isPrivate?: boolean; password?: string; isAnonymous?: boolean },
 ): Promise<CreateRoomResponse> {
   return apiRequest<CreateRoomResponse>('/rooms/create', {
     method: 'POST',
@@ -54,6 +55,7 @@ export async function createRoom(
       name,
       ...(options?.isPrivate ? { isPrivate: true } : {}),
       ...(options?.password ? { password: options.password } : {}),
+      ...(options?.isAnonymous ? { isAnonymous: true } : {}),
     },
   });
 }
@@ -86,6 +88,7 @@ interface ServerRoom {
   last_message?: ServerLastMessage | null;
   unreadCount?: number;
   unread_count?: number;
+  settings?: Record<string, unknown>;
 }
 
 export async function listRooms(): Promise<RoomSummary[]> {
@@ -112,6 +115,7 @@ export async function listRooms(): Promise<RoomSummary[]> {
       })),
       lastMessage,
       unreadCount: r.unreadCount ?? r.unread_count ?? 0,
+      isAnonymous: r.settings?.isAnonymous === true || undefined,
     };
   });
 }

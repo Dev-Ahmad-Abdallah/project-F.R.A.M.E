@@ -323,102 +323,53 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
         )}
 
         <div style={styles.panelBody}>
-          {/* Room Name */}
-          <div style={styles.section}>
-            <div style={styles.sectionLabel}>Room Name</div>
-            {isEditingName ? (
-              <div style={styles.inlineEditRow}>
-                <input
-                  ref={renameInputRef}
-                  type="text"
-                  style={styles.renameInput}
-                  value={editNameValue}
-                  onChange={(e) => setEditNameValue(e.target.value)}
-                  onKeyDown={handleRenameKeyDown}
-                  disabled={isRenaming}
-                  maxLength={128}
-                  aria-label="New room name"
-                />
-                <button
-                  type="button"
-                  style={styles.saveButton}
-                  onClick={() => void handleConfirmRename()}
-                  disabled={isRenaming}
-                >
-                  {isRenaming ? '...' : 'Save'}
-                </button>
-                <button
-                  type="button"
-                  style={styles.cancelButton}
-                  onClick={handleCancelRename}
-                  disabled={isRenaming}
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <div
-                style={styles.editableValue}
-                onClick={handleStartRename}
-                title="Click to rename"
-              >
-                {displayName}
-                <span style={styles.editIcon}>&#9998;</span>
-              </div>
-            )}
-          </div>
-
-          {/* Room Type */}
-          <div style={styles.section}>
-            <div style={styles.sectionLabel}>Room Type</div>
-            <div style={styles.readOnlyValue}>
-              {room.roomType === 'direct' ? 'Direct Message' : 'Group Chat'}
+          {/* ═══ Share Room (prominent, at the top) ═══ */}
+          <div style={{
+            padding: '16px 0',
+            borderBottom: '1px solid #21262d',
+          }}>
+            <div style={styles.categoryHeader}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></svg>
+              Share Room
             </div>
-          </div>
-
-          {/* Created Date */}
-          <div style={styles.section}>
-            <div style={styles.sectionLabel}>Created</div>
-            <div style={styles.readOnlyValue}>{createdDate}</div>
-          </div>
-
-          {/* Invite Code */}
-          <div style={styles.section}>
-            <div style={styles.sectionLabel}>Invite Code</div>
             {loadingCode ? (
-              <div style={styles.readOnlyValue}>Loading...</div>
+              <div style={styles.readOnlyValue}>Loading invite code...</div>
             ) : inviteCode ? (
               <div>
+                {/* Big invite code display */}
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 10,
-                  marginBottom: 8,
+                  justifyContent: 'center',
+                  padding: '14px 0',
+                  marginBottom: 10,
+                  backgroundColor: 'rgba(88, 166, 255, 0.04)',
+                  borderRadius: 8,
+                  border: '1px solid rgba(88, 166, 255, 0.15)',
                 }}>
                   <span style={{
-                    fontSize: 22,
-                    fontWeight: 700,
+                    fontSize: 28,
+                    fontWeight: 800,
                     fontFamily: 'monospace',
-                    letterSpacing: '0.15em',
+                    letterSpacing: '0.2em',
                     color: '#58a6ff',
-                    backgroundColor: 'rgba(88, 166, 255, 0.08)',
-                    padding: '6px 14px',
-                    borderRadius: 6,
-                    border: '1px solid rgba(88, 166, 255, 0.2)',
                     userSelect: 'all' as const,
                   }}>
                     {inviteCode}
                   </span>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
                   <button
                     type="button"
                     style={{
-                      padding: '6px 12px',
+                      flex: 1,
+                      padding: '8px 12px',
                       fontSize: 12,
                       fontWeight: 600,
-                      backgroundColor: codeCopied ? 'rgba(35, 134, 54, 0.15)' : '#21262d',
-                      color: codeCopied ? '#3fb950' : '#c9d1d9',
-                      border: `1px solid ${codeCopied ? '#238636' : '#30363d'}`,
-                      borderRadius: 4,
+                      backgroundColor: codeCopied ? 'rgba(35, 134, 54, 0.15)' : 'rgba(88, 166, 255, 0.1)',
+                      color: codeCopied ? '#3fb950' : '#58a6ff',
+                      border: `1px solid ${codeCopied ? '#238636' : 'rgba(88, 166, 255, 0.3)'}`,
+                      borderRadius: 6,
                       cursor: 'pointer',
                       fontFamily: 'inherit',
                       transition: 'all 0.15s ease',
@@ -429,20 +380,19 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                       setTimeout(() => setCodeCopied(false), 2000);
                     }}
                   >
-                    {codeCopied ? 'Copied!' : 'Copy'}
+                    {codeCopied ? 'Copied!' : 'Copy Code'}
                   </button>
-                </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
                   <button
                     type="button"
                     style={{
-                      padding: '6px 12px',
+                      flex: 1,
+                      padding: '8px 12px',
                       fontSize: 12,
                       fontWeight: 600,
-                      backgroundColor: linkCopied ? 'rgba(35, 134, 54, 0.15)' : 'rgba(88, 166, 255, 0.1)',
-                      color: linkCopied ? '#3fb950' : '#58a6ff',
-                      border: `1px solid ${linkCopied ? '#238636' : 'rgba(88, 166, 255, 0.3)'}`,
-                      borderRadius: 4,
+                      backgroundColor: linkCopied ? 'rgba(35, 134, 54, 0.15)' : '#21262d',
+                      color: linkCopied ? '#3fb950' : '#c9d1d9',
+                      border: `1px solid ${linkCopied ? '#238636' : '#30363d'}`,
+                      borderRadius: 6,
                       cursor: 'pointer',
                       fontFamily: 'inherit',
                       transition: 'all 0.15s ease',
@@ -456,42 +406,44 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                   >
                     {linkCopied ? 'Link Copied!' : 'Share Link'}
                   </button>
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      style={{
-                        padding: '6px 12px',
-                        fontSize: 12,
-                        fontWeight: 600,
-                        backgroundColor: '#21262d',
-                        color: '#8b949e',
-                        border: '1px solid #30363d',
-                        borderRadius: 4,
-                        cursor: regeneratingCode ? 'not-allowed' : 'pointer',
-                        fontFamily: 'inherit',
-                        opacity: regeneratingCode ? 0.6 : 1,
-                        transition: 'all 0.15s ease',
-                      }}
-                      disabled={regeneratingCode}
-                      onClick={() => {
-                        setRegeneratingCode(true);
-                        regenerateCode(room.roomId)
-                          .then((data) => {
-                            setInviteCode(data.inviteCode);
-                            showSuccess('Invite code regenerated');
-                          })
-                          .catch((err) => {
-                            console.error('Failed to regenerate code:', err);
-                          })
-                          .finally(() => setRegeneratingCode(false));
-                      }}
-                    >
-                      {regeneratingCode ? 'Regenerating...' : 'Regenerate Code'}
-                    </button>
-                  )}
                 </div>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    style={{
+                      width: '100%',
+                      marginTop: 6,
+                      padding: '6px 12px',
+                      fontSize: 11,
+                      fontWeight: 500,
+                      backgroundColor: 'transparent',
+                      color: '#6e7681',
+                      border: '1px solid #21262d',
+                      borderRadius: 6,
+                      cursor: regeneratingCode ? 'not-allowed' : 'pointer',
+                      fontFamily: 'inherit',
+                      opacity: regeneratingCode ? 0.6 : 1,
+                      transition: 'all 0.15s ease',
+                    }}
+                    disabled={regeneratingCode}
+                    onClick={() => {
+                      setRegeneratingCode(true);
+                      regenerateCode(room.roomId)
+                        .then((data) => {
+                          setInviteCode(data.inviteCode);
+                          showSuccess('Invite code regenerated');
+                        })
+                        .catch((err) => {
+                          console.error('Failed to regenerate code:', err);
+                        })
+                        .finally(() => setRegeneratingCode(false));
+                    }}
+                  >
+                    {regeneratingCode ? 'Regenerating...' : 'Regenerate Code'}
+                  </button>
+                )}
                 <div style={styles.hintText}>
-                  Share this code so others can join without needing a username
+                  Share this code so others can join the room
                 </div>
               </div>
             ) : (
@@ -499,9 +451,125 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
             )}
           </div>
 
-          {/* Member List */}
-          <div style={styles.section}>
-            <div style={styles.sectionLabel}>
+          {/* ═══ General ═══ */}
+          <div style={{ padding: '14px 0', borderBottom: '1px solid #21262d' }}>
+            <div style={styles.categoryHeader}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></svg>
+              General
+            </div>
+            {/* Room Name */}
+            <div style={styles.settingRow}>
+              <div style={styles.settingRowLabel}>Room Name</div>
+              {isEditingName ? (
+                <div style={styles.inlineEditRow}>
+                  <input
+                    ref={renameInputRef}
+                    type="text"
+                    style={styles.renameInput}
+                    value={editNameValue}
+                    onChange={(e) => setEditNameValue(e.target.value)}
+                    onKeyDown={handleRenameKeyDown}
+                    disabled={isRenaming}
+                    maxLength={128}
+                    aria-label="New room name"
+                  />
+                  <button type="button" style={styles.saveButton} onClick={() => void handleConfirmRename()} disabled={isRenaming}>
+                    {isRenaming ? '...' : 'Save'}
+                  </button>
+                  <button type="button" style={styles.cancelButton} onClick={handleCancelRename} disabled={isRenaming}>
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div style={styles.editableValue} onClick={handleStartRename} title="Click to rename">
+                  {displayName}
+                  <span style={styles.editIcon}>&#9998;</span>
+                </div>
+              )}
+            </div>
+            {/* Room Type */}
+            <div style={styles.settingRow}>
+              <div style={styles.settingRowLabel}>Type</div>
+              <div style={styles.readOnlyValue}>
+                {room.roomType === 'direct' ? 'Direct Message' : 'Group Chat'}
+              </div>
+            </div>
+            {/* Created */}
+            <div style={{ ...styles.settingRow, borderBottom: 'none' }}>
+              <div style={styles.settingRowLabel}>Created</div>
+              <div style={styles.readOnlyValue}>{createdDate}</div>
+            </div>
+          </div>
+
+          {/* ═══ Privacy ═══ */}
+          <div style={{ padding: '14px 0', borderBottom: '1px solid #21262d' }}>
+            <div style={styles.categoryHeader}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+              Privacy
+            </div>
+            <div style={styles.settingRow}>
+              <div style={styles.settingRowLabel}>Encryption</div>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '3px 8px',
+                borderRadius: 4,
+                backgroundColor: 'rgba(35, 134, 54, 0.1)',
+                color: '#3fb950',
+                fontSize: 12,
+                fontWeight: 600,
+              }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#3fb950" strokeWidth="3"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+                E2EE Enabled
+              </div>
+            </div>
+            <div style={{ ...styles.settingRow, borderBottom: 'none' }}>
+              <div style={styles.settingRowLabel}>Access</div>
+              <div style={styles.readOnlyValue}>
+                {room.roomType === 'direct' ? 'Private (1:1)' : 'Invite or code'}
+              </div>
+            </div>
+          </div>
+
+          {/* ═══ Messages ═══ */}
+          <div style={{ padding: '14px 0', borderBottom: '1px solid #21262d' }}>
+            <div style={styles.categoryHeader}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" /></svg>
+              Messages
+            </div>
+            <div style={styles.settingRow}>
+              <div style={{ flex: 1 }}>
+                <div style={styles.settingRowLabel}>Disappearing Messages</div>
+                <div style={{ fontSize: 11, color: '#6e7681', marginTop: 2 }}>
+                  Auto-delete after a set time
+                </div>
+              </div>
+              <div style={styles.toggleRow}>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.toggleButton,
+                    backgroundColor: disappearingEnabled ? '#238636' : '#30363d',
+                  }}
+                  onClick={() => setDisappearingEnabled((prev) => !prev)}
+                  aria-label="Toggle disappearing messages"
+                >
+                  <div
+                    style={{
+                      ...styles.toggleKnob,
+                      transform: disappearingEnabled ? 'translateX(16px)' : 'translateX(0)',
+                    }}
+                  />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ═══ Members ═══ */}
+          <div style={{ padding: '14px 0', borderBottom: '1px solid #21262d' }}>
+            <div style={styles.categoryHeader}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>
               Members ({room.members.length})
             </div>
             <div style={styles.memberList}>
@@ -538,81 +606,52 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                 );
               })}
             </div>
-          </div>
 
-          {/* Invite Member */}
-          <div style={styles.section}>
-            {showInviteInput ? (
-              <div>
-                <div style={styles.inlineEditRow}>
-                  <input
-                    type="text"
-                    style={styles.renameInput}
-                    placeholder="@user:server"
-                    value={inviteUserId}
-                    onChange={(e) => setInviteUserId(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') void handleInvite();
-                      if (e.key === 'Escape') setShowInviteInput(false);
-                    }}
-                    disabled={isInviting}
-                    aria-label="User ID to invite"
-                  />
-                  <button
-                    type="button"
-                    style={styles.saveButton}
-                    onClick={() => void handleInvite()}
-                    disabled={isInviting || !inviteUserId.trim()}
-                  >
-                    {isInviting ? '...' : 'Invite'}
-                  </button>
+            {/* Invite Member */}
+            <div style={{ marginTop: 10 }}>
+              {showInviteInput ? (
+                <div>
+                  <div style={styles.inlineEditRow}>
+                    <input
+                      type="text"
+                      style={styles.renameInput}
+                      placeholder="@user:server"
+                      value={inviteUserId}
+                      onChange={(e) => setInviteUserId(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void handleInvite();
+                        if (e.key === 'Escape') setShowInviteInput(false);
+                      }}
+                      disabled={isInviting}
+                      aria-label="User ID to invite"
+                    />
+                    <button
+                      type="button"
+                      style={styles.saveButton}
+                      onClick={() => void handleInvite()}
+                      disabled={isInviting || !inviteUserId.trim()}
+                    >
+                      {isInviting ? '...' : 'Invite'}
+                    </button>
+                  </div>
+                  {inviteError && (
+                    <div style={styles.errorText}>{inviteError}</div>
+                  )}
                 </div>
-                {inviteError && (
-                  <div style={styles.errorText}>{inviteError}</div>
-                )}
-              </div>
-            ) : (
-              <button
-                type="button"
-                style={styles.actionButton}
-                onClick={() => setShowInviteInput(true)}
-              >
-                + Invite Member
-              </button>
-            )}
-          </div>
-
-          {/* Disappearing Messages (placeholder) */}
-          <div style={styles.section}>
-            <div style={styles.sectionLabel}>Disappearing Messages</div>
-            <div style={styles.toggleRow}>
-              <span style={styles.readOnlyValue}>
-                {disappearingEnabled ? 'Enabled' : 'Disabled'}
-              </span>
-              <button
-                type="button"
-                style={{
-                  ...styles.toggleButton,
-                  backgroundColor: disappearingEnabled ? '#238636' : '#30363d',
-                }}
-                onClick={() => setDisappearingEnabled((prev) => !prev)}
-                aria-label="Toggle disappearing messages"
-              >
-                <div
-                  style={{
-                    ...styles.toggleKnob,
-                    transform: disappearingEnabled ? 'translateX(16px)' : 'translateX(0)',
-                  }}
-                />
-              </button>
-            </div>
-            <div style={styles.hintText}>
-              Coming soon - messages will auto-delete after a set time
+              ) : (
+                <button
+                  type="button"
+                  style={styles.actionButton}
+                  onClick={() => setShowInviteInput(true)}
+                >
+                  + Invite Member
+                </button>
+              )}
             </div>
           </div>
 
           {/* Leave Room */}
-          <div style={{ ...styles.section, borderBottom: 'none' }}>
+          <div style={{ padding: '14px 0', borderBottom: 'none' }}>
             {showLeaveConfirm ? (
               <div>
                 <div style={styles.confirmText}>
@@ -723,6 +762,29 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     overflowY: 'auto',
     padding: '0 20px',
+  },
+  categoryHeader: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: '#8b949e',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.06em',
+    marginBottom: 10,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  settingRow: {
+    padding: '8px 0',
+    borderBottom: '1px solid rgba(33, 38, 45, 0.6)',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 4,
+  },
+  settingRowLabel: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: '#8b949e',
   },
   section: {
     padding: '16px 0',

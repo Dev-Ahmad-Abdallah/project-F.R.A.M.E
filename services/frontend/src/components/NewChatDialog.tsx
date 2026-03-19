@@ -709,7 +709,8 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                       onClick={() => setPrivacyMode(mode)}
                       disabled={loading}
                     >
-                      {labels[mode as keyof typeof labels]}
+                      {/* eslint-disable-next-line security/detect-object-injection */}
+                      {labels[mode]}
                     </button>
                   );
                 })}
@@ -786,7 +787,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 })}
               </div>
               <span style={{ fontSize: 11, color: '#6e7681', marginTop: 4, display: 'block' }}>
-                {disappearingTimer === 0 ? 'Messages persist until manually deleted' : `Messages auto-delete after ${disappearingTimer < 60 ? disappearingTimer + 's' : disappearingTimer < 3600 ? Math.floor(disappearingTimer / 60) + ' min' : Math.floor(disappearingTimer / 3600) + ' hour(s)'}`}
+                {disappearingTimer === 0 ? 'Messages persist until manually deleted' : `Messages auto-delete after ${disappearingTimer < 60 ? String(disappearingTimer) + 's' : disappearingTimer < 3600 ? String(Math.floor(disappearingTimer / 60)) + ' min' : String(Math.floor(disappearingTimer / 3600)) + ' hour(s)'}`}
               </span>
             </div>
 

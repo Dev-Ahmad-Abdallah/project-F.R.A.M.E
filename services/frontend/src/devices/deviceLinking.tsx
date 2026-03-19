@@ -258,20 +258,20 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
 
       if (hasBarcodeDetector) {
         // Use BarcodeDetector API
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
         const detector = new (window as any).BarcodeDetector({
           formats: ['qr_code'],
         });
 
-        scanIntervalRef.current = setInterval(async () => {
+        scanIntervalRef.current = setInterval(() => {
           if (!videoRef.current || videoRef.current.readyState < 2) return;
-          try {
-            const barcodes = await detector.detect(videoRef.current);
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+          const detectPromise = detector.detect(videoRef.current);
+          void (detectPromise as Promise<Array<{ rawValue: string }>>).then((barcodes: Array<{ rawValue: string }>) => {
             if (barcodes.length > 0 && barcodes[0].rawValue) {
               handleQrDetected(barcodes[0].rawValue);
             }
-          } catch {
-            // Detection frame failed — continue scanning
-          }
+          }).catch(() => { /* Detection frame failed — continue scanning */ });
         }, 500);
       } else {
         // No BarcodeDetector — show fallback message after a moment.
@@ -281,8 +281,9 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
           'Your browser does not support QR code detection. Please enter the fingerprint manually below.'
         );
       }
-    } catch (err: any) {
+    } catch (rawErr: unknown) {
       // Camera access denied or not available
+      const err = rawErr instanceof Error ? rawErr : null;
       const message =
         err?.name === 'NotAllowedError'
           ? 'Camera access denied. You can enter the fingerprint manually below.'
@@ -381,12 +382,12 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
             <button
               type="button"
               style={styles.openCameraButton}
-              onClick={openScanner}
+              onClick={() => void openScanner()}
             >
               Open Camera Scanner
             </button>
             <p style={styles.scannerText}>
-              Point your camera at the other device's QR code to link automatically.
+              Point your camera at the other device&apos;s QR code to link automatically.
             </p>
           </div>
         )}

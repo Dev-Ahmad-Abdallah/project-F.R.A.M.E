@@ -38,9 +38,10 @@ for file in "$MIGRATIONS_DIR"/*.sql; do
       node -e "
         const { Pool } = require('pg');
         const fs = require('fs');
-        const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined });
+        const sslEnabled = (process.env.DB_SSL_ENABLED || 'true') === 'true';
+        const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.NODE_ENV === 'production' && sslEnabled ? { rejectUnauthorized: false } : undefined });
         const sql = fs.readFileSync('$file', 'utf8');
-        pool.query(sql).then(() => { console.log('  OK'); pool.end(); }).catch(e => { console.error('  FAILED:', e.message); pool.end(); process.exit(1); });
+        pool.query(sql).then(() => { console.log('  OK'); pool.end(); }).catch(e => { console.error('  FAILED:', e.message || e.code || JSON.stringify(e)); pool.end(); process.exit(1); });
       "
     fi
 

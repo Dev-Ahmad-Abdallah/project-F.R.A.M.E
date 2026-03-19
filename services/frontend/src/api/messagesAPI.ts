@@ -27,6 +27,7 @@ export interface SyncEvent {
   roomId: string;
   senderId: string;
   senderDeviceId: string;
+  senderDisplayName?: string;
   eventType: string;
   content: Record<string, unknown>;
   reactions: Record<string, ReactionData>;

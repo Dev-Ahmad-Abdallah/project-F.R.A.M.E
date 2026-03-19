@@ -778,6 +778,7 @@ function App() {
               roomDisplayName={chatDisplayName}
               roomType={selectedRoom?.roomType}
               memberCount={selectedRoom?.members.length}
+              isAnonymous={selectedRoom?.isAnonymous}
               onOpenSettings={handleOpenRoomSettings}
               onRoomRenamed={handleRoomRenamed}
               onLeave={() => setShowLeaveConfirm(true)}

@@ -70,6 +70,8 @@ import { sendMessage, syncMessages, deleteMessage } from '../../src/services/mes
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Default pool.query mock for unexpected queries (anonymous names, settings, etc.)
+  mockPoolQuery.mockResolvedValue({ rows: [], rowCount: 0 });
 });
 
 // ── sendMessage() ──

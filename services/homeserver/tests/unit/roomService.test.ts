@@ -55,6 +55,8 @@ import { createRoom, inviteToRoom, getRoomMemberList, renameRoom, updateSettings
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Default pool.query mock for any unexpected queries (anonymous names, settings, etc.)
+  mockPoolQuery.mockResolvedValue({ rows: [], rowCount: 0 });
 });
 
 // ── createRoom() ──

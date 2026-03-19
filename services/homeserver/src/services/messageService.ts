@@ -304,18 +304,40 @@ export async function syncMessages(
 
   const lastSeq = events.length > 0 ? events[events.length - 1].sequence_id : since;
 
+  // Build anonymous name lookup for rooms that use anonymous mode.
+  // We batch-fetch settings for all distinct room IDs in this sync page.
+  const roomIds = [...new Set(events.map((e) => e.room_id))];
+  const anonymousNamesByRoom: Record<string, Record<string, string>> = {};
+  if (roomIds.length > 0) {
+    const settingsResult = await pool.query<{ room_id: string; settings: Record<string, unknown> }>(
+      'SELECT room_id, settings FROM rooms WHERE room_id = ANY($1::text[])',
+      [roomIds],
+    );
+    for (const row of settingsResult.rows) {
+      const s = row.settings || {};
+      if (s.isAnonymous && s.anonymousNames) {
+        anonymousNamesByRoom[row.room_id] = s.anonymousNames as Record<string, string>; // eslint-disable-line security/detect-object-injection
+      }
+    }
+  }
+
   return {
-    events: events.map((e) => ({
-      eventId: e.event_id,
-      roomId: e.room_id,
-      senderId: e.sender_id,
-      senderDeviceId: e.sender_device_id,
-      eventType: e.event_type,
-      content: e.content,
-      reactions: e.reactions || {},
-      originServerTs: e.origin_ts,
-      sequenceId: e.sequence_id,
-    })),
+    events: events.map((e) => {
+      const anonNames = anonymousNamesByRoom[e.room_id]; // eslint-disable-line security/detect-object-injection
+      const senderDisplayName = anonNames?.[e.sender_id] || undefined; // eslint-disable-line security/detect-object-injection
+      return {
+        eventId: e.event_id,
+        roomId: e.room_id,
+        senderId: e.sender_id,
+        senderDeviceId: e.sender_device_id,
+        senderDisplayName,
+        eventType: e.event_type,
+        content: e.content,
+        reactions: e.reactions || {},
+        originServerTs: e.origin_ts,
+        sequenceId: e.sequence_id,
+      };
+    }),
     nextBatch: String(lastSeq),
     hasMore: events.length >= limit,
     to_device: toDeviceEvents.length > 0 ? toDeviceEvents : undefined,

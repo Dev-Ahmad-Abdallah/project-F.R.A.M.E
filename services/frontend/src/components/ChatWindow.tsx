@@ -130,6 +130,7 @@ interface ChatWindowProps {
   roomDisplayName?: string;
   roomType?: 'direct' | 'group';
   memberCount?: number;
+  isAnonymous?: boolean;
   onOpenSettings?: () => void;
   onRoomRenamed?: (roomId: string, newName: string) => void;
   onLeave?: () => void;
@@ -170,6 +171,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   roomDisplayName,
   roomType,
   memberCount,
+  isAnonymous,
   onOpenSettings,
   onRoomRenamed,
   onLeave,
@@ -1107,6 +1109,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     ? DOMPurify.sanitize(roomDisplayName, PURIFY_CONFIG)
     : DOMPurify.sanitize(roomId, PURIFY_CONFIG);
 
+  /**
+   * Resolve display name for a sender. In anonymous rooms, uses the
+   * senderDisplayName from the sync event if available; falls back to "Anonymous".
+   */
+  const resolveDisplayName = useCallback((senderId: string, senderDisplayName?: string): string => {
+    if (isAnonymous) {
+      return senderDisplayName || 'Anonymous';
+    }
+    return formatDisplayName(senderId);
+  }, [isAnonymous]);
+
   // Memoize message rendering — avoids recomputing grouping/date separators on
   // unrelated state changes (emoji picker, context menu, textarea focus, etc.)
   // Filtered messages for search
@@ -1278,12 +1291,18 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           {!isOwn && (
             <div style={{
               width: 28, height: 28, borderRadius: '50%',
-              backgroundColor: isFirstInGroup ? getAvatarColor(event.senderId) : 'transparent',
+              backgroundColor: isFirstInGroup ? (isAnonymous ? '#6e40aa' : getAvatarColor(event.senderId)) : 'transparent',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0,
               visibility: isFirstInGroup ? ('visible' as const) : ('hidden' as const),
             }}>
-              {isFirstInGroup ? formatDisplayName(event.senderId).charAt(0).toUpperCase() : ''}
+              {isFirstInGroup ? (isAnonymous ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                  <line x1="2" y1="2" x2="22" y2="22" />
+                </svg>
+              ) : formatDisplayName(event.senderId).charAt(0).toUpperCase()) : ''}
             </div>
           )}
           <div
@@ -1302,8 +1321,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                   onClick={(e) => { e.stopPropagation(); scrollToMessage(rt.eventId); }}
                   title="Click to scroll to original message"
                 >
-                  <div style={{ fontSize: 10, fontWeight: 600, color: replyColor, marginBottom: 1 }}>
-                    {DOMPurify.sanitize(formatDisplayName(rt.senderId), PURIFY_CONFIG)}
+                  <div style={{ fontSize: 10, fontWeight: 600, color: isAnonymous ? '#bc8cff' : replyColor, marginBottom: 1 }}>
+                    {DOMPurify.sanitize(isAnonymous ? 'Anonymous' : formatDisplayName(rt.senderId), PURIFY_CONFIG)}
                   </div>
                   <div style={{ fontSize: 11, color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
                     {typeof replyPreview === 'string' ? DOMPurify.sanitize(replyPreview, PURIFY_CONFIG) : 'Message'}
@@ -1312,8 +1331,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               );
             })()}
             {!isOwn && isFirstInGroup && (
-              <div style={{ ...styles.senderName, color: getAvatarColor(event.senderId) }}>
-                {DOMPurify.sanitize(formatDisplayName(event.senderId), PURIFY_CONFIG)}
+              <div style={{ ...styles.senderName, color: isAnonymous ? '#bc8cff' : getAvatarColor(event.senderId) }}>
+                {DOMPurify.sanitize(resolveDisplayName(event.senderId, event.senderDisplayName), PURIFY_CONFIG)}
               </div>
             )}
             <div style={styles.messageBody}>
@@ -1445,15 +1464,27 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           <div style={styles.headerNameRow}>
             {roomType === 'group' && memberUserIds.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', marginRight: 6, flexShrink: 0 }}>
-                {memberUserIds.filter((id) => id !== currentUserId).slice(0, 3).map((userId, idx) => (
-                  <div key={userId} title={formatDisplayName(userId)} style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: getAvatarColor(userId), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff', border: '2px solid #161b22', marginLeft: idx === 0 ? 0 : -8, zIndex: 3 - idx, position: 'relative' as const }}>
-                    {formatDisplayName(userId).charAt(0).toUpperCase()}
+                {isAnonymous ? (
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: '#6e40aa', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #161b22' }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                      <line x1="2" y1="2" x2="22" y2="22" />
+                    </svg>
                   </div>
-                ))}
-                {memberUserIds.filter((id) => id !== currentUserId).length > 3 && (
-                  <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: '#30363d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#c9d1d9', border: '2px solid #161b22', marginLeft: -8, zIndex: 0, position: 'relative' as const }}>
-                    +{memberUserIds.filter((id) => id !== currentUserId).length - 3}
-                  </div>
+                ) : (
+                  <>
+                    {memberUserIds.filter((id) => id !== currentUserId).slice(0, 3).map((userId, idx) => (
+                      <div key={userId} title={formatDisplayName(userId)} style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: getAvatarColor(userId), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff', border: '2px solid #161b22', marginLeft: idx === 0 ? 0 : -8, zIndex: 3 - idx, position: 'relative' as const }}>
+                        {formatDisplayName(userId).charAt(0).toUpperCase()}
+                      </div>
+                    ))}
+                    {memberUserIds.filter((id) => id !== currentUserId).length > 3 && (
+                      <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: '#30363d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#c9d1d9', border: '2px solid #161b22', marginLeft: -8, zIndex: 0, position: 'relative' as const }}>
+                        +{memberUserIds.filter((id) => id !== currentUserId).length - 3}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -1462,6 +1493,28 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             ) : (
               <span style={{ ...styles.headerName, ...(isMobile ? { maxWidth: '50vw', fontSize: 13 } : {}), cursor: 'pointer' }} onClick={handleStartRename} title="Click to rename">
                 {headerName}
+              </span>
+            )}
+            {isAnonymous && !isEditingName && (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 3,
+                fontSize: 10,
+                fontWeight: 600,
+                color: '#bc8cff',
+                backgroundColor: 'rgba(188, 140, 255, 0.1)',
+                border: '1px solid rgba(188, 140, 255, 0.25)',
+                borderRadius: 4,
+                padding: '2px 6px',
+                marginLeft: 4,
+              }} title="Anonymous mode — identities are hidden">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                  <line x1="2" y1="2" x2="22" y2="22" />
+                </svg>
+                Anonymous
               </span>
             )}
             {roomType === 'direct' && !isEditingName && (
@@ -1514,6 +1567,39 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
           <div style={styles.headerSubRow}>
             <span style={styles.encryptionBadge} title="End-to-end encryption enabled">E2EE</span>
+            {/* Password-protected badge */}
+            {roomType === 'group' && (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 3,
+                padding: '1px 5px',
+                borderRadius: 4,
+                backgroundColor: 'rgba(247, 129, 102, 0.1)',
+                color: '#f78166',
+                fontSize: 10,
+                fontWeight: 600,
+              }} title="Password protected room">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#f78166" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+              </span>
+            )}
+            {/* Disappearing messages badge */}
+            {disappearingSettings?.enabled && (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 3,
+                padding: '1px 5px',
+                borderRadius: 4,
+                backgroundColor: 'rgba(210, 153, 34, 0.1)',
+                color: '#d29922',
+                fontSize: 10,
+                fontWeight: 600,
+              }} title={`Messages auto-delete after ${disappearingSettings.timeoutSeconds < 60 ? String(disappearingSettings.timeoutSeconds) + 's' : disappearingSettings.timeoutSeconds < 3600 ? String(Math.floor(disappearingSettings.timeoutSeconds / 60)) + 'm' : String(Math.floor(disappearingSettings.timeoutSeconds / 3600)) + 'h'}`}>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#d29922" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                {disappearingSettings.timeoutSeconds < 60 ? String(disappearingSettings.timeoutSeconds) + 's' : disappearingSettings.timeoutSeconds < 3600 ? String(Math.floor(disappearingSettings.timeoutSeconds / 60)) + 'm' : String(Math.floor(disappearingSettings.timeoutSeconds / 3600)) + 'h'}
+              </span>
+            )}
             {isSyncing && <SyncIndicator />}
             {memberCount != null && memberCount > 0 && (
               <span style={styles.headerMemberCount}>
@@ -1693,9 +1779,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       {/* Reply preview bar */}
       {replyTo && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderTop: '1px solid #30363d', backgroundColor: '#1c2128' }}>
-          <div style={{ flex: 1, borderLeft: `3px solid ${getAvatarColor(replyTo.senderId)}`, paddingLeft: 8, overflow: 'hidden' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: getAvatarColor(replyTo.senderId), marginBottom: 1 }}>
-              {DOMPurify.sanitize(formatDisplayName(replyTo.senderId), PURIFY_CONFIG)}
+          <div style={{ flex: 1, borderLeft: `3px solid ${isAnonymous ? '#bc8cff' : getAvatarColor(replyTo.senderId)}`, paddingLeft: 8, overflow: 'hidden' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: isAnonymous ? '#bc8cff' : getAvatarColor(replyTo.senderId), marginBottom: 1 }}>
+              {DOMPurify.sanitize(isAnonymous ? 'Anonymous' : formatDisplayName(replyTo.senderId), PURIFY_CONFIG)}
             </div>
             <div style={{ fontSize: 12, color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
               {DOMPurify.sanitize(replyTo.body.length > 100 ? replyTo.body.slice(0, 100) + '...' : replyTo.body, PURIFY_CONFIG)}
