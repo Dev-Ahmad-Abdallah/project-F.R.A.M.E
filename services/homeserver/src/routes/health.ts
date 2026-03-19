@@ -23,7 +23,8 @@ healthRouter.get('/', async (_req, res) => {
 
   const allHealthy = Object.values(checks).every((v) => v === 'connected');
 
-  res.status(allHealthy ? 200 : 503).json({
+  // Always return 200 for Railway healthcheck — report status in body
+  res.status(200).json({
     status: allHealthy ? 'ok' : 'degraded',
     uptime: process.uptime(),
     version: '1.0.0',
