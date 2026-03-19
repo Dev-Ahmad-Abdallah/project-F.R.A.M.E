@@ -12,7 +12,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
-import { renameRoom, inviteToRoom, leaveRoom } from '../api/roomsAPI';
+import { renameRoom, inviteToRoom, leaveRoom, getRoomCode, regenerateCode } from '../api/roomsAPI';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { RoomSummary, RoomMember } from '../api/roomsAPI';
 
@@ -118,10 +118,38 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
   // Success flash state
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  // Invite code state
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [loadingCode, setLoadingCode] = useState(false);
+  const [regeneratingCode, setRegeneratingCode] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  // Determine if current user is admin
+  const currentMember = room.members.find((m) => m.userId === currentUserId);
+  const isAdmin = !!(currentMember && 'role' in currentMember && (currentMember as RoomMember & { role?: string }).role === 'admin');
+
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => { injectKeyframes(); }, []);
+
+  // Fetch invite code on mount
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingCode(true);
+    getRoomCode(room.roomId)
+      .then((data) => {
+        if (!cancelled) setInviteCode(data.inviteCode);
+      })
+      .catch(() => {
+        if (!cancelled) setInviteCode(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCode(false);
+      });
+    return () => { cancelled = true; };
+  }, [room.roomId]);
 
   // Focus management: capture trigger, focus panel, return focus on close
   useEffect(() => {
@@ -352,6 +380,123 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
           <div style={styles.section}>
             <div style={styles.sectionLabel}>Created</div>
             <div style={styles.readOnlyValue}>{createdDate}</div>
+          </div>
+
+          {/* Invite Code */}
+          <div style={styles.section}>
+            <div style={styles.sectionLabel}>Invite Code</div>
+            {loadingCode ? (
+              <div style={styles.readOnlyValue}>Loading...</div>
+            ) : inviteCode ? (
+              <div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  marginBottom: 8,
+                }}>
+                  <span style={{
+                    fontSize: 22,
+                    fontWeight: 700,
+                    fontFamily: 'monospace',
+                    letterSpacing: '0.15em',
+                    color: '#58a6ff',
+                    backgroundColor: 'rgba(88, 166, 255, 0.08)',
+                    padding: '6px 14px',
+                    borderRadius: 6,
+                    border: '1px solid rgba(88, 166, 255, 0.2)',
+                    userSelect: 'all' as const,
+                  }}>
+                    {inviteCode}
+                  </span>
+                  <button
+                    type="button"
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      backgroundColor: codeCopied ? 'rgba(35, 134, 54, 0.15)' : '#21262d',
+                      color: codeCopied ? '#3fb950' : '#c9d1d9',
+                      border: `1px solid ${codeCopied ? '#238636' : '#30363d'}`,
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onClick={() => {
+                      void navigator.clipboard.writeText(inviteCode);
+                      setCodeCopied(true);
+                      setTimeout(() => setCodeCopied(false), 2000);
+                    }}
+                  >
+                    {codeCopied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+                  <button
+                    type="button"
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      backgroundColor: linkCopied ? 'rgba(35, 134, 54, 0.15)' : 'rgba(88, 166, 255, 0.1)',
+                      color: linkCopied ? '#3fb950' : '#58a6ff',
+                      border: `1px solid ${linkCopied ? '#238636' : 'rgba(88, 166, 255, 0.3)'}`,
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      transition: 'all 0.15s ease',
+                    }}
+                    onClick={() => {
+                      const link = `${window.location.origin}/join/${inviteCode}`;
+                      void navigator.clipboard.writeText(link);
+                      setLinkCopied(true);
+                      setTimeout(() => setLinkCopied(false), 2000);
+                    }}
+                  >
+                    {linkCopied ? 'Link Copied!' : 'Share Link'}
+                  </button>
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        backgroundColor: '#21262d',
+                        color: '#8b949e',
+                        border: '1px solid #30363d',
+                        borderRadius: 4,
+                        cursor: regeneratingCode ? 'not-allowed' : 'pointer',
+                        fontFamily: 'inherit',
+                        opacity: regeneratingCode ? 0.6 : 1,
+                        transition: 'all 0.15s ease',
+                      }}
+                      disabled={regeneratingCode}
+                      onClick={() => {
+                        setRegeneratingCode(true);
+                        regenerateCode(room.roomId)
+                          .then((data) => {
+                            setInviteCode(data.inviteCode);
+                            showSuccess('Invite code regenerated');
+                          })
+                          .catch((err) => {
+                            console.error('Failed to regenerate code:', err);
+                          })
+                          .finally(() => setRegeneratingCode(false));
+                      }}
+                    >
+                      {regeneratingCode ? 'Regenerating...' : 'Regenerate Code'}
+                    </button>
+                  )}
+                </div>
+                <div style={styles.hintText}>
+                  Share this code so others can join without needing a username
+                </div>
+              </div>
+            ) : (
+              <div style={styles.readOnlyValue}>No invite code available</div>
+            )}
           </div>
 
           {/* Member List */}

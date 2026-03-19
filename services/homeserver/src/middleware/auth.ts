@@ -9,6 +9,7 @@ export interface AuthPayload {
   iss: string;       // homeserver domain
   iat: number;
   exp: number;
+  guest?: boolean;   // true for anonymous guest sessions
 }
 
 // Extend Express Request to include auth payload

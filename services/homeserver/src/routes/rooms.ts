@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { apiLimiter } from '../middleware/rateLimit';
 import { asyncHandler, ApiError } from '../middleware/errorHandler';
-import { validateBody, createRoomSchema, roomRenameSchema, roomSettingsSchema, roomInviteSchema, joinWithPasswordSchema } from '../middleware/validation';
+import { validateBody, createRoomSchema, roomRenameSchema, roomSettingsSchema, roomInviteSchema, joinWithPasswordSchema, joinByCodeSchema } from '../middleware/validation';
 import {
   createRoom,
   getUserRooms,
@@ -14,6 +14,9 @@ import {
   updateSettings,
   getRoomSettings,
   joinRoomWithPassword,
+  joinRoomByCode,
+  getRoomCode,
+  regenerateRoomCode,
 } from '../services/roomService';
 
 export const roomsRouter = Router();
@@ -37,6 +40,55 @@ interface RoomInviteBody {
 interface JoinWithPasswordBody {
   password: string;
 }
+
+interface JoinByCodeBody {
+  code: string;
+  password?: string;
+}
+
+// POST /rooms/join-by-code — Join a room using an invite code
+roomsRouter.post(
+  '/join-by-code',
+  requireAuth,
+  apiLimiter,
+  validateBody(joinByCodeSchema),
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const body = req.body as JoinByCodeBody;
+    const result = await joinRoomByCode(body.code, req.auth.sub, body.password);
+    res.json(result);
+  }),
+);
+
+// GET /rooms/code/:roomId — Get the invite code for a room (members only)
+roomsRouter.get(
+  '/code/:roomId',
+  requireAuth,
+  apiLimiter,
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const result = await getRoomCode(req.params.roomId, req.auth.sub);
+    res.json(result);
+  }),
+);
+
+// POST /rooms/:roomId/regenerate-code — Regenerate invite code (admin only)
+roomsRouter.post(
+  '/:roomId/regenerate-code',
+  requireAuth,
+  apiLimiter,
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const result = await regenerateRoomCode(req.params.roomId, req.auth.sub);
+    res.json(result);
+  }),
+);
 
 // POST /rooms/create — Create a new room (direct or group)
 roomsRouter.post(

@@ -132,6 +132,11 @@ export const roomInviteSchema = z.object({
   userId: z.string().min(1),
 });
 
+export const joinByCodeSchema = z.object({
+  code: z.string().min(6).max(6).regex(/^[A-F0-9]{6}$/, 'Invalid invite code format'),
+  password: z.string().max(128).optional(),
+});
+
 export const reactSchema = z.object({
   emoji: z.string().min(1).max(8),
 });

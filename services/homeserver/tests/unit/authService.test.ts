@@ -41,10 +41,12 @@ jest.mock('../../src/db/queries/users', () => ({
 
 const mockCreateDevice = jest.fn();
 const mockFindDevice = jest.fn();
+const mockCountDevicesByUser = jest.fn();
 
 jest.mock('../../src/db/queries/devices', () => ({
   createDevice: (...args: any[]) => mockCreateDevice(...args),
   findDevice: (...args: any[]) => mockFindDevice(...args),
+  countDevicesByUser: (...args: any[]) => mockCountDevicesByUser(...args),
 }));
 
 const mockUpsertKeyBundle = jest.fn();
@@ -69,6 +71,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   // Default: pool.query succeeds
   mockPoolQuery.mockResolvedValue({ rowCount: 1, rows: [] });
+  // Default: user has 0 devices (under the 10-device limit)
+  mockCountDevicesByUser.mockResolvedValue(0);
 });
 
 // ── register() ──

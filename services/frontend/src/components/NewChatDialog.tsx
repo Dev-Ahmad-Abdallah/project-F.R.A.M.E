@@ -16,8 +16,9 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
-import { createRoom } from '../api/roomsAPI';
+import { createRoom, joinByCode } from '../api/roomsAPI';
 import type { RoomSummary } from '../api/roomsAPI';
+import { fetchAndVerifyKey } from '../verification/keyTransparency';
 import { FONT_BODY } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
 
@@ -107,11 +108,16 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   const isMobile = useIsMobile();
   const isNarrow = useIsMobile(400);
   const [username, setUsername] = useState('');
-  const [roomType, setRoomType] = useState<'direct' | 'group'>('direct');
+  const [roomType, setRoomType] = useState<'direct' | 'group' | 'join-code'>('direct');
   const [roomName, setRoomName] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [roomPassword, setRoomPassword] = useState('');
+  // Join by code state
+  const [joinCode, setJoinCode] = useState('');
+  const [joinCodePassword, setJoinCodePassword] = useState('');
+  const [showJoinCodePassword, setShowJoinCodePassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -212,9 +218,28 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       }
 
       setLoading(true);
+      setVerifying(true);
       setError(null);
 
       try {
+        // Verify each invited user's key against the transparency log
+        for (const invitee of invitedUsers) {
+          try {
+            const verification = await fetchAndVerifyKey(invitee);
+            if (!verification.verified && verification.proof !== null) {
+              console.warn(
+                `[F.R.A.M.E.] Key transparency verification failed for ${invitee} during room creation — proceeding with warning.`,
+              );
+            }
+          } catch (err) {
+            console.warn(
+              `[F.R.A.M.E.] Could not verify key for ${invitee}:`,
+              err instanceof Error ? err.message : err,
+            );
+          }
+        }
+        setVerifying(false);
+
         const finalName = roomName.trim() || groupNameSuggestion;
         const result = await createRoom(
           roomType,
@@ -251,6 +276,48 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       } finally {
         setLoading(false);
       }
+    } else if (roomType === 'join-code') {
+      // Join-by-code mode
+      const trimmedCode = joinCode.trim().toUpperCase();
+      if (!trimmedCode) {
+        setError('Please enter a room code.');
+        return;
+      }
+      if (!/^[A-F0-9]{6}$/.test(trimmedCode)) {
+        setError('Invalid code format. Expected 6 characters (e.g., X7K9P2).');
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await joinByCode(trimmedCode, joinCodePassword.trim() || undefined);
+        const newRoom: RoomSummary = {
+          roomId: result.roomId,
+          roomType: 'group',
+          name: result.name ?? undefined,
+          members: [{ userId: currentUserId }],
+          unreadCount: 0,
+        };
+
+        setSuccessRoom(newRoom);
+        setShowSuccess(true);
+        setTimeout(() => {
+          onCreated(newRoom);
+        }, 1200);
+      } catch (err) {
+        if (err instanceof Error) {
+          if (err.message.includes('password')) {
+            setShowJoinCodePassword(true);
+          }
+          setError(err.message);
+        } else {
+          setError('Failed to join room.');
+        }
+      } finally {
+        setLoading(false);
+      }
     } else {
       // Direct mode: single user
       const trimmedUsername = username.trim();
@@ -265,9 +332,26 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       }
 
       setLoading(true);
+      setVerifying(true);
       setError(null);
 
       try {
+        // Verify the invited user's key against the transparency log
+        try {
+          const verification = await fetchAndVerifyKey(trimmedUsername);
+          if (!verification.verified && verification.proof !== null) {
+            console.warn(
+              `[F.R.A.M.E.] Key transparency verification failed for ${trimmedUsername} during room creation — proceeding with warning.`,
+            );
+          }
+        } catch (err) {
+          console.warn(
+            `[F.R.A.M.E.] Could not verify key for ${trimmedUsername}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+        setVerifying(false);
+
         const result = await createRoom(
           roomType,
           [trimmedUsername],
@@ -304,12 +388,57 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         setLoading(false);
       }
     }
-  }, [username, roomType, roomName, isPrivate, roomPassword, currentUserId, onCreated, invitedUsers, groupNameSuggestion]);
+  }, [username, roomType, roomName, isPrivate, roomPassword, currentUserId, onCreated, invitedUsers, groupNameSuggestion, joinCode, joinCodePassword]);
+
+  const handleJoinByCode = useCallback(async () => {
+    const trimmedCode = joinCode.trim().toUpperCase();
+    if (!trimmedCode) {
+      setError('Please enter a room code.');
+      return;
+    }
+    if (!/^[A-F0-9]{6}$/.test(trimmedCode)) {
+      setError('Invalid code format. Expected 6 characters (e.g., X7K9P2).');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await joinByCode(trimmedCode, joinCodePassword.trim() || undefined);
+      const newRoom: RoomSummary = {
+        roomId: result.roomId,
+        roomType: 'group',
+        name: result.name ?? undefined,
+        members: [{ userId: currentUserId }],
+        unreadCount: 0,
+      };
+
+      setSuccessRoom(newRoom);
+      setShowSuccess(true);
+      setTimeout(() => {
+        onCreated(newRoom);
+      }, 1200);
+    } catch (err) {
+      if (err instanceof Error) {
+        if (err.message.includes('password')) {
+          setShowJoinCodePassword(true);
+        }
+        setError(err.message);
+      } else {
+        setError('Failed to join room.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [joinCode, joinCodePassword, currentUserId, onCreated]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (roomType === 'group' && username.trim()) {
+      if (roomType === 'join-code') {
+        void handleJoinByCode();
+      } else if (roomType === 'group' && username.trim()) {
         // In group mode, Enter adds to chips instead of creating
         handleAddUser();
       } else {
@@ -463,63 +592,37 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
               position: 'relative' as const,
             }}
           >
-            {/* Sliding pill background */}
-            {!isNarrow && (
-              <div style={{
-                position: 'absolute' as const,
-                top: 0,
-                left: roomType === 'direct' ? 0 : 'calc(50% + 4px)',
-                width: 'calc(50% - 4px)',
-                height: '100%',
-                backgroundColor: 'rgba(88, 166, 255, 0.1)',
-                border: '1px solid #58a6ff',
-                borderRadius: 6,
-                transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                pointerEvents: 'none' as const,
-                zIndex: 0,
-              }} />
-            )}
-            <button
-              type="button"
-              style={{
-                ...styles.typeButton,
-                ...(roomType === 'direct' ? styles.typeButtonActive : {}),
-                position: 'relative' as const,
-                zIndex: 1,
-                border: isNarrow ? (roomType === 'direct' ? '1px solid #58a6ff' : '1px solid #30363d') : '1px solid transparent',
-                backgroundColor: isNarrow
-                  ? (roomType === 'direct' ? 'rgba(88, 166, 255, 0.1)' : '#21262d')
-                  : 'transparent',
-                transition: 'color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease',
-              }}
-              aria-pressed={roomType === 'direct'}
-              onClick={() => setRoomType('direct')}
-            >
-              Direct Message
-            </button>
-            <button
-              type="button"
-              style={{
-                ...styles.typeButton,
-                ...(roomType === 'group' ? styles.typeButtonActive : {}),
-                position: 'relative' as const,
-                zIndex: 1,
-                border: isNarrow ? (roomType === 'group' ? '1px solid #58a6ff' : '1px solid #30363d') : '1px solid transparent',
-                backgroundColor: isNarrow
-                  ? (roomType === 'group' ? 'rgba(88, 166, 255, 0.1)' : '#21262d')
-                  : 'transparent',
-                transition: 'color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease',
-              }}
-              aria-pressed={roomType === 'group'}
-              onClick={() => setRoomType('group')}
-            >
-              Group
-            </button>
+            {(['direct', 'group', 'join-code'] as const).map((type) => {
+              const labels: Record<string, string> = { direct: 'Direct Message', group: 'Group', 'join-code': 'Join by Code' };
+              const isActive = roomType === type;
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  style={{
+                    ...styles.typeButton,
+                    ...(isActive ? styles.typeButtonActive : {}),
+                    position: 'relative' as const,
+                    zIndex: 1,
+                    border: isActive ? '1px solid #58a6ff' : '1px solid transparent',
+                    backgroundColor: isActive ? 'rgba(88, 166, 255, 0.1)' : 'transparent',
+                    transition: 'color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease',
+                  }}
+                  aria-pressed={isActive}
+                  onClick={() => { setRoomType(type); setError(null); }}
+                >
+                  {/* eslint-disable-next-line security/detect-object-injection */}
+                  {labels[type as keyof typeof labels]}
+                </button>
+              );
+            })}
           </div>
           <p style={styles.typeHint}>
             {roomType === 'direct'
               ? 'Direct: private 1:1 conversation'
-              : 'Group: invite multiple people'}
+              : roomType === 'group'
+                ? 'Group: invite multiple people'
+                : 'Join an existing room with an invite code'}
           </p>
         </div>
 
@@ -589,7 +692,63 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
           </div>
         )}
 
-        {/* Username input */}
+        {/* Join by Code UI */}
+        {roomType === 'join-code' && (
+          <>
+            <div style={styles.fieldGroup}>
+              <label style={styles.label} htmlFor="new-chat-join-code">
+                Room Code
+              </label>
+              <input
+                id="new-chat-join-code"
+                ref={inputRef}
+                type="text"
+                style={{
+                  ...styles.input,
+                  fontSize: 18,
+                  fontWeight: 600,
+                  letterSpacing: '0.15em',
+                  textAlign: 'center' as const,
+                  textTransform: 'uppercase' as const,
+                  ...(joinCode.trim().length === 6 && /^[A-Fa-f0-9]{6}$/.test(joinCode.trim())
+                    ? styles.inputValid : {}),
+                  transition: 'border-color 0.2s ease',
+                }}
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase().slice(0, 6))}
+                placeholder="e.g. X7K9P2"
+                maxLength={6}
+                disabled={loading}
+              />
+              <span style={styles.fieldHint}>
+                Enter the 6-character code shared by the room admin
+              </span>
+            </div>
+
+            {showJoinCodePassword && (
+              <div style={styles.fieldGroup}>
+                <label style={styles.label} htmlFor="new-chat-join-password">
+                  Room Password
+                </label>
+                <input
+                  id="new-chat-join-password"
+                  type="password"
+                  style={styles.input}
+                  value={joinCodePassword}
+                  onChange={(e) => setJoinCodePassword(e.target.value)}
+                  placeholder="Enter room password"
+                  disabled={loading}
+                />
+                <span style={styles.fieldHint}>
+                  This room requires a password to join
+                </span>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Username input (direct and group modes) */}
+        {roomType !== 'join-code' && (
         <div style={styles.fieldGroup}>
           <label style={styles.label} htmlFor="new-chat-username">
             {roomType === 'group' ? 'Add members' : 'Username to invite'}
@@ -722,6 +881,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
             }
           </span>
         </div>
+        )}
 
         {/* Actions */}
         <div style={styles.actions}>
@@ -736,20 +896,37 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
           >
             Cancel
           </button>
-          <button
-            type="button"
-            style={{
-              ...styles.createButton,
-              ...(loading || (roomType === 'group' ? invitedUsers.length === 0 : !username.trim())
-                ? styles.buttonDisabled
-                : {}),
-              transition: 'background-color 0.15s ease, opacity 0.15s ease, transform 0.1s ease',
-            }}
-            onClick={() => void handleCreate()}
-            disabled={loading || (roomType === 'group' ? invitedUsers.length === 0 : !username.trim())}
-          >
-            {loading ? 'Creating...' : 'Create'}
-          </button>
+          {roomType === 'join-code' ? (
+            <button
+              type="button"
+              style={{
+                ...styles.createButton,
+                ...(loading || joinCode.trim().length !== 6
+                  ? styles.buttonDisabled
+                  : {}),
+                transition: 'background-color 0.15s ease, opacity 0.15s ease, transform 0.1s ease',
+              }}
+              onClick={() => void handleJoinByCode()}
+              disabled={loading || joinCode.trim().length !== 6}
+            >
+              {loading ? 'Joining...' : 'Join'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              style={{
+                ...styles.createButton,
+                ...(loading || (roomType === 'group' ? invitedUsers.length === 0 : !username.trim())
+                  ? styles.buttonDisabled
+                  : {}),
+                transition: 'background-color 0.15s ease, opacity 0.15s ease, transform 0.1s ease',
+              }}
+              onClick={() => void handleCreate()}
+              disabled={loading || (roomType === 'group' ? invitedUsers.length === 0 : !username.trim())}
+            >
+              {verifying ? 'Verifying keys...' : loading ? 'Creating...' : 'Create'}
+            </button>
+          )}
         </div>
       </div>
     </div>

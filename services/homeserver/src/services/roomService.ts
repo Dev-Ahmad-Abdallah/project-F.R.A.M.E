@@ -9,6 +9,10 @@ import {
   updateRoomName as dbUpdateRoomName,
   updateRoomSettings as dbUpdateRoomSettings,
   removeRoomMember,
+  findRoomByInviteCode,
+  getRoomInviteCode as dbGetRoomInviteCode,
+  regenerateRoomInviteCode as dbRegenerateRoomInviteCode,
+  getRoomMemberRole,
   RoomRow,
   RoomMemberWithDeviceCount,
   RoomWithMembers,
@@ -368,4 +372,83 @@ export async function leaveRoom(
   } as MembershipChangeEvent);
 
   return { success: true };
+}
+
+/**
+ * Join a room by invite code. Optionally accepts a password for
+ * password-protected rooms.
+ */
+export async function joinRoomByCode(
+  code: string,
+  userId: string,
+  password?: string,
+): Promise<{ joined: boolean; roomId: string; name: string | null }> {
+  const room = await findRoomByInviteCode(code);
+  if (!room) {
+    throw new ApiError(404, 'M_NOT_FOUND', 'Invalid invite code');
+  }
+
+  const alreadyMember = await isRoomMember(room.room_id, userId);
+  if (alreadyMember) {
+    return { joined: true, roomId: room.room_id, name: room.name };
+  }
+
+  const settings = room.settings || {};
+
+  // Check password if the room has one
+  if (settings.passwordHash) {
+    if (!password) {
+      throw new ApiError(403, 'M_FORBIDDEN', 'This room requires a password to join');
+    }
+    const bcrypt = await import('bcrypt');
+    const valid = await bcrypt.compare(password, settings.passwordHash as string);
+    if (!valid) {
+      throw new ApiError(403, 'M_FORBIDDEN', 'Incorrect room password');
+    }
+  }
+
+  await addRoomMember(room.room_id, userId, 'member');
+
+  roomEvents.emit('membershipChange', {
+    roomId: room.room_id,
+    userId,
+    action: 'join',
+  } as MembershipChangeEvent);
+
+  return { joined: true, roomId: room.room_id, name: room.name };
+}
+
+/**
+ * Get the invite code for a room. The requesting user must be a member.
+ */
+export async function getRoomCode(
+  roomId: string,
+  userId: string,
+): Promise<{ inviteCode: string | null }> {
+  const isMember = await isRoomMember(roomId, userId);
+  if (!isMember) {
+    throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
+  }
+
+  const code = await dbGetRoomInviteCode(roomId);
+  return { inviteCode: code };
+}
+
+/**
+ * Regenerate the invite code for a room. Only admins can do this.
+ */
+export async function regenerateRoomCode(
+  roomId: string,
+  userId: string,
+): Promise<{ inviteCode: string }> {
+  const role = await getRoomMemberRole(roomId, userId);
+  if (!role) {
+    throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
+  }
+  if (role !== 'admin') {
+    throw new ApiError(403, 'M_FORBIDDEN', 'Only admins can regenerate invite codes');
+  }
+
+  const newCode = await dbRegenerateRoomInviteCode(roomId);
+  return { inviteCode: newCode };
 }

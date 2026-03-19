@@ -4,7 +4,7 @@ import { loginLimiter, registerLimiter, apiLimiter, refreshLimiter } from '../mi
 import { validateBody } from '../middleware/validation';
 import { registerSchema, loginSchema, refreshSchema, profileUpdateSchema, statusUpdateSchema } from '../middleware/validation';
 import { requireAuth } from '../middleware/auth';
-import { register, login, refreshAccessToken, revokeAllTokens } from '../services/authService';
+import { register, login, refreshAccessToken, revokeAllTokens, createGuestSession } from '../services/authService';
 import { updateDisplayName, findUserById } from '../db/queries/users';
 import { redisClient } from '../redis/client';
 import type { RegisterParams, LoginParams } from '../services/authService';
@@ -30,6 +30,16 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const result = await login(req.body as LoginParams);
     res.json(result);
+  })
+);
+
+// POST /auth/guest — Create a temporary guest session (no credentials required)
+authRouter.post(
+  '/guest',
+  apiLimiter,
+  asyncHandler(async (_req, res) => {
+    const result = await createGuestSession();
+    res.status(201).json(result);
   })
 );
 

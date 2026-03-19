@@ -21,6 +21,7 @@ export interface AuthResponse {
   userId: string;
   deviceId: string;
   homeserver: string;
+  guest?: boolean;
 }
 
 export interface RefreshRequest {

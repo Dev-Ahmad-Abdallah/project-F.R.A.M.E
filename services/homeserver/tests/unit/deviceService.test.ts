@@ -12,6 +12,7 @@ const mockFindDevicesByUser = jest.fn();
 const mockFindDevice = jest.fn();
 const mockDeleteDevice = jest.fn();
 const mockUpdateLastSeen = jest.fn();
+const mockCountDevicesByUser = jest.fn();
 
 jest.mock('../../src/db/queries/devices', () => ({
   createDevice: (...args: any[]) => mockCreateDevice(...args),
@@ -19,6 +20,7 @@ jest.mock('../../src/db/queries/devices', () => ({
   findDevice: (...args: any[]) => mockFindDevice(...args),
   deleteDevice: (...args: any[]) => mockDeleteDevice(...args),
   updateLastSeen: (...args: any[]) => mockUpdateLastSeen(...args),
+  countDevicesByUser: (...args: any[]) => mockCountDevicesByUser(...args),
 }));
 
 const mockGetUserRooms = jest.fn();
@@ -55,6 +57,8 @@ import { registerDevice, listDevices, removeDevice, heartbeat } from '../../src/
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Default: user has 0 devices (under limit)
+  mockCountDevicesByUser.mockResolvedValue(0);
 });
 
 // ── registerDevice() ──
@@ -68,6 +72,7 @@ describe('registerDevice', () => {
 
   it('creates device and returns formatted result', async () => {
     mockFindDevice.mockResolvedValue(null);
+    mockCountDevicesByUser.mockResolvedValue(0);
     mockFindDevicesByUser.mockResolvedValue([]);
     mockCreateDevice.mockResolvedValue({
       device_id: deviceId,
@@ -84,7 +89,7 @@ describe('registerDevice', () => {
     expect(result.createdAt).toEqual(new Date('2026-01-01'));
 
     expect(mockFindDevice).toHaveBeenCalledWith(deviceId);
-    expect(mockFindDevicesByUser).toHaveBeenCalledWith(userId);
+    expect(mockCountDevicesByUser).toHaveBeenCalledWith(userId);
     expect(mockCreateDevice).toHaveBeenCalledWith(deviceId, userId, publicKey, signingKey, displayName);
   });
 
@@ -104,8 +109,9 @@ describe('registerDevice', () => {
     expect(mockCreateDevice).not.toHaveBeenCalled();
   });
 
-  it('throws 400 when user has reached max device limit (10)', async () => {
+  it('throws 429 when user has reached max device limit (10)', async () => {
     mockFindDevice.mockResolvedValue(null);
+    mockCountDevicesByUser.mockResolvedValue(10);
     // Simulate 10 existing devices
     const tenDevices = Array.from({ length: 10 }, (_, i) => ({
       device_id: `DEV_${i}`,
@@ -116,7 +122,7 @@ describe('registerDevice', () => {
     await expect(
       registerDevice(userId, deviceId, publicKey, signingKey),
     ).rejects.toMatchObject({
-      statusCode: 400,
+      statusCode: 429,
       code: 'M_LIMIT_EXCEEDED',
     });
 
@@ -125,6 +131,7 @@ describe('registerDevice', () => {
 
   it('allows registration when user has fewer than 10 devices', async () => {
     mockFindDevice.mockResolvedValue(null);
+    mockCountDevicesByUser.mockResolvedValue(9);
     const nineDevices = Array.from({ length: 9 }, (_, i) => ({
       device_id: `DEV_${i}`,
       user_id: userId,

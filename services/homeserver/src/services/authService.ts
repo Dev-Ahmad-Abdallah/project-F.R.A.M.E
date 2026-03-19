@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { getConfig } from '../config';
 import { createUser, findUserByUsername, userExists } from '../db/queries/users';
-import { createDevice } from '../db/queries/devices';
+import { createDevice, findDevice, countDevicesByUser } from '../db/queries/devices';
 import { upsertKeyBundle } from '../db/queries/keys';
 import { addKeyToLog } from './merkleTree';
 import { pool } from '../db/pool';
@@ -132,6 +132,14 @@ export async function login(params: LoginParams): Promise<AuthResult> {
   const deviceId = existingDeviceId || generateDeviceId();
 
   // Ensure the device exists in the database (create if new login device)
+  // Enforce device limit before creating a new device (skip if device already exists)
+  const existingDevice = await findDevice(deviceId);
+  if (!existingDevice) {
+    const deviceCount = await countDevicesByUser(user.user_id);
+    if (deviceCount >= 10) {
+      throw new ApiError(429, 'M_LIMIT_EXCEEDED', 'Maximum 10 devices per user');
+    }
+  }
   // Uses INSERT ... ON CONFLICT DO NOTHING to prevent race conditions on concurrent logins
   await createDevice(deviceId, user.user_id, 'pending', 'pending', `${username}'s device`);
 
@@ -186,4 +194,65 @@ export async function refreshAccessToken(refreshToken: string): Promise<{ access
 // Revoke all refresh tokens for a user (on password change, logout, etc.)
 export async function revokeAllTokens(userId: string): Promise<void> {
   await pool.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
+}
+
+// ── Guest session ──
+
+export interface GuestResult {
+  accessToken: string;
+  userId: string;
+  deviceId: string;
+  homeserver: string;
+  guest: true;
+}
+
+/**
+ * Create a temporary guest session.
+ *
+ * - Username: `guest_` + 8 random hex chars
+ * - No password required
+ * - Access token expires in 1 hour (no refresh token)
+ * - Guest user record is created with a random password hash (unusable)
+ * - Guest accounts tracked via Redis TTL (24-hour expiry)
+ */
+export async function createGuestSession(): Promise<GuestResult> {
+  const suffix = crypto.randomBytes(4).toString('hex');
+  const username = `guest_${suffix}`;
+  const userId = `@${username}:${config.HOMESERVER_DOMAIN}`;
+
+  // Create a placeholder password hash (guest cannot log in with a password)
+  const placeholderHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 4);
+
+  // Create the guest user in the database
+  await createUser(userId, username, placeholderHash, config.HOMESERVER_DOMAIN);
+
+  // Generate a device for the guest
+  const deviceId = generateDeviceId();
+  const guestIdentityKey = crypto.randomBytes(32).toString('base64');
+  await createDevice(deviceId, userId, guestIdentityKey, guestIdentityKey, `${username}'s device`);
+
+  // Sign a short-lived access token with guest claim (1 hour, no refresh)
+  const payload: Omit<AuthPayload, 'iat' | 'exp'> & { guest: true } = {
+    sub: userId,
+    deviceId,
+    iss: config.HOMESERVER_DOMAIN,
+    guest: true,
+  };
+
+  const accessToken = jwt.sign(payload, config.JWT_SECRET, {
+    algorithm: 'HS256',
+    expiresIn: '1h',
+  });
+
+  // Track guest expiry in Redis (24 hours) — allows cleanup of guest accounts
+  const { redisClient } = await import('../redis/client');
+  await redisClient.set(`guest:${userId}`, '1', 'EX', 86400);
+
+  return {
+    accessToken,
+    userId,
+    deviceId,
+    homeserver: config.HOMESERVER_DOMAIN,
+    guest: true,
+  };
 }

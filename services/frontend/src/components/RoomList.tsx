@@ -193,6 +193,14 @@ function injectRoomListKeyframes(): void {
       0%, 100% { transform: translateX(0); opacity: 0; }
       50% { transform: translateX(3px); opacity: 0.6; }
     }
+    @keyframes frame-room-hover-lift {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(-1px); }
+    }
+    @keyframes frame-shield-float {
+      0%, 100% { transform: translateY(0); opacity: 0.6; }
+      50% { transform: translateY(-4px); opacity: 0.8; }
+    }
   `;
   document.head.appendChild(style);
 }
@@ -316,9 +324,16 @@ const RoomList: React.FC<RoomListProps> = ({
   if (rooms.length === 0) {
     return (
       <div style={styles.emptyContainer}>
+        {/* Animated shield icon */}
+        <div style={{ animation: 'frame-shield-float 3s ease-in-out infinite', marginBottom: 16 }}>
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+            <path d="M20 3L6 10v10c0 9.33 5.97 17.53 14 20 8.03-2.47 14-10.67 14-20V10L20 3z" stroke="#58a6ff" strokeWidth="1.5" fill="rgba(88,166,255,0.06)" />
+            <path d="M14 20l4 4 8-8" stroke="#3fb950" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          </svg>
+        </div>
         <p style={styles.emptyText}>No conversations yet</p>
-        <p style={styles.emptyHint}>
-          Start a new chat to begin messaging
+        <p style={{ ...styles.emptyHint, marginTop: 4, fontSize: 11, color: '#6e7681', fontStyle: 'italic' }}>
+          Your messages are protected by military-grade encryption
         </p>
       </div>
     );
@@ -386,10 +401,10 @@ const RoomList: React.FC<RoomListProps> = ({
         style={{
           ...styles.roomItem,
           ...(isSelected ? styles.roomItemSelected : {}),
-          ...(isHovered && !isSelected ? { backgroundColor: '#1c2128' } : {}),
+          ...(isHovered && !isSelected ? { backgroundColor: '#1c2128', transform: 'translateY(-1px)', boxShadow: '0 2px 8px rgba(0,0,0,0.15)' } : {}),
           ...(isFocusedByKeyboard && !isSelected ? { backgroundColor: '#1c2128', outline: '2px solid #58a6ff', outlineOffset: -2 } : {}),
-          // Smooth transition for reordering
-          transition: 'background-color 0.2s ease, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease',
+          // Smooth transition for reordering + hover lift
+          transition: 'background-color 0.2s ease, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, box-shadow 0.2s ease',
           // Unread pulse animation
           ...(unread > 0 && !isSelected ? {
             animation: 'frame-unread-pulse 2s ease-in-out infinite',
@@ -446,14 +461,17 @@ const RoomList: React.FC<RoomListProps> = ({
               ...styles.roomName,
               ...(unread > 0 ? { color: '#f0f6fc', fontWeight: 700 } : {}),
             }}>{displayName}</span>
-            {room.lastMessage && (
-              <span style={{
-                ...styles.timestamp,
-                ...(unread > 0 ? { color: '#58a6ff' } : {}),
-              }}>
-                {formatRelativeTimestamp(room.lastMessage.timestamp)}
-              </span>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+              <span style={{ fontSize: 10, opacity: 0.4 }} title="End-to-end encrypted">{'\u{1F512}'}</span>
+              {room.lastMessage && (
+                <span style={{
+                  ...styles.timestamp,
+                  ...(unread > 0 ? { color: '#58a6ff', fontWeight: 600 } : {}),
+                }}>
+                  {formatRelativeTimestamp(room.lastMessage.timestamp)}
+                </span>
+              )}
+            </div>
           </div>
           {room.roomType === 'group' && (
             <div style={styles.memberCount}>
@@ -479,7 +497,7 @@ const RoomList: React.FC<RoomListProps> = ({
                       return truncate(senderPrefix + (room.lastMessage?.body ?? ''), 40);
                     })()
                   : <em style={{ fontStyle: 'italic', color: '#8b949e' }}>Encrypted message</em>
-                : 'No messages yet'}
+                : <span style={{ fontStyle: 'italic' }}>Say hello! {'\u{1F44B}'}</span>}
             </span>
             {unread > 0 && (
               <span style={styles.unreadBadge}>

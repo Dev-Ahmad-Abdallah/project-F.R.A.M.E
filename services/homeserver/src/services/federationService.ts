@@ -341,6 +341,41 @@ export function isPeerTrusted(domain: string): boolean {
   return peers.includes(domain);
 }
 
+// ── Dynamic Peer Discovery Cache ──
+
+const discoveredPeerCache = new Map<string, { discovery: ServerDiscovery; expiresAt: number }>();
+const DISCOVERY_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Check whether a domain is reachable via dynamic discovery.
+ * If not in the static FEDERATION_PEERS list, attempts a .well-known lookup
+ * and caches the result. Returns true if the peer was dynamically discovered
+ * (or is already in the static list).
+ */
+export async function isDynamicallyTrusted(domain: string): Promise<boolean> {
+  // Static list takes priority
+  if (isPeerTrusted(domain)) return true;
+
+  // Check discovery cache
+  const cached = discoveredPeerCache.get(domain);
+  if (cached && cached.expiresAt > Date.now()) {
+    return true;
+  }
+
+  // Attempt dynamic discovery
+  const discovery = await discoverPeer(domain);
+  if (discovery) {
+    discoveredPeerCache.set(domain, {
+      discovery,
+      expiresAt: Date.now() + DISCOVERY_CACHE_TTL_MS,
+    });
+    logger.info('Dynamically discovered federation peer', { domain });
+    return true;
+  }
+
+  return false;
+}
+
 // ── Event Relay ──
 
 /**
@@ -394,8 +429,10 @@ export async function relayEventToPeer(
   event: FederationEvent,
   peerDomain: string
 ): Promise<boolean> {
-  if (!isPeerTrusted(peerDomain)) {
-    logger.warn('Refusing to relay to untrusted peer', { peerDomain });
+  // Try static trust list first, then fall back to dynamic discovery
+  const trusted = await isDynamicallyTrusted(peerDomain);
+  if (!trusted) {
+    logger.warn('Refusing to relay to untrusted peer (static + dynamic discovery failed)', { peerDomain });
     return false;
   }
 
@@ -433,18 +470,22 @@ export async function relayEventToPeers(
   event: FederationEvent,
   targetDomains: string[]
 ): Promise<void> {
-  // Filter to only trusted peers
-  const trustedTargets = targetDomains.filter((domain) => {
-    if (!isPeerTrusted(domain)) {
-      logger.warn('Skipping untrusted target domain', { domain });
-      return false;
-    }
-    if (isCircuitOpen(domain)) {
-      logger.warn('Circuit open, skipping relay', { domain });
-      return false;
-    }
-    return true;
-  });
+  // Filter to trusted peers (static list + dynamic discovery fallback)
+  const trustChecks = await Promise.all(
+    targetDomains.map(async (domain) => {
+      const trusted = await isDynamicallyTrusted(domain);
+      if (!trusted) {
+        logger.warn('Skipping untrusted target domain (static + dynamic discovery failed)', { domain });
+        return null;
+      }
+      if (isCircuitOpen(domain)) {
+        logger.warn('Circuit open, skipping relay', { domain });
+        return null;
+      }
+      return domain;
+    })
+  );
+  const trustedTargets = trustChecks.filter((d): d is string => d !== null);
 
   if (trustedTargets.length === 0) return;
 
@@ -506,8 +547,9 @@ export async function handleIncomingFederationEvent(
 ): Promise<{ eventId: string; sequenceId: number }> {
   const origin = event.origin;
 
-  // 1. Check trust
-  if (!isPeerTrusted(origin)) {
+  // 1. Check trust (static list + dynamic discovery fallback)
+  const trusted = await isDynamicallyTrusted(origin);
+  if (!trusted) {
     throw new ApiError(403, 'M_FORBIDDEN', `Origin server ${origin} is not a trusted peer`);
   }
 

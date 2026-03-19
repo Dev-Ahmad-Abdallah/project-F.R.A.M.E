@@ -52,6 +52,29 @@ export async function login(params: LoginRequest): Promise<AuthResponse> {
 }
 
 /**
+ * Create a temporary guest session.
+ * No credentials required. Returns a short-lived access token.
+ */
+export interface GuestResponse {
+  accessToken: string;
+  userId: string;
+  deviceId: string;
+  homeserver: string;
+  guest: true;
+}
+
+export async function loginAsGuest(): Promise<GuestResponse> {
+  const data = await apiRequest<GuestResponse>('/auth/guest', {
+    method: 'POST',
+    noAuth: true,
+  });
+
+  // Guest sessions have no refresh token — store access token with empty refresh
+  setTokens(data.accessToken, '');
+  return data;
+}
+
+/**
  * Refresh the access token using the stored refresh token.
  */
 export async function refreshToken(): Promise<RefreshResponse> {

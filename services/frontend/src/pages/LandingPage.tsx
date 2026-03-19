@@ -13,6 +13,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 
 interface LandingPageProps {
   onGetStarted: () => void;
+  onTryAsGuest?: () => void;
 }
 
 // ── Color tokens (shared with the rest of the app) ──
@@ -350,7 +351,7 @@ function ScrollReveal({ children, delay = 0, style }: { children: React.ReactNod
 
 // ── Component ──
 
-export default function LandingPage({ onGetStarted }: LandingPageProps) {
+export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageProps) {
   const [isMobile, setIsMobile] = useState(
     typeof window !== 'undefined' && window.innerWidth < 768,
   );
@@ -655,6 +656,28 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               Learn More
             </button>
           </div>
+          {onTryAsGuest && (
+            <button
+              type="button"
+              onClick={onTryAsGuest}
+              style={{
+                marginTop: 12,
+                background: 'none',
+                border: 'none',
+                color: C.textSecondary,
+                fontSize: 14,
+                cursor: 'pointer',
+                fontFamily: C.font,
+                textDecoration: 'underline',
+                textUnderlineOffset: 3,
+                position: 'relative',
+                zIndex: 1,
+                animation: 'frame-fade-in 0.8s ease-out 0.5s both',
+              }}
+            >
+              Try as Guest -- no account needed
+            </button>
+          )}
         </section>
 
         {/* ─── Trust Signals Bar ─── */}

@@ -89,20 +89,55 @@ export async function ensureSessionsForRoom(
 ): Promise<void> {
   const machine = getOlmMachine();
 
-  // Step 1: Update tracked users so the machine knows who is in the room
+  // Step 1: Update tracked users so the machine knows who is in the room.
   // NOTE: updateTrackedUsers destroys UserId instances, so we create
   // separate arrays for each WASM call that needs them.
-  // Step 1: Update tracked users and force re-query of their device keys.
+  //
   // markAllTrackedUsersAsDirty ensures the machine re-fetches keys even if
   // it has cached state from a previous session (IndexedDB persistence).
+  // After restoring from IndexedDB, the OlmMachine may have stale device
+  // state, so we always force a fresh keys query regardless.
   const trackUserIds = memberUserIds.map((id) => new sdk.UserId(id));
   await machine.updateTrackedUsers(trackUserIds);
   await machine.markAllTrackedUsersAsDirty();
 
-  // Step 2: Process outgoing requests (KeysQuery) to discover all devices
+  // Step 2: Process outgoing requests (KeysQuery) to discover all devices.
+  // We call processOutgoingRequests() TWICE with a short delay between:
+  //   - The first call generates and sends KeysQuery requests triggered by
+  //     markAllTrackedUsersAsDirty().
+  //   - The 100ms delay lets the WASM state machine settle and update its
+  //     internal tracking state from the KeysQuery response.
+  //   - The second call picks up any follow-up requests (e.g. KeysClaim,
+  //     additional KeysQuery for newly discovered devices).
+  // This two-pass approach fixes cross-session key exchange where a single
+  // processOutgoingRequests() after markAllTrackedUsersAsDirty() would not
+  // fully refresh device state restored from IndexedDB.
+  await processOutgoingRequests();
+  await new Promise((resolve) => setTimeout(resolve, 100));
   await processOutgoingRequests();
 
-  // Step 2.5: Verify each remote member's key against the transparency log
+  // Step 2.5: Verify user tracking state. If getMissingSessions still returns
+  // null after two rounds of processOutgoingRequests, the machine may not be
+  // tracking the users properly (can happen when IndexedDB state is stale).
+  // trackedUsers() returns the full set; we check each member is present.
+  // If any user is untracked we force one more updateTrackedUsers +
+  // processOutgoingRequests cycle.
+  const trackedSet = await machine.trackedUsers();
+  const trackedStrings = new Set<string>();
+  trackedSet.forEach((uid) => trackedStrings.add(uid.toString()));
+  const untrackedMembers = memberUserIds.filter(
+    (id) => !trackedStrings.has(id),
+  );
+  if (untrackedMembers.length > 0) {
+    console.warn(
+      `[F.R.A.M.E.] ${untrackedMembers.length} user(s) still untracked after initial key query — forcing re-track.`,
+    );
+    const retryUserIds = memberUserIds.map((id) => new sdk.UserId(id));
+    await machine.updateTrackedUsers(retryUserIds);
+    await processOutgoingRequests();
+  }
+
+  // Step 2.6: Verify each remote member's key against the transparency log
   // before proceeding with key claiming. This is defense-in-depth: if
   // verification fails we log a warning but still proceed so messaging is
   // not broken (the server-side enforcement in queryDeviceKeys is the

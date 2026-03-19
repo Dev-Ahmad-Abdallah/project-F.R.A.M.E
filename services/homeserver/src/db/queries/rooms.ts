@@ -8,6 +8,7 @@ export interface RoomRow {
   settings: Record<string, unknown>;
   created_by: string;
   created_at: Date;
+  invite_code: string | null;
 }
 
 export interface RoomMemberRow {
@@ -34,11 +35,13 @@ export async function createRoom(
   try {
     await client.query('BEGIN');
 
+    const inviteCode = generateInviteCode();
+
     const roomResult = await client.query<RoomRow>(
-      `INSERT INTO rooms (room_id, room_type, created_by, name)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO rooms (room_id, room_type, created_by, name, invite_code)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [roomId, roomType, createdBy, name || null]
+      [roomId, roomType, createdBy, name || null, inviteCode]
     );
 
     // Creator is automatically an admin member
@@ -195,6 +198,7 @@ export async function getUserRoomsWithMembers(userId: string, deviceId?: string)
     settings: r.settings,
     created_by: r.created_by,
     created_at: r.created_at,
+    invite_code: r.invite_code,
     members: membersByRoom.get(r.room_id) || [],
     lastMessage: r.last_msg_content
       ? { content: r.last_msg_content, timestamp: r.last_msg_ts ?? new Date() }
@@ -275,4 +279,59 @@ export async function isRoomMember(roomId: string, userId: string): Promise<bool
     [roomId, userId]
   );
   return result.rowCount !== null && result.rowCount > 0;
+}
+
+/**
+ * Generate a 6-character uppercase hex invite code.
+ */
+export function generateInviteCode(): string {
+  return crypto.randomBytes(3).toString('hex').toUpperCase();
+}
+
+/**
+ * Look up a room by its invite code.
+ */
+export async function findRoomByInviteCode(code: string): Promise<RoomRow | null> {
+  const result = await pool.query<RoomRow>(
+    'SELECT * FROM rooms WHERE invite_code = $1',
+    [code.toUpperCase()]
+  );
+  return result.rows[0] || null;
+}
+
+/**
+ * Get the invite code for a room.
+ */
+export async function getRoomInviteCode(roomId: string): Promise<string | null> {
+  const result = await pool.query<{ invite_code: string | null }>(
+    'SELECT invite_code FROM rooms WHERE room_id = $1',
+    [roomId]
+  );
+  return result.rows[0]?.invite_code ?? null;
+}
+
+/**
+ * Regenerate the invite code for a room.
+ */
+export async function regenerateRoomInviteCode(roomId: string): Promise<string> {
+  const newCode = generateInviteCode();
+  const result = await pool.query<RoomRow>(
+    'UPDATE rooms SET invite_code = $2 WHERE room_id = $1 RETURNING *',
+    [roomId, newCode]
+  );
+  if (result.rows.length === 0) {
+    throw new Error('Room not found');
+  }
+  return newCode;
+}
+
+/**
+ * Get a member's role in a room.
+ */
+export async function getRoomMemberRole(roomId: string, userId: string): Promise<string | null> {
+  const result = await pool.query<{ role: string }>(
+    'SELECT role FROM room_members WHERE room_id = $1 AND user_id = $2',
+    [roomId, userId]
+  );
+  return result.rows[0]?.role ?? null;
 }

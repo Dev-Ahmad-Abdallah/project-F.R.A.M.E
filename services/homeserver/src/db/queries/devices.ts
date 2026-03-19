@@ -73,6 +73,14 @@ export async function updateDeviceKeysJson(deviceId: string, deviceKeysJson: Rec
   );
 }
 
+export async function countDevicesByUser(userId: string): Promise<number> {
+  const result = await pool.query<{ count: string }>(
+    'SELECT COUNT(*) FROM devices WHERE user_id = $1',
+    [userId]
+  );
+  return parseInt(result.rows[0].count, 10);
+}
+
 export async function deleteDevice(deviceId: string, userId: string): Promise<boolean> {
   const result = await pool.query(
     'DELETE FROM devices WHERE device_id = $1 AND user_id = $2',

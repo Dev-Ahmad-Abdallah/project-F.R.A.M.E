@@ -1,4 +1,4 @@
-import { createDevice, findDevicesByUser, findDevice, deleteDevice, updateLastSeen } from '../db/queries/devices';
+import { createDevice, findDevicesByUser, findDevice, deleteDevice, updateLastSeen, countDevicesByUser } from '../db/queries/devices';
 import { getUserRooms } from '../db/queries/rooms';
 import { redisClient } from '../redis/client';
 import { ApiError } from '../middleware/errorHandler';
@@ -15,10 +15,10 @@ export async function registerDevice(
     throw new ApiError(409, 'M_USER_EXISTS', 'Device ID already registered');
   }
 
-  // Enforce maximum device limit per user
-  const userDevices = await findDevicesByUser(userId);
-  if (userDevices.length >= 10) {
-    throw new ApiError(400, 'M_LIMIT_EXCEEDED', 'Maximum 10 devices per user');
+  // Enforce maximum device limit per user (use COUNT query for efficiency)
+  const deviceCount = await countDevicesByUser(userId);
+  if (deviceCount >= 10) {
+    throw new ApiError(429, 'M_LIMIT_EXCEEDED', 'Maximum 10 devices per user');
   }
 
   const device = await createDevice(deviceId, userId, publicKey, signingKey, displayName);

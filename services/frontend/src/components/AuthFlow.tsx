@@ -16,7 +16,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { AuthResponse } from '@frame/shared';
-import { login, register } from '../api/authAPI';
+import { login, register, loginAsGuest } from '../api/authAPI';
 import { FrameApiError } from '../api/client';
 import { generateAndUploadKeys } from '../crypto/keyManager';
 
@@ -127,8 +127,8 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
           setLoading(false);
           setShowSuccess(true);
 
-          // Persist device ID
-          sessionStorage.setItem(
+          // Persist device ID in localStorage so returning users keep the same device
+          localStorage.setItem(
             `frame-device-id:${auth.userId.split(':')[0].slice(1)}`,
             auth.deviceId,
           );
@@ -140,12 +140,12 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
           return;
         } else {
           // Reuse device ID from previous login if available
-          const storedDeviceId = sessionStorage.getItem(`frame-device-id:${username}`) ?? undefined;
+          const storedDeviceId = localStorage.getItem(`frame-device-id:${username}`) ?? undefined;
           auth = await login({ username, password, deviceId: storedDeviceId });
         }
 
-        // Persist device ID for current session (cleared on tab close, more secure against persistent XSS)
-        sessionStorage.setItem(`frame-device-id:${auth.userId.split(':')[0].slice(1)}`, auth.deviceId);
+        // Persist device ID so returning users reuse the same device
+        localStorage.setItem(`frame-device-id:${auth.userId.split(':')[0].slice(1)}`, auth.deviceId);
 
         onAuthenticated(auth);
       } catch (err) {
@@ -162,6 +162,34 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
     },
     [mode, username, password, onAuthenticated],
   );
+
+  const handleGuestLogin = useCallback(async () => {
+    setError(null);
+    setLoading(true);
+    try {
+      const guestData = await loginAsGuest();
+      // Convert GuestResponse to AuthResponse shape for onAuthenticated
+      const authResponse: AuthResponse = {
+        accessToken: guestData.accessToken,
+        refreshToken: '',
+        userId: guestData.userId,
+        deviceId: guestData.deviceId,
+        homeserver: guestData.homeserver,
+        guest: true,
+      };
+      onAuthenticated(authResponse);
+    } catch (err) {
+      if (err instanceof FrameApiError) {
+        setError(err.message);
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Failed to create guest session.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [onAuthenticated]);
 
   const toggleMode = useCallback(() => {
     setModeTransition(true);
@@ -381,6 +409,18 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
             disabled={loading}
           >
             {mode === 'login' ? 'Register' : 'Sign In'}
+          </button>
+        </p>
+
+        {/* Continue as Guest */}
+        <p style={{ ...styles.toggle, marginTop: 8 }}>
+          <button
+            type="button"
+            style={{ ...styles.toggleLink, color: '#8b949e', textDecoration: 'none', fontSize: 12 }}
+            onClick={() => void handleGuestLogin()}
+            disabled={loading}
+          >
+            Continue as Guest
           </button>
         </p>
 

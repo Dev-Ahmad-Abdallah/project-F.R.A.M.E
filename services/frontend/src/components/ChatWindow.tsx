@@ -225,6 +225,22 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [forwardRooms, setForwardRooms] = useState<RoomSummary[]>([]);
   const [showForwardDialog, setShowForwardDialog] = useState(false);
 
+  // ── Feature: Search within chat ──
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Feature: Pinned messages ──
+  const [pinnedEventIds, setPinnedEventIds] = useState<string[]>([]);
+  const [showPinnedBar, setShowPinnedBar] = useState(true);
+
+  // ── Feature: Unread message divider ──
+  const [unreadDividerEventId, setUnreadDividerEventId] = useState<string | null>(null);
+  const hasSetUnreadDividerRef = useRef(false);
+
+  // ── Feature: Double-tap to react ──
+  const lastClickTimeRef = useRef<Record<string, number>>({});
+
   // Reply state
   const [replyTo, setReplyTo] = useState<{ eventId: string; senderId: string; body: string } | null>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -331,6 +347,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   // Mobile "more" menu state (for auto-delete / leave)
   const [showMobileMoreMenu, setShowMobileMoreMenu] = useState(false);
+  // Rotating placeholder index
+  const [placeholderIndex, setPlaceholderIndex] = useState(() => Math.floor(Math.random() * 5));
   const emojiPickerRef = useRef<HTMLDivElement>(null);
 
   // Close emoji picker on outside click
@@ -345,6 +363,23 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showEmojiPicker]);
+
+  // Rotate placeholder text when input is empty and focused
+  const INPUT_PLACEHOLDERS = [
+    'Type a message...',
+    'Say something encrypted...',
+    'Your message is E2EE protected...',
+    'Write a secure message...',
+    "What's on your mind?",
+  ];
+  useEffect(() => {
+    if (!isTextareaFocused || inputValue.length > 0) return;
+    const timer = setInterval(() => {
+      setPlaceholderIndex((prev) => (prev + 1) % INPUT_PLACEHOLDERS.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTextareaFocused, inputValue]);
 
   const insertEmojiAtCursor = (emoji: string) => {
     const ta = textareaRef.current;
@@ -431,15 +466,20 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, []);
 
-  // Fetch disappearing messages settings
+  // Fetch disappearing messages settings + pinned messages
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         const { getRoomSettingsAPI } = await import('../api/roomsAPI');
         const resp = await getRoomSettingsAPI(roomId);
-        if (!cancelled && resp.settings?.disappearingMessages) {
-          setDisappearingSettings(resp.settings.disappearingMessages as { enabled: boolean; timeoutSeconds: number });
+        if (!cancelled) {
+          if (resp.settings?.disappearingMessages) {
+            setDisappearingSettings(resp.settings.disappearingMessages as { enabled: boolean; timeoutSeconds: number });
+          }
+          if (resp.settings?.pinnedEventIds && Array.isArray(resp.settings.pinnedEventIds)) {
+            setPinnedEventIds(resp.settings.pinnedEventIds as string[]);
+          }
         }
       } catch { /* settings not available yet */ }
     })();
@@ -560,6 +600,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           if (syncGenRef.current !== gen) break;
 
           if (decryptedEvents.length > 0) {
+            // Set unread divider on first batch of new messages from others
+            if (!hasSetUnreadDividerRef.current) {
+              const firstFromOther = decryptedEvents.find((e) => e.event.senderId !== currentUserId);
+              if (firstFromOther) {
+                setUnreadDividerEventId(firstFromOther.event.eventId);
+                hasSetUnreadDividerRef.current = true;
+              }
+            }
             setMessages((prev) => [...prev, ...decryptedEvents]);
             const newIds = decryptedEvents.map((e) => e.event.eventId);
             setRecentlyArrivedIds((prev) => {
@@ -623,6 +671,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     setOptimisticMessages([]);
     nextBatchRef.current = undefined;
     syncBackoffRef.current = 1000;
+    setShowSearch(false);
+    setSearchQuery('');
+    setPinnedEventIds([]);
+    setShowPinnedBar(true);
+    setUnreadDividerEventId(null);
+    hasSetUnreadDividerRef.current = false;
 
     const gen = ++syncGenRef.current;
 
@@ -656,6 +710,45 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       window.removeEventListener('online', handleOnline);
     };
   }, [roomId, syncLoop]);
+
+  // ── Feature: Copy message text to clipboard ──
+  const handleCopyText = useCallback((eventId: string) => {
+    setContextMenuEventId(null);
+    setContextMenuPos(null);
+    const msg = messages.find((m) => m.event.eventId === eventId);
+    if (!msg) return;
+    const body = msg.plaintext && typeof msg.plaintext.body === 'string'
+      ? msg.plaintext.body
+      : renderMessageContent(msg);
+    navigator.clipboard.writeText(body).then(() => {
+      showToast?.('success', 'Message copied to clipboard');
+    }).catch(() => {
+      showToast?.('error', 'Failed to copy message');
+    });
+  }, [messages, showToast]);
+
+  // ── Feature: Pin/unpin message ──
+  const handleTogglePin = useCallback(async (eventId: string) => {
+    setContextMenuEventId(null);
+    setContextMenuPos(null);
+    const isPinned = pinnedEventIds.includes(eventId);
+    const newPinned = isPinned
+      ? pinnedEventIds.filter((id) => id !== eventId)
+      : [...pinnedEventIds, eventId];
+    setPinnedEventIds(newPinned);
+    try {
+      const { updateRoomSettings } = await import('../api/roomsAPI');
+      await updateRoomSettings(roomId, { pinnedEventIds: newPinned });
+      showToast?.('success', isPinned ? 'Message unpinned' : 'Message pinned');
+    } catch (err) {
+      console.error('Failed to update pinned messages:', err);
+      setPinnedEventIds(pinnedEventIds); // rollback
+      showToast?.('error', 'Failed to update pinned messages');
+    }
+  }, [pinnedEventIds, roomId, showToast]);
+
+  // ── Feature: Double-click to toggle heart reaction ──
+  const handleReactRef = useRef<((eventId: string, emoji: string) => Promise<void>) | null>(null);
 
   // Reply handler — triggered from context menu
   const handleReplyToMessage = useCallback((eventId: string) => {
@@ -897,6 +990,21 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
+  // Keep ref in sync for double-click handler
+  handleReactRef.current = handleReact;
+
+  const handleMessageClick = useCallback((e: React.MouseEvent, eventId: string) => {
+    const now = Date.now();
+    const lastClick = lastClickTimeRef.current[eventId] || 0; // eslint-disable-line security/detect-object-injection
+    if (now - lastClick < 350) {
+      // Double-click detected — toggle heart reaction
+      void handleReactRef.current?.(eventId, '\u2764\uFE0F');
+      lastClickTimeRef.current[eventId] = 0; // eslint-disable-line security/detect-object-injection
+    } else {
+      lastClickTimeRef.current[eventId] = now; // eslint-disable-line security/detect-object-injection
+    }
+  }, []);
+
   useEffect(() => {
     if (messages.length === 0) return;
     const latestOther = [...messages]
@@ -1001,7 +1109,18 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Memoize message rendering — avoids recomputing grouping/date separators on
   // unrelated state changes (emoji picker, context menu, textarea focus, etc.)
+  // Filtered messages for search
+  const filteredMessages = useMemo(() => {
+    if (!searchQuery.trim()) return messages;
+    const q = searchQuery.toLowerCase();
+    return messages.filter((m) => {
+      if (!m.plaintext || typeof m.plaintext.body !== 'string') return false;
+      return m.plaintext.body.toLowerCase().includes(q);
+    });
+  }, [messages, searchQuery]);
+
   const renderedMessages = useMemo(() => {
+    const msgsToRender = searchQuery.trim() ? filteredMessages : messages;
     const elements: React.ReactNode[] = [];
     let lastSenderId: string | null = null;
     let lastTimestamp: Date | null = null;
@@ -1014,8 +1133,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     {
       let runStart = -1;
       let runCount = 0;
-      for (let j = 0; j <= messages.length; j++) {
-        const msg = j < messages.length ? messages[j] : null; // eslint-disable-line security/detect-object-injection
+      for (let j = 0; j <= msgsToRender.length; j++) {
+        const msg = j < msgsToRender.length ? msgsToRender[j] : null; // eslint-disable-line security/detect-object-injection
         const isUndecryptable = msg !== null && msg.decryptionError !== null && !deletedEventIds.has(msg.event.eventId) && !expiredEventIds.has(msg.event.eventId);
         if (isUndecryptable) {
           if (runStart === -1) { runStart = j; runCount = 1; }
@@ -1033,7 +1152,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     }
 
-    for (const [i, decrypted] of messages.entries()) {
+    for (const [i, decrypted] of msgsToRender.entries()) {
       // Skip messages that are part of a collapsed undecryptable run (except the first)
       if (skipIndices.has(i)) {
         lastSenderId = decrypted.event.senderId;
@@ -1059,6 +1178,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             <div style={styles.dateSeparatorLine} />
             <span style={styles.dateSeparatorText}>{formatDateSeparator(msgDate)}</span>
             <div style={styles.dateSeparatorLine} />
+          </div>
+        );
+      }
+
+      // ── Feature: Unread message divider ──
+      if (unreadDividerEventId && event.eventId === unreadDividerEventId && !searchQuery.trim()) {
+        elements.push(
+          <div key="unread-divider" style={styles.unreadDivider}>
+            <div style={styles.unreadDividerLine} />
+            <span style={styles.unreadDividerText}>New messages</span>
+            <div style={styles.unreadDividerLine} />
           </div>
         );
       }
@@ -1159,6 +1289,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           <div
             style={{ ...styles.messageBubble, ...(isOwn ? styles.ownMessage : styles.otherMessage), ...(hasError ? styles.previousSessionMessage : {}), ...bubbleRadius, marginTop: 0 }}
             onContextMenu={(e) => handleMessageContextMenu(e, event.eventId, event.senderId)}
+            onClick={(e) => handleMessageClick(e, event.eventId)}
           >
             {/* Reply quote block */}
             {decrypted.plaintext != null && Boolean(decrypted.plaintext.replyTo) && (() => {
@@ -1212,7 +1343,20 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                       </span>
                     </span>
                   ) : (
-                    <span>{renderMessageContent(decrypted)}</span>
+                    <span>{(() => {
+                      const text = renderMessageContent(decrypted);
+                      if (!searchQuery.trim()) return text;
+                      const q = searchQuery.toLowerCase();
+                      const idx = text.toLowerCase().indexOf(q);
+                      if (idx === -1) return text;
+                      return (
+                        <>
+                          {text.slice(0, idx)}
+                          <mark style={{ backgroundColor: 'rgba(210, 153, 34, 0.5)', color: 'inherit', borderRadius: 2, padding: '0 1px' }}>{text.slice(idx, idx + searchQuery.length)}</mark>
+                          {text.slice(idx + searchQuery.length)}
+                        </>
+                      );
+                    })()}</span>
                   )}
                 </>
               )}
@@ -1259,7 +1403,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     return elements;
-  }, [messages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, isMobile, scrollToMessage]);
+  }, [messages, filteredMessages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, isMobile, scrollToMessage, searchQuery, unreadDividerEventId, handleMessageClick]);
 
   const renderWelcome = () => {
     if (messages.length > 0 || optimisticMessages.length > 0) return null;
@@ -1371,12 +1515,29 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           <div style={styles.headerSubRow}>
             <span style={styles.encryptionBadge} title="End-to-end encryption enabled">E2EE</span>
             {isSyncing && <SyncIndicator />}
-            {roomType === 'group' && memberCount != null && memberCount > 0 && (
-              <span style={styles.headerMemberCount}>{memberCount} member{memberCount !== 1 ? 's' : ''}</span>
+            {memberCount != null && memberCount > 0 && (
+              <span style={styles.headerMemberCount}>
+                {memberCount} member{memberCount !== 1 ? 's' : ''}
+              </span>
+            )}
+            {roomType === 'direct' && contactStatus !== 'offline' && (
+              <span style={{ fontSize: 11, color: '#8b949e' }}>
+                {/* eslint-disable-next-line security/detect-object-injection */}
+                {'\u00B7'} {STATUS_LABELS[contactStatus]}
+              </span>
+            )}
+            {roomType === 'direct' && contactStatus === 'offline' && (
+              <span style={{ fontSize: 11, color: '#6e7681' }}>
+                {'\u00B7'} Offline
+              </span>
             )}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 6, position: 'relative' as const }}>
+          {/* ── Feature: Search within chat ── */}
+          <button type="button" style={styles.searchButton} title="Search in chat" aria-label="Search in chat" onClick={() => { setShowSearch((v) => { if (!v) setTimeout(() => searchInputRef.current?.focus(), 0); return !v; }); if (showSearch) setSearchQuery(''); }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={showSearch ? '#58a6ff' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+          </button>
           {!isMobile && <button type="button" style={{ ...styles.disappearingButton, ...(disappearingSettings?.enabled ? styles.disappearingButtonActive : {}) }} title="Disappearing messages" onClick={() => setShowDisappearingMenu(!showDisappearingMenu)}>
             {disappearingSettings?.enabled ? 'Auto-delete ON' : 'Auto-delete'}
           </button>}
@@ -1420,6 +1581,59 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           )}
         </div>
       </div>
+
+      {/* ── Feature: Search bar ── */}
+      {showSearch && (
+        <div style={styles.searchBar}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+          <input
+            ref={searchInputRef}
+            type="text"
+            style={styles.searchInput}
+            placeholder="Search messages..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { setShowSearch(false); setSearchQuery(''); } }}
+            aria-label="Search messages"
+          />
+          {searchQuery && (
+            <span style={{ fontSize: 11, color: '#8b949e', flexShrink: 0 }}>
+              {filteredMessages.length} result{filteredMessages.length !== 1 ? 's' : ''}
+            </span>
+          )}
+          <button type="button" style={styles.searchCloseButton} onClick={() => { setShowSearch(false); setSearchQuery(''); }} aria-label="Close search">
+            &#10005;
+          </button>
+        </div>
+      )}
+
+      {/* ── Feature: Pinned message bar ── */}
+      {pinnedEventIds.length > 0 && showPinnedBar && !showSearch && (() => {
+        const latestPinnedId = pinnedEventIds[pinnedEventIds.length - 1];
+        const pinnedMsg = messages.find((m) => m.event.eventId === latestPinnedId);
+        if (!pinnedMsg) return null;
+        const pinnedBody = pinnedMsg.plaintext && typeof pinnedMsg.plaintext.body === 'string'
+          ? pinnedMsg.plaintext.body
+          : 'Pinned message';
+        return (
+          <div style={styles.pinnedBar} onClick={() => scrollToMessage(latestPinnedId)}>
+            <div style={styles.pinnedBarLeft}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d29922" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 00-1.11-1.79l-1.78-.9A2 2 0 0115 10.76V6h1a2 2 0 000-4H8a2 2 0 000 4h1v4.76a2 2 0 01-1.11 1.79l-1.78.9A2 2 0 005 15.24V17z" />
+              </svg>
+              <div style={{ overflow: 'hidden', flex: 1 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: '#d29922', marginBottom: 1 }}>Pinned</div>
+                <div style={{ fontSize: 12, color: '#c9d1d9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                  {DOMPurify.sanitize(pinnedBody.length > 80 ? pinnedBody.slice(0, 80) + '...' : pinnedBody, PURIFY_CONFIG)}
+                </div>
+              </div>
+            </div>
+            <button type="button" style={styles.pinnedBarClose} onClick={(e) => { e.stopPropagation(); setShowPinnedBar(false); }} aria-label="Dismiss pinned message">
+              &#10005;
+            </button>
+          </div>
+        );
+      })()}
 
       {syncError && (
         <div style={styles.syncErrorIndicator}>
@@ -1506,7 +1720,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             {viewOnceMode && <span style={{ fontSize: 10, fontWeight: 700, color: '#d99e24', letterSpacing: 0.3, whiteSpace: 'nowrap' as const }}>View Once</span>}
           </button>
           {/* Textarea */}
-          <textarea ref={textareaRef} style={{ flex: 1, padding: '8px 6px', border: 'none', backgroundColor: 'transparent', color: '#c9d1d9', fontSize: isMobile ? 16 : 14, fontFamily: 'inherit', resize: 'none' as const, lineHeight: '20px', minHeight: 36, maxHeight: 116, overflow: 'auto', outline: 'none' }} value={inputValue} onChange={handleTextareaChange} onKeyDown={handleKeyDown} onFocus={() => setIsTextareaFocused(true)} onBlur={() => setIsTextareaFocused(false)} placeholder={viewOnceMode ? 'View-once message...' : 'Type a message...'} disabled={isSending} aria-label="Message input" rows={1} />
+          {/* eslint-disable-next-line security/detect-object-injection */}
+          <textarea ref={textareaRef} style={{ flex: 1, padding: '8px 6px', border: 'none', backgroundColor: 'transparent', color: '#c9d1d9', fontSize: isMobile ? 16 : 14, fontFamily: 'inherit', resize: 'none' as const, lineHeight: '20px', minHeight: 36, maxHeight: 116, overflow: 'auto', outline: 'none' }} value={inputValue} onChange={handleTextareaChange} onKeyDown={handleKeyDown} onFocus={() => setIsTextareaFocused(true)} onBlur={() => setIsTextareaFocused(false)} placeholder={viewOnceMode ? 'View-once message...' : INPUT_PLACEHOLDERS[placeholderIndex]} disabled={isSending} aria-label="Message input" rows={1} />
           {/* Character count indicator */}
           {inputValue.length > 500 && (
             <span style={{ position: 'absolute' as const, bottom: 6, right: inputValue.trim() ? 88 : 44, fontSize: 10, color: inputValue.length > 4500 ? '#f85149' : '#8b949e', fontFamily: 'inherit', pointerEvents: 'none' as const, transition: 'color 0.2s' }} aria-live="polite">{inputValue.length}/5000</span>
@@ -1537,6 +1752,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         <div style={{ ...styles.contextMenu, top: contextMenuPos.y, left: contextMenuPos.x }}>
           <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#c9d1d9' }} onClick={() => handleReplyToMessage(contextMenuEventId)}>Reply</button>
           <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#c9d1d9' }} onClick={() => void handleForwardMessage(contextMenuEventId)}>Forward</button>
+          <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#c9d1d9' }} onClick={() => handleCopyText(contextMenuEventId)}>Copy Text</button>
+          <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#d29922' }} onClick={() => void handleTogglePin(contextMenuEventId)}>
+            {pinnedEventIds.includes(contextMenuEventId) ? 'Unpin' : 'Pin'}
+          </button>
           {messages.find((m) => m.event.eventId === contextMenuEventId)?.event.senderId === currentUserId && (
             <button type="button" className="frame-context-menu-item" style={styles.contextMenuItem} onClick={() => void handleDeleteMessage(contextMenuEventId)}>Delete</button>
           )}
@@ -1665,6 +1884,22 @@ const styles: Record<string, React.CSSProperties> = {
   forwardList: { flex: 1, overflowY: 'auto' as const, padding: '4px 0' },
   forwardRoomItem: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 16px', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const, transition: 'background-color 0.12s' },
   forwardCancel: { padding: '10px', fontSize: 13, fontWeight: 600, color: '#8b949e', backgroundColor: 'transparent', border: 'none', borderTop: '1px solid #30363d', cursor: 'pointer', fontFamily: 'inherit', borderRadius: '0 0 12px 12px', transition: 'color 0.12s' },
+
+  // ── Feature: Search within chat ──
+  searchButton: { width: 28, height: 28, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'border-color 0.15s' },
+  searchBar: { display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderBottom: '1px solid #30363d', backgroundColor: '#1c2128' },
+  searchInput: { flex: 1, padding: '6px 8px', fontSize: 13, color: '#c9d1d9', backgroundColor: '#0d1117', border: '1px solid #30363d', borderRadius: 6, fontFamily: 'inherit', outline: 'none' },
+  searchCloseButton: { background: 'none', border: 'none', color: '#8b949e', fontSize: 14, cursor: 'pointer', padding: '2px 6px', borderRadius: 4, lineHeight: 1, fontFamily: 'inherit', flexShrink: 0 },
+
+  // ── Feature: Pinned messages ──
+  pinnedBar: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 14px', borderBottom: '1px solid #30363d', backgroundColor: 'rgba(210, 153, 34, 0.06)', cursor: 'pointer', transition: 'background-color 0.15s' },
+  pinnedBarLeft: { display: 'flex', alignItems: 'center', gap: 8, flex: 1, overflow: 'hidden' },
+  pinnedBarClose: { background: 'none', border: 'none', color: '#8b949e', fontSize: 12, cursor: 'pointer', padding: '2px 6px', borderRadius: 4, lineHeight: 1, fontFamily: 'inherit', flexShrink: 0 },
+
+  // ── Feature: Unread divider ──
+  unreadDivider: { display: 'flex', alignItems: 'center', gap: 12, margin: '12px 0 6px' },
+  unreadDividerLine: { flex: 1, height: 1, backgroundColor: '#58a6ff' },
+  unreadDividerText: { fontSize: 11, fontWeight: 600, color: '#58a6ff', flexShrink: 0, textTransform: 'uppercase' as const, letterSpacing: '0.05em' },
 };
 
 export default React.memo(ChatWindow);

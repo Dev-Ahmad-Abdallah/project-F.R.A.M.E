@@ -37,7 +37,7 @@ import type { UnknownDeviceInfo } from './devices/deviceAlert';
 import KeyChangeAlert from './verification/keyChangeAlert';
 import type { KeyChangeAction } from './verification/keyChangeAlert';
 import { getAccessToken } from './api/client';
-import { logout as apiLogout, updateStatus } from './api/authAPI';
+import { logout as apiLogout, updateStatus, loginAsGuest } from './api/authAPI';
 import { formatDisplayName } from './utils/displayName';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from './utils/purifyConfig';
@@ -214,6 +214,21 @@ function App() {
           0% { opacity: 0; }
           100% { opacity: 1; }
         }
+        @keyframes frame-gradient-shift {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        @keyframes frame-pulse-glow {
+          0%, 100% { opacity: 0.4; transform: scale(1); }
+          50% { opacity: 0.7; transform: scale(1.05); }
+        }
+        @keyframes frame-tip-fade {
+          0% { opacity: 0; transform: translateY(6px); }
+          15% { opacity: 1; transform: translateY(0); }
+          85% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-6px); }
+        }
         @media (max-width: 767px) {
           button:active, [role="button"]:active {
             animation: frame-tap-feedback 0.15s ease-out !important;
@@ -297,6 +312,23 @@ function App() {
     setCurrentPage('app');
   }, []);
 
+  const handleGuestLogin = useCallback(async () => {
+    try {
+      const guestData = await loginAsGuest();
+      const authResponse: AuthResponse = {
+        accessToken: guestData.accessToken,
+        refreshToken: '',
+        userId: guestData.userId,
+        deviceId: guestData.deviceId,
+        homeserver: guestData.homeserver,
+        guest: true,
+      };
+      handleAuthenticated(authResponse);
+    } catch (err) {
+      console.error('Guest login failed:', err);
+    }
+  }, [handleAuthenticated]);
+
   // ── Post-login initialization ──
 
   useEffect(() => {
@@ -307,26 +339,29 @@ function App() {
 
     async function initialize() {
       try {
-        // 1. Generate and upload device keys (handles initCrypto internally)
-        if (!cancelled) setInitPhase('keys');
-        await generateAndUploadKeys(currentAuth.userId, currentAuth.deviceId);
+        // Guest sessions skip heavy crypto and storage setup
+        if (!currentAuth.guest) {
+          // 1. Generate and upload device keys (handles initCrypto internally)
+          if (!cancelled) setInitPhase('keys');
+          await generateAndUploadKeys(currentAuth.userId, currentAuth.deviceId);
 
-        // 2. Register service worker for push notifications
-        await registerServiceWorker();
+          // 2. Register service worker for push notifications
+          await registerServiceWorker();
 
-        // 3. Init encrypted IndexedDB storage with a user-derived passphrase.
-        //    We hash `userId + ":frame-storage"` with SHA-256 to produce a
-        //    deterministic, per-user passphrase (never store the raw password).
-        if (!cancelled) setInitPhase('storage');
-        const passphraseData = new TextEncoder().encode(
-          currentAuth.userId + ':frame-storage',
-        );
-        const hashBuffer = await crypto.subtle.digest('SHA-256', passphraseData);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const storagePassphrase = hashArray
-          .map((b) => b.toString(16).padStart(2, '0'))
-          .join('');
-        await initStorage(storagePassphrase);
+          // 3. Init encrypted IndexedDB storage with a user-derived passphrase.
+          //    We hash `userId + ":frame-storage"` with SHA-256 to produce a
+          //    deterministic, per-user passphrase (never store the raw password).
+          if (!cancelled) setInitPhase('storage');
+          const passphraseData = new TextEncoder().encode(
+            currentAuth.userId + ':frame-storage',
+          );
+          const hashBuffer = await crypto.subtle.digest('SHA-256', passphraseData);
+          const hashArray = Array.from(new Uint8Array(hashBuffer));
+          const storagePassphrase = hashArray
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('');
+          await initStorage(storagePassphrase);
+        }
 
         // 4. Fetch room list
         if (!cancelled) {
@@ -536,6 +571,25 @@ function App() {
     }
   }, [selectedRoomId]);
 
+  // Rotating tips for empty state
+  const QUICK_TIPS = [
+    'Tip: Star important conversations to pin them at the top',
+    'Tip: Use view-once for sensitive messages that self-destruct',
+    'Tip: Right-click any message to reply, forward, or delete',
+    'Tip: Press Cmd+K to quickly search conversations',
+    'Tip: Verify contacts by comparing fingerprints',
+  ];
+
+  const [currentTipIndex, setCurrentTipIndex] = useState(0);
+
+  useEffect(() => {
+    const tipTimer = setInterval(() => {
+      setCurrentTipIndex((prev) => (prev + 1) % QUICK_TIPS.length);
+    }, 5000);
+    return () => clearInterval(tipTimer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Fade transition style for page switches
   const fadeTransitionStyle: React.CSSProperties = { animation: 'frame-fade-in 0.15s ease-out' };
 
@@ -544,7 +598,7 @@ function App() {
     return (
       <div key="page-landing" style={fadeTransitionStyle}>
         <React.Suspense fallback={<div />}>
-          <LandingPage onGetStarted={() => setCurrentPage('auth')} />
+          <LandingPage onGetStarted={() => setCurrentPage('auth')} onTryAsGuest={() => void handleGuestLogin()} />
         </React.Suspense>
         {showInstallBanner && (
           <div style={{
@@ -840,59 +894,117 @@ function App() {
   const renderEmptyState = () => {
     if (rooms.length === 0) {
       return (
-        <div style={styles.emptyMain}>
-          <div style={styles.emptyIcon}>
-            <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-              <rect x="6" y="10" width="44" height="32" rx="6" stroke="#58a6ff" strokeWidth="2" fill="rgba(88,166,255,0.06)" />
-              <path d="M6 16l22 14 22-14" stroke="#58a6ff" strokeWidth="2" fill="none" />
-            </svg>
-          </div>
-          <h2 style={styles.emptyTitle}>Welcome to F.R.A.M.E.</h2>
-          <p style={styles.emptySubtitle}>Get started in three simple steps</p>
-          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 12, marginTop: 24, width: '100%', maxWidth: 340 }}>
-            <button type="button" onClick={() => setShowNewChatDialog(true)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', backgroundColor: 'rgba(88,166,255,0.06)', border: '1px solid #30363d', borderRadius: 10, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', transition: 'border-color 0.15s, background-color 0.15s' }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#58a6ff'; e.currentTarget.style.backgroundColor = 'rgba(88,166,255,0.1)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#30363d'; e.currentTarget.style.backgroundColor = 'rgba(88,166,255,0.06)'; }}>
-              <div style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(88,166,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 3v12M3 9h12" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" /></svg>
+        <div style={{ ...styles.emptyMain, position: 'relative' as const, overflow: 'hidden' }}>
+          {/* Subtle animated gradient background */}
+          <div style={{
+            position: 'absolute' as const,
+            inset: 0,
+            background: 'radial-gradient(ellipse at 30% 20%, rgba(88,166,255,0.06) 0%, transparent 50%), radial-gradient(ellipse at 70% 80%, rgba(63,185,80,0.04) 0%, transparent 50%)',
+            animation: 'frame-gradient-shift 8s ease-in-out infinite',
+            backgroundSize: '200% 200%',
+            pointerEvents: 'none' as const,
+          }} />
+          <div style={{ position: 'relative' as const, zIndex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center' }}>
+            <div style={styles.emptyIcon}>
+              <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+                <rect x="6" y="10" width="44" height="32" rx="6" stroke="#58a6ff" strokeWidth="2" fill="rgba(88,166,255,0.06)" />
+                <path d="M6 16l22 14 22-14" stroke="#58a6ff" strokeWidth="2" fill="none" />
+              </svg>
+            </div>
+            <h2 style={styles.emptyTitle}>Welcome to F.R.A.M.E.</h2>
+            <p style={styles.emptySubtitle}>Get started in three simple steps</p>
+
+            {/* Pulsing encryption indicator */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, marginBottom: 8 }}>
+              <div style={{ animation: 'frame-pulse-glow 2s ease-in-out infinite' }}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <rect x="2" y="6" width="10" height="7" rx="1.5" stroke="#3fb950" strokeWidth="1.2" fill="rgba(63,185,80,0.1)" />
+                  <path d="M4.5 6V4.5a2.5 2.5 0 0 1 5 0V6" stroke="#3fb950" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                </svg>
               </div>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 2 }}>Create your first conversation</div>
-                <div style={{ fontSize: 12, color: '#8b949e', display: 'flex', alignItems: 'center', gap: 4 }}>Click here or press <span style={{ color: '#58a6ff', fontWeight: 500 }}>+ New Chat</span> <span style={{ fontSize: 14 }}>&#8593;</span></div>
+              <span style={{ fontSize: 11, color: '#3fb950', fontWeight: 500, opacity: 0.8 }}>Encryption active</span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 12, marginTop: 16, width: '100%', maxWidth: 340 }}>
+              <button type="button" onClick={() => setShowNewChatDialog(true)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', backgroundColor: 'rgba(88,166,255,0.06)', border: '1px solid #30363d', borderRadius: 10, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', transition: 'border-color 0.15s, background-color 0.15s' }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#58a6ff'; e.currentTarget.style.backgroundColor = 'rgba(88,166,255,0.1)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#30363d'; e.currentTarget.style.backgroundColor = 'rgba(88,166,255,0.06)'; }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(88,166,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 3v12M3 9h12" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" /></svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 2 }}>Create your first conversation</div>
+                  <div style={{ fontSize: 12, color: '#8b949e', display: 'flex', alignItems: 'center', gap: 4 }}>Click here or press <span style={{ color: '#58a6ff', fontWeight: 500 }}>+ New Chat</span> <span style={{ fontSize: 14 }}>&#8593;</span></div>
+                </div>
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', backgroundColor: 'rgba(63,185,80,0.04)', border: '1px solid #30363d', borderRadius: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(63,185,80,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="16" height="18" viewBox="0 0 16 18" fill="none"><rect x="2" y="7" width="12" height="10" rx="2" stroke="#3fb950" strokeWidth="1.5" fill="none" /><path d="M5 7V5a3 3 0 0 1 6 0v2" stroke="#3fb950" strokeWidth="1.5" strokeLinecap="round" fill="none" /></svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 2 }}>Your messages are encrypted end-to-end</div>
+                  <div style={{ fontSize: 12, color: '#8b949e' }}>Only you and the recipient can read them</div>
+                </div>
               </div>
-            </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', backgroundColor: 'rgba(63,185,80,0.04)', border: '1px solid #30363d', borderRadius: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(63,185,80,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <svg width="16" height="18" viewBox="0 0 16 18" fill="none"><rect x="2" y="7" width="12" height="10" rx="2" stroke="#3fb950" strokeWidth="1.5" fill="none" /><path d="M5 7V5a3 3 0 0 1 6 0v2" stroke="#3fb950" strokeWidth="1.5" strokeLinecap="round" fill="none" /></svg>
-              </div>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 2 }}>Your messages are encrypted end-to-end</div>
-                <div style={{ fontSize: 12, color: '#8b949e' }}>Only you and the recipient can read them</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', backgroundColor: 'rgba(188,140,255,0.04)', border: '1px solid #30363d', borderRadius: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(188,140,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 1.5L3 4.5v4.5c0 4.14 2.56 7.01 6 8.5 3.44-1.49 6-4.36 6-8.5V4.5L9 1.5z" stroke="#bc8cff" strokeWidth="1.5" strokeLinejoin="round" fill="none" /><path d="M6.5 9.5l2 2 3.5-4" stroke="#bc8cff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 2 }}>Verify your contacts for maximum security</div>
+                  <div style={{ fontSize: 12, color: '#8b949e' }}>Compare fingerprints to prevent impersonation</div>
+                </div>
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', backgroundColor: 'rgba(188,140,255,0.04)', border: '1px solid #30363d', borderRadius: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(188,140,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 1.5L3 4.5v4.5c0 4.14 2.56 7.01 6 8.5 3.44-1.49 6-4.36 6-8.5V4.5L9 1.5z" stroke="#bc8cff" strokeWidth="1.5" strokeLinejoin="round" fill="none" /><path d="M6.5 9.5l2 2 3.5-4" stroke="#bc8cff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>
-              </div>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 2 }}>Verify your contacts for maximum security</div>
-                <div style={{ fontSize: 12, color: '#8b949e' }}>Compare fingerprints to prevent impersonation</div>
-              </div>
+
+            {/* Rotating quick tips */}
+            <div key={currentTipIndex} style={{ marginTop: 24, fontSize: 12, color: '#6e7681', fontStyle: 'italic', animation: 'frame-tip-fade 5s ease-in-out', textAlign: 'center' as const, maxWidth: 320 }}>
+              {/* eslint-disable-next-line security/detect-object-injection */}
+              {QUICK_TIPS[currentTipIndex]}
             </div>
           </div>
         </div>
       );
     }
     return (
-      <div style={styles.emptyMain}>
-        <div style={styles.emptyIcon}>
-          <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-            <rect x="6" y="10" width="44" height="32" rx="6" stroke="#30363d" strokeWidth="2" fill="rgba(88,166,255,0.04)" />
-            <path d="M6 16l22 14 22-14" stroke="#30363d" strokeWidth="2" fill="none" />
-          </svg>
+      <div style={{ ...styles.emptyMain, position: 'relative' as const, overflow: 'hidden' }}>
+        {/* Subtle animated gradient background */}
+        <div style={{
+          position: 'absolute' as const,
+          inset: 0,
+          background: 'radial-gradient(ellipse at 40% 30%, rgba(88,166,255,0.04) 0%, transparent 50%), radial-gradient(ellipse at 60% 70%, rgba(63,185,80,0.03) 0%, transparent 50%)',
+          animation: 'frame-gradient-shift 10s ease-in-out infinite',
+          backgroundSize: '200% 200%',
+          pointerEvents: 'none' as const,
+        }} />
+        <div style={{ position: 'relative' as const, zIndex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center' }}>
+          <div style={styles.emptyIcon}>
+            <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+              <rect x="6" y="10" width="44" height="32" rx="6" stroke="#30363d" strokeWidth="2" fill="rgba(88,166,255,0.04)" />
+              <path d="M6 16l22 14 22-14" stroke="#30363d" strokeWidth="2" fill="none" />
+            </svg>
+          </div>
+          <h2 style={styles.emptyTitle}>Select a conversation</h2>
+          <p style={styles.emptySubtitle}>Choose a chat from the sidebar or start a new conversation</p>
+
+          {/* Pulsing encryption indicator */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, marginBottom: 4 }}>
+            <div style={{ animation: 'frame-pulse-glow 2s ease-in-out infinite' }}>
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+                <rect x="2" y="6" width="10" height="7" rx="1.5" stroke="#3fb950" strokeWidth="1.2" fill="rgba(63,185,80,0.1)" />
+                <path d="M4.5 6V4.5a2.5 2.5 0 0 1 5 0V6" stroke="#3fb950" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+              </svg>
+            </div>
+            <span style={{ fontSize: 10, color: '#3fb950', opacity: 0.7 }}>All conversations are encrypted</span>
+          </div>
+
+          <button type="button" style={styles.emptyNewChatButton} onClick={() => setShowNewChatDialog(true)}>+ New Chat</button>
+          <p style={styles.emptyHelpText}>Send encrypted messages to anyone on your server</p>
+
+          {/* Rotating quick tips */}
+          <div key={currentTipIndex} style={{ marginTop: 16, fontSize: 12, color: '#6e7681', fontStyle: 'italic', animation: 'frame-tip-fade 5s ease-in-out', textAlign: 'center' as const, maxWidth: 300 }}>
+            {/* eslint-disable-next-line security/detect-object-injection */}
+            {QUICK_TIPS[currentTipIndex]}
+          </div>
         </div>
-        <h2 style={styles.emptyTitle}>Select a conversation</h2>
-        <p style={styles.emptySubtitle}>Choose a chat from the sidebar or start a new conversation</p>
-        <button type="button" style={styles.emptyNewChatButton} onClick={() => setShowNewChatDialog(true)}>+ New Chat</button>
-        <p style={styles.emptyHelpText}>Send encrypted messages to anyone on your server</p>
       </div>
     );
   };
@@ -921,6 +1033,49 @@ function App() {
       )}
       {/* Toast notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+
+      {/* Guest mode banner */}
+      {auth.guest && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 12,
+          padding: '8px 16px',
+          backgroundColor: 'rgba(210,153,34,0.1)',
+          borderBottom: '1px solid rgba(210,153,34,0.25)',
+          fontSize: 13,
+          color: '#d29922',
+          flexShrink: 0,
+        }}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
+            <circle cx="7" cy="7" r="6" stroke="#d29922" strokeWidth="1.2" fill="none" />
+            <path d="M7 4v3M7 9v.5" stroke="#d29922" strokeWidth="1.2" strokeLinecap="round" />
+          </svg>
+          <span>Guest mode -- messages are temporary</span>
+          <button
+            type="button"
+            onClick={() => {
+              handleLogout();
+              setCurrentPage('auth');
+            }}
+            style={{
+              padding: '4px 12px',
+              fontSize: 12,
+              fontWeight: 600,
+              backgroundColor: '#58a6ff',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Create Account
+          </button>
+        </div>
+      )}
 
       <div style={{
         ...styles.appContainer,

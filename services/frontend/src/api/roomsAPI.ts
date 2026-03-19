@@ -229,3 +229,42 @@ export async function joinRoomWithPassword(
     { method: 'POST', body: { password } },
   );
 }
+
+/**
+ * Join a room using a short invite code (e.g., "X7K9P2").
+ */
+export async function joinByCode(
+  code: string,
+  password?: string,
+): Promise<{ joined: boolean; roomId: string; name: string | null }> {
+  return apiRequest<{ joined: boolean; roomId: string; name: string | null }>(
+    '/rooms/join-by-code',
+    {
+      method: 'POST',
+      body: { code: code.toUpperCase(), ...(password ? { password } : {}) },
+    },
+  );
+}
+
+/**
+ * Get the invite code for a room (members only).
+ */
+export async function getRoomCode(
+  roomId: string,
+): Promise<{ inviteCode: string | null }> {
+  return apiRequest<{ inviteCode: string | null }>(
+    `/rooms/code/${encodeURIComponent(roomId)}`,
+  );
+}
+
+/**
+ * Regenerate the invite code for a room (admin only).
+ */
+export async function regenerateCode(
+  roomId: string,
+): Promise<{ inviteCode: string }> {
+  return apiRequest<{ inviteCode: string }>(
+    `/rooms/${encodeURIComponent(roomId)}/regenerate-code`,
+    { method: 'POST' },
+  );
+}
