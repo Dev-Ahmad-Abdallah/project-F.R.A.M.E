@@ -22,8 +22,10 @@ ARG REACT_APP_HOMESERVER_URL
 ENV REACT_APP_HOMESERVER_URL=$REACT_APP_HOMESERVER_URL
 
 RUN npm run build --workspace=@frame/shared
-# CI=false prevents CRA from treating the WASM precache size warning as error
+# CI=false: prevents CRA from treating warnings as errors
+# DISABLE_ESLINT_PLUGIN=true: skip ESLint in Docker (we lint separately in CI)
 ENV CI=false
+ENV DISABLE_ESLINT_PLUGIN=true
 RUN cd services/frontend && npm run build
 
 # ── Stage 2: nginx static server ─────────────────────────────
