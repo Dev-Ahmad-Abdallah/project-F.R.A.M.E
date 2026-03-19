@@ -5,9 +5,92 @@ import { getRoomMembers, isRoomMember } from '../db/queries/rooms';
 import { pool } from '../db/pool';
 import { redisClient } from '../redis/client';
 import { ApiError } from '../middleware/errorHandler';
+import { logger } from '../logger';
 import type { FederationEvent, ServerDiscovery } from '@frame/shared/federation';
 
 const config = getConfig();
+
+// ── Circuit Breaker ──
+
+const CIRCUIT_BREAKER_THRESHOLD = 5;
+const CIRCUIT_BREAKER_COOLDOWN_MS = 60_000; // 60 seconds
+
+interface CircuitState {
+  failures: number;
+  openedAt: number | null;
+  state: 'closed' | 'open' | 'half-open';
+}
+
+const circuitStates = new Map<string, CircuitState>();
+
+function getCircuitState(domain: string): CircuitState {
+  let s = circuitStates.get(domain);
+  if (!s) {
+    s = { failures: 0, openedAt: null, state: 'closed' };
+    circuitStates.set(domain, s);
+  }
+  return s;
+}
+
+/**
+ * Returns true if the circuit for this domain is open (requests should be blocked).
+ * If the cooldown has elapsed, transitions to half-open and allows one test request.
+ */
+export function isCircuitOpen(domain: string): boolean {
+  const s = getCircuitState(domain);
+
+  if (s.state === 'closed') return false;
+
+  if (s.state === 'open' && s.openedAt !== null) {
+    const elapsed = Date.now() - s.openedAt;
+    if (elapsed >= CIRCUIT_BREAKER_COOLDOWN_MS) {
+      s.state = 'half-open';
+      logger.info('Circuit breaker state change', { domain, from: 'open', to: 'half-open', reason: 'cooldown elapsed' });
+      return false; // allow one test request
+    }
+    return true; // still within cooldown
+  }
+
+  // half-open: allow the test request through
+  return false;
+}
+
+/**
+ * Record a successful request to a peer domain.
+ * Resets failures and closes the circuit.
+ */
+export function recordSuccess(domain: string): void {
+  const s = getCircuitState(domain);
+  if (s.state !== 'closed') {
+    logger.info('Circuit breaker state change', { domain, from: s.state, to: 'closed', reason: 'success' });
+  }
+  s.failures = 0;
+  s.openedAt = null;
+  s.state = 'closed';
+}
+
+/**
+ * Record a failed request to a peer domain.
+ * Opens the circuit after CIRCUIT_BREAKER_THRESHOLD consecutive failures.
+ */
+export function recordFailure(domain: string): void {
+  const s = getCircuitState(domain);
+  s.failures += 1;
+
+  if (s.state === 'half-open') {
+    // Test request failed — re-open
+    s.state = 'open';
+    s.openedAt = Date.now();
+    logger.warn('Circuit breaker state change', { domain, from: 'half-open', to: 'open', reason: 'test request failed', failures: s.failures });
+    return;
+  }
+
+  if (s.state === 'closed' && s.failures >= CIRCUIT_BREAKER_THRESHOLD) {
+    s.state = 'open';
+    s.openedAt = Date.now();
+    logger.warn('Circuit breaker state change', { domain, from: 'closed', to: 'open', reason: 'threshold reached', failures: s.failures });
+  }
+}
 
 // ── Signing Key Management ──
 
@@ -208,7 +291,7 @@ async function fetchPeerPublicKey(domain: string): Promise<crypto.KeyObject | nu
 
     return publicKey;
   } catch (err) {
-    console.error(`[Federation] Failed to fetch public key for ${domain}:`, err);
+    logger.error('Failed to fetch public key', { domain, error: String(err) });
     return null;
   }
 }
@@ -219,6 +302,11 @@ async function fetchPeerPublicKey(domain: string): Promise<crypto.KeyObject | nu
  * Fetch /.well-known/frame/server from a peer domain.
  */
 export async function discoverPeer(domain: string): Promise<ServerDiscovery | null> {
+  if (isCircuitOpen(domain)) {
+    logger.warn('Circuit open, skipping discovery', { domain });
+    return null;
+  }
+
   try {
     const url = `https://${domain}/.well-known/frame/server`;
     const response = await fetch(url, {
@@ -228,14 +316,17 @@ export async function discoverPeer(domain: string): Promise<ServerDiscovery | nu
     });
 
     if (!response.ok) {
-      console.error(`[Federation] Discovery failed for ${domain}: HTTP ${String(response.status)}`);
+      logger.error('Federation discovery failed', { domain, httpStatus: response.status });
+      recordFailure(domain);
       return null;
     }
 
     const data = (await response.json()) as ServerDiscovery;
+    recordSuccess(domain);
     return data;
   } catch (err) {
-    console.error(`[Federation] Discovery error for ${domain}:`, err);
+    logger.error('Federation discovery error', { domain, error: String(err) });
+    recordFailure(domain);
     return null;
   }
 }
@@ -264,7 +355,7 @@ async function sendSignedEventToPeer(
   try {
     const discovery = await discoverPeer(peerDomain);
     if (!discovery) {
-      console.error(`[Federation] Cannot discover peer ${peerDomain}, relay failed`);
+      logger.error('Cannot discover peer, relay failed', { peerDomain });
       return false;
     }
 
@@ -284,13 +375,13 @@ async function sendSignedEventToPeer(
 
     if (!response.ok) {
       const respBody = await response.text();
-      console.error(`[Federation] Relay to ${peerDomain} failed: ${String(response.status)} ${respBody}`);
+      logger.error('Federation relay failed', { peerDomain, httpStatus: response.status, response: respBody });
       return false;
     }
 
     return true;
   } catch (err) {
-    console.error(`[Federation] Relay error to ${peerDomain}:`, err);
+    logger.error('Federation relay error', { peerDomain, error: String(err) });
     return false;
   }
 }
@@ -304,12 +395,25 @@ export async function relayEventToPeer(
   peerDomain: string
 ): Promise<boolean> {
   if (!isPeerTrusted(peerDomain)) {
-    console.warn(`[Federation] Refusing to relay to untrusted peer: ${peerDomain}`);
+    logger.warn('Refusing to relay to untrusted peer', { peerDomain });
+    return false;
+  }
+
+  if (isCircuitOpen(peerDomain)) {
+    logger.warn('Circuit open, skipping relay', { peerDomain });
     return false;
   }
 
   const signedEvent = signEvent(event);
-  return sendSignedEventToPeer(signedEvent, peerDomain);
+  const success = await sendSignedEventToPeer(signedEvent, peerDomain);
+
+  if (success) {
+    recordSuccess(peerDomain);
+  } else {
+    recordFailure(peerDomain);
+  }
+
+  return success;
 }
 
 /**
@@ -332,7 +436,11 @@ export async function relayEventToPeers(
   // Filter to only trusted peers
   const trustedTargets = targetDomains.filter((domain) => {
     if (!isPeerTrusted(domain)) {
-      console.warn(`[Federation] Skipping untrusted target domain: ${domain}`);
+      logger.warn('Skipping untrusted target domain', { domain });
+      return false;
+    }
+    if (isCircuitOpen(domain)) {
+      logger.warn('Circuit open, skipping relay', { domain });
       return false;
     }
     return true;
@@ -353,24 +461,26 @@ export async function relayEventToPeers(
     // eslint-disable-next-line security/detect-object-injection -- i is a safe numeric index from forEach
     const peerName = trustedTargets[i];
     if (result.status === 'rejected') {
-      console.error(
-        `[Federation] Relay to ${peerName} threw (eventId=${event.eventId}, roomId=${event.roomId}):`,
-        result.reason
-      );
+      logger.error('Federation relay threw', { peer: peerName, eventId: event.eventId, roomId: event.roomId, error: String(result.reason) });
+      recordFailure(peerName);
       failedPeers.push(peerName);
     } else if (!result.value) {
-      console.warn(
-        `[Federation] Relay to ${peerName} returned failure (eventId=${event.eventId}, roomId=${event.roomId})`
-      );
+      logger.warn('Federation relay returned failure', { peer: peerName, eventId: event.eventId, roomId: event.roomId });
+      recordFailure(peerName);
       failedPeers.push(peerName);
+    } else {
+      recordSuccess(peerName);
     }
   });
 
   if (failedPeers.length > 0) {
     // TODO: Persist to federation_relay_queue table for retry instead of just logging
-    console.error(
-      `[Federation] Failed to relay event ${event.eventId} to ${String(failedPeers.length)}/${String(trustedTargets.length)} peers: ${failedPeers.join(', ')}`
-    );
+    logger.error('Failed to relay event to peers', {
+      eventId: event.eventId,
+      failedCount: failedPeers.length,
+      totalCount: trustedTargets.length,
+      failedPeers,
+    });
   }
 }
 

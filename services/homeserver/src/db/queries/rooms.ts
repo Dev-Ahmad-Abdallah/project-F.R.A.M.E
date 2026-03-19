@@ -112,8 +112,15 @@ export async function getUserRooms(userId: string): Promise<RoomRow[]> {
   return result.rows;
 }
 
+export interface LastMessage {
+  content: Record<string, unknown>;
+  timestamp: Date;
+}
+
 export interface RoomWithMembers extends RoomRow {
   members: { user_id: string; role: string }[];
+  lastMessage: LastMessage | null;
+  unreadCount: number;
 }
 
 interface MemberQueryRow {
@@ -122,11 +129,22 @@ interface MemberQueryRow {
   role: string;
 }
 
-export async function getUserRoomsWithMembers(userId: string): Promise<RoomWithMembers[]> {
-  // Get rooms the user belongs to
-  const roomsResult = await pool.query<RoomRow>(
-    `SELECT r.* FROM rooms r
+export async function getUserRoomsWithMembers(userId: string, deviceId?: string): Promise<RoomWithMembers[]> {
+  // Get rooms the user belongs to, with the last message per room via lateral join
+  interface RoomWithLastMsg extends RoomRow {
+    last_msg_content: Record<string, unknown> | null;
+    last_msg_ts: Date | null;
+  }
+
+  const roomsResult = await pool.query<RoomWithLastMsg>(
+    `SELECT r.*, last_msg.content AS last_msg_content, last_msg.origin_ts AS last_msg_ts
+     FROM rooms r
      JOIN room_members rm ON r.room_id = rm.room_id
+     LEFT JOIN LATERAL (
+       SELECT content, origin_ts FROM events
+       WHERE events.room_id = r.room_id AND deleted_at IS NULL
+       ORDER BY sequence_id DESC LIMIT 1
+     ) last_msg ON true
      WHERE rm.user_id = $1
      ORDER BY r.created_at DESC`,
     [userId]
@@ -134,12 +152,30 @@ export async function getUserRoomsWithMembers(userId: string): Promise<RoomWithM
 
   if (roomsResult.rows.length === 0) return [];
 
+  const roomIds = roomsResult.rows.map((r) => r.room_id);
+
   // Get all members for these rooms in a single query
-  const roomIds = roomsResult.rows.map((r: RoomRow) => r.room_id);
   const membersResult = await pool.query<MemberQueryRow>(
     `SELECT room_id, user_id, role FROM room_members WHERE room_id = ANY($1::text[])`,
     [roomIds]
   );
+
+  // Get unread counts per room (pending delivery_state entries for this device)
+  const unreadsByRoom = new Map<string, number>();
+  if (deviceId) {
+    const unreadResult = await pool.query<{ room_id: string; unread_count: number }>(
+      `SELECT e.room_id, COUNT(*)::int AS unread_count
+       FROM delivery_state ds
+       JOIN events e ON ds.event_id = e.event_id
+       WHERE ds.device_id = $1 AND ds.status = 'pending'
+       AND e.room_id = ANY($2::text[])
+       GROUP BY e.room_id`,
+      [deviceId, roomIds]
+    );
+    for (const row of unreadResult.rows) {
+      unreadsByRoom.set(row.room_id, row.unread_count);
+    }
+  }
 
   // Group members by room using a Map
   const membersByRoom = new Map<string, { user_id: string; role: string }[]>();
@@ -152,10 +188,44 @@ export async function getUserRoomsWithMembers(userId: string): Promise<RoomWithM
     }
   }
 
-  return roomsResult.rows.map((r: RoomRow) => ({
-    ...r,
+  return roomsResult.rows.map((r) => ({
+    room_id: r.room_id,
+    room_type: r.room_type,
+    name: r.name,
+    settings: r.settings,
+    created_by: r.created_by,
+    created_at: r.created_at,
     members: membersByRoom.get(r.room_id) || [],
+    lastMessage: r.last_msg_content
+      ? { content: r.last_msg_content, timestamp: r.last_msg_ts! }
+      : null,
+    unreadCount: unreadsByRoom.get(r.room_id) ?? 0,
   }));
+}
+
+/**
+ * Get unread counts for a user's device across all rooms.
+ * Counts pending delivery_state entries grouped by room_id.
+ */
+export async function getUnreadCountsForUser(
+  userId: string,
+  deviceId: string,
+): Promise<Map<string, number>> {
+  const result = await pool.query<{ room_id: string; unread_count: number }>(
+    `SELECT e.room_id, COUNT(*)::int AS unread_count
+     FROM delivery_state ds
+     JOIN events e ON ds.event_id = e.event_id
+     JOIN room_members rm ON e.room_id = rm.room_id AND rm.user_id = $1
+     WHERE ds.device_id = $2 AND ds.status = 'pending'
+     GROUP BY e.room_id`,
+    [userId, deviceId]
+  );
+
+  const counts = new Map<string, number>();
+  for (const row of result.rows) {
+    counts.set(row.room_id, row.unread_count);
+  }
+  return counts;
 }
 
 export async function usersShareRoom(userIdA: string, userIdB: string): Promise<boolean> {

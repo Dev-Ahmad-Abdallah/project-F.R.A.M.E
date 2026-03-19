@@ -223,14 +223,16 @@ services/frontend/src/
 services/homeserver/src/
 ├── config.ts                  # Zod-validated environment config
 ├── server.ts                  # Express app setup, route mounting, graceful shutdown, sendToDevice endpoint, well-known discovery
+├── logger.ts                  # Structured JSON logging (level, timestamp, service, metadata)
 ├── routes/
 │   ├── auth.ts                # /auth/* (register, login, logout, refresh)
 │   ├── keys.ts                # /keys/* (upload, query, claim, count, fetch bundle, transparency)
 │   ├── messages.ts            # /messages/* (send, delete, sync)
 │   ├── rooms.ts               # /rooms/* (create, list, join, invite, rename, settings, password-join, leave, members)
 │   ├── devices.ts             # /devices/* (register, list, delete, heartbeat)
-│   ├── federation.ts          # /federation/* (send events, key exchange, backfill)
-│   └── health.ts              # /health (PostgreSQL + Redis status)
+│   ├── federation.ts          # /federation/* (send events, key exchange, backfill with peer auth)
+│   ├── push.ts                # /push/* (vapid-key, subscribe, unsubscribe)
+│   └── health.ts              # /health (PostgreSQL + Redis status; returns 503 when degraded)
 ├── services/
 │   ├── authService.ts         # User registration, login, refresh tokens, token revocation
 │   ├── keyService.ts          # Key bundle CRUD, OTK management, device key query, key claiming
@@ -277,7 +279,9 @@ migrations/
 ├── 003_to-device-messages.sql # to_device_messages table for Megolm key delivery
 ├── 004_to-device-claimed-at.sql # Claimed-at tracking for to-device messages
 ├── 005_room-name.sql          # Room name + settings JSONB columns
-└── 006_device-keys-json.sql   # Full signed device_keys JSON storage for /keys/query
+├── 006_device-keys-json.sql   # Full signed device_keys JSON storage for /keys/query
+├── 007_event-chain.sql        # prev_event_id column for event chain integrity
+└── 008_push-subscriptions.sql # push_subscriptions table for Web Push subscriptions
 ```
 
 ---
@@ -350,11 +354,19 @@ migrations/
 | `/federation/keys/:userId` | GET | Return key bundle for cross-server key exchange |
 | `/federation/backfill` | GET | Return events for a room since a sequence ID |
 
+### Push Notifications
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/push/vapid-key` | GET | Get server's VAPID public key for push subscription |
+| `/push/subscribe` | POST | Store push subscription for authenticated user's device |
+| `/push/unsubscribe` | DELETE | Remove push subscription for authenticated user's device |
+
 ### Infrastructure
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/health` | GET | Health check (PostgreSQL + Redis connectivity) |
+| `/health` | GET | Health check (PostgreSQL + Redis connectivity; returns 503 when degraded) |
 | `/` | GET | Server info + available endpoints |
 | `/.well-known/frame/server` | GET | Federation discovery (domain, port, public key) |
 
@@ -391,6 +403,22 @@ migrations/
 - **Multi-tab coordination** -- BroadcastChannel warning when multiple tabs run OlmMachine
 - **Device heartbeat** -- Periodic last-seen updates for device liveness tracking
 - **Device access control** -- Users can only list devices of users they share a room with
+- **Device limit enforcement** -- Server-side maximum of 10 devices per user (M_LIMIT_EXCEEDED error)
+- **DOMPurify strict config** -- Shared `PURIFY_CONFIG` with explicit ALLOWED_TAGS, FORBID_TAGS, FORBID_ATTR, and ALLOW_DATA_ATTR: false on all sanitization calls
+
+### Federation
+- **Circuit breaker** -- Per-peer failure tracking with threshold (5 failures), cooldown (60s), and state machine (closed/open/half-open) to prevent cascading failures
+- **Backfill peer authentication** -- `/federation/backfill` verifies requesting server is a trusted peer via `isPeerTrusted()` check
+
+### Push Notifications
+- **Push subscription endpoints** -- Server-side `/push/subscribe`, `/push/vapid-key`, and `/push/unsubscribe` endpoints with Zod validation, backed by `push_subscriptions` table
+- **VAPID configuration** -- VAPID keys documented in `.env.example` for both homeserver and frontend
+
+### Infrastructure
+- **Structured logging** -- JSON-structured log output via `logger.ts` with level, timestamp, service name, and metadata fields. Production uses single-line JSON; development uses pretty-print
+- **CodeQL SAST** -- Integrated into CI pipeline (security job) plus dedicated `security.yml` with extended queries and Semgrep scanning
+- **Container scanning** -- Trivy vulnerability scanning for both homeserver and frontend Docker images, with SARIF upload to GitHub Advanced Security
+- **Migration runner** -- `migrate.sh` runs all SQL migrations in order, idempotent (IF NOT EXISTS), with psql/Node.js fallback
 
 ### UI/UX
 - **Landing page** -- Marketing splash with feature highlights, how-it-works flow, security overview
@@ -459,7 +487,7 @@ migrations/
 | AD-014 | Long-polling for sync (not WebSockets) | Works through all proxies, uses Express middleware pipeline, avoids Railway WS timeout issues | **Confirmed** (Phase 2) |
 | AD-015 | Zod backend-only, plain TS interfaces shared | Avoids shipping Zod runtime to frontend. Share types, not validation | **Confirmed** (Phase 2) |
 | AD-016 | Railway root = `/` (repo root) | Solves shared package access. Per-service build/start commands target subdirectories | **Confirmed** (Phase 2) |
-| AD-017 | node-pg-migrate for DB migrations | Lightweight, SQL-based, no ORM magic. 6 migrations implemented (001-006) | **Confirmed** (Phase 2) |
+| AD-017 | node-pg-migrate for DB migrations | Lightweight, SQL-based, no ORM magic. 8 migrations implemented (001-008). Custom `migrate.sh` runner for idempotent execution | **Confirmed** (Phase 2) |
 | AD-018 | CORS middleware with explicit origins | Frontend/backend on different Railway subdomains. Explicit allowlist, no open CORS | **Confirmed** (Phase 2) |
 | AD-019 | Graceful shutdown handler (SIGTERM) | Railway sends SIGTERM before kill. Drain connections, close DB/Redis cleanly. 10-second forced shutdown timeout | **Confirmed** (Phase 2) |
 | AD-020 | Budget 2 weeks for vodozemac integration | v18 API is unstable, docs sparse. Start spike Week 2, expect integration through Week 3-4 | **Confirmed** (Phase 2) |

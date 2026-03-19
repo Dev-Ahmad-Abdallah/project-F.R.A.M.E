@@ -151,6 +151,17 @@ project-frame/
 
 ---
 
+## Recommended Developer Tools
+
+### Optional: Pre-commit Security Scanning
+
+For local secret detection before commits:
+- Install: `pip install detect-secrets`
+- Scan: `detect-secrets scan --all-files`
+- Add to git hooks: `detect-secrets-hook --baseline .secrets.baseline`
+
+---
+
 ## First-Time Setup Checklist
 
 ### Local Development

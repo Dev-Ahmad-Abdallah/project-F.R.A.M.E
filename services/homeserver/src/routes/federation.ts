@@ -8,6 +8,8 @@ import {
 } from '../services/federationService';
 import { getKeyBundle } from '../db/queries/keys';
 import { getEventsSince } from '../db/queries/events';
+import { findUserById } from '../db/queries/users';
+import { getUserRooms } from '../db/queries/rooms';
 import type { FederationEvent } from '@frame/shared/federation';
 
 export const federationRouter = Router();
@@ -126,5 +128,37 @@ federationRouter.get('/backfill', apiLimiter, asyncHandler(async (req, res) => {
       sequenceId: e.sequence_id,
     })),
     hasMore: events.length >= limit,
+  });
+}));
+
+// ── GET /federation/query/directory — Look up a user and shared room memberships ──
+
+federationRouter.get('/query/directory', apiLimiter, asyncHandler(async (req, res) => {
+  // Verify the requesting server is a trusted peer
+  const origin = (req.headers['x-origin-server'] as string) || req.headers['origin'] || '';
+  if (!origin || !isPeerTrusted(String(origin))) {
+    throw new ApiError(403, 'M_FORBIDDEN', 'Origin server is not a trusted peer');
+  }
+
+  const userId = req.query.userId as string;
+  if (!userId || typeof userId !== 'string') {
+    throw new ApiError(400, 'M_BAD_JSON', 'Missing or invalid userId query parameter');
+  }
+
+  const user = await findUserById(userId);
+  if (!user) {
+    res.status(200).json({ exists: false, userId });
+    return;
+  }
+
+  // Return the user's room memberships so the requesting server can
+  // determine shared rooms with its own users.
+  const rooms = await getUserRooms(userId);
+
+  res.status(200).json({
+    exists: true,
+    userId: user.user_id,
+    displayName: user.username,
+    rooms: rooms.map((r) => ({ roomId: r.room_id })),
   });
 }));

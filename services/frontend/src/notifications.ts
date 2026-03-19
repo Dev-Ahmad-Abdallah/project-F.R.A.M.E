@@ -5,6 +5,8 @@
  * and push subscription management.
  */
 
+import { apiRequest } from './api/client';
+
 // ── Service Worker Registration ──
 
 let swRegistration: ServiceWorkerRegistration | null = null;
@@ -88,13 +90,13 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 
 /**
  * Subscribe to push notifications and send the subscription endpoint
- * to the homeserver.
+ * to the homeserver via `apiRequest` (uses configured base URL).
  *
- * @param homeserverUrl - Base URL of the Matrix-style homeserver
+ * @param _homeserverUrl - Deprecated, ignored. Kept for call-site compat.
  * @returns The PushSubscription, or `null` if subscription failed.
  */
 export async function subscribeToPush(
-  homeserverUrl: string,
+  _homeserverUrl?: string,
 ): Promise<PushSubscription | null> {
   if (!swRegistration) {
     console.warn('Service worker not registered. Call registerServiceWorker() first.');
@@ -113,11 +115,13 @@ export async function subscribeToPush(
     // Falls back to the build-time env var REACT_APP_VAPID_PUBLIC_KEY.
     let vapidPublicKey: string | undefined;
     try {
-      const resp = await fetch(`${homeserverUrl}/push/vapid-key`);
-      if (resp.ok) {
-        const data = (await resp.json()) as { publicKey?: string };
-        vapidPublicKey = data.publicKey;
-      }
+      // Use apiRequest for consistent error handling and base URL resolution.
+      // noAuth: true because the VAPID public key is a public endpoint.
+      const data = await apiRequest<{ publicKey?: string }>(
+        '/push/vapid-key',
+        { noAuth: true },
+      );
+      vapidPublicKey = data.publicKey;
     } catch {
       // Server may not support the endpoint yet — fall back.
     }
@@ -139,17 +143,17 @@ export async function subscribeToPush(
       applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource,
     });
 
-    // Send subscription to homeserver (placeholder endpoint)
-    await fetch(`${homeserverUrl}/push/subscribe`, {
+    // Send subscription to homeserver via apiRequest (authenticated,
+    // with automatic 401 → refresh → retry).
+    await apiRequest('/push/subscribe', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+      body: {
         endpoint: subscription.endpoint,
         keys: {
           p256dh: arrayBufferToBase64(subscription.getKey('p256dh')),
           auth: arrayBufferToBase64(subscription.getKey('auth')),
         },
-      }),
+      },
     });
 
     return subscription;

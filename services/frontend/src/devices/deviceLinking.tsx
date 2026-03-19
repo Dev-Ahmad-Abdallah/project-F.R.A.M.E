@@ -13,9 +13,14 @@ import { useIsMobile } from '../hooks/useIsMobile';
 
 // ── Types ──
 
+/** Maximum age (in ms) for a QR payload to be considered valid. */
+const QR_PAYLOAD_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+
 interface DeviceLinkingProps {
   /** The current device's public key (base64 or hex string). */
   devicePublicKey: string;
+  /** The current device's unique identifier. */
+  deviceId?: string;
   /** Called when the user approves a scanned device. */
   onApprove: (scannedFingerprint: string) => void;
   /** Called when the user rejects a scanned device. */
@@ -26,30 +31,55 @@ interface DeviceLinkingProps {
 
 const DeviceLinking: React.FC<DeviceLinkingProps> = ({
   devicePublicKey,
+  deviceId,
   onApprove,
   onReject,
 }) => {
   const isMobile = useIsMobile();
   const [fingerprint, setFingerprint] = useState<string>('');
+  const [qrPayload, setQrPayload] = useState<string>('');
   const [scannedFingerprint, setScannedFingerprint] = useState<string>('');
-  const [showScanner, setShowScanner] = useState(false);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void generateFingerprint(devicePublicKey).then((fp) => {
-      if (!cancelled) setFingerprint(fp);
+      if (!cancelled) {
+        setFingerprint(fp);
+        // Build QR payload with timestamp to prevent replay attacks
+        const payload = JSON.stringify({ fingerprint: fp, deviceId, timestamp: Date.now() });
+        setQrPayload(payload);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [devicePublicKey]);
+  }, [devicePublicKey, deviceId]);
 
   const formattedFingerprint = formatFingerprint(fingerprint);
 
   const handleApprove = useCallback(() => {
-    if (scannedFingerprint.trim()) {
-      onApprove(scannedFingerprint.trim());
+    const input = scannedFingerprint.trim();
+    if (!input) return;
+
+    // Try to parse as a QR payload (JSON with timestamp); fall back to raw fingerprint
+    setVerificationError(null);
+    try {
+      const parsed = JSON.parse(input) as { fingerprint?: string; timestamp?: number };
+      if (parsed.fingerprint && typeof parsed.timestamp === 'number') {
+        const age = Date.now() - parsed.timestamp;
+        if (age > QR_PAYLOAD_MAX_AGE_MS) {
+          setVerificationError('QR code has expired (older than 5 minutes). Please scan a fresh code.');
+          return;
+        }
+        onApprove(parsed.fingerprint);
+        return;
+      }
+    } catch {
+      // Not JSON — treat as a raw fingerprint string
     }
+
+    onApprove(input);
   }, [scannedFingerprint, onApprove]);
 
   return (
@@ -77,7 +107,7 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
           <div style={styles.qrInner}>
             <span style={styles.qrLabel}>QR Code</span>
             <span style={styles.qrData}>
-              {fingerprint ? fingerprint.slice(0, 16) + '...' : 'Generating...'}
+              {qrPayload ? qrPayload.slice(0, 24) + '...' : 'Generating...'}
             </span>
           </div>
         </div>
@@ -94,31 +124,12 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
       <div style={styles.section}>
         <h3 style={styles.subheading}>Scan Other Device</h3>
 
-        {showScanner ? (
-          <div style={styles.scannerPlaceholder}>
-            <p style={styles.scannerText}>
-              Camera access requires the MediaDevices API.
-            </p>
-            <p style={styles.scannerText}>
-              Grant camera permission in your browser to scan a QR code.
-            </p>
-            <button
-              type="button"
-              style={styles.secondaryButton}
-              onClick={() => setShowScanner(false)}
-            >
-              Cancel Scan
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            style={styles.secondaryButton}
-            onClick={() => setShowScanner(true)}
-          >
-            Open Camera Scanner
-          </button>
-        )}
+        <div style={styles.scannerPlaceholder}>
+          <p style={styles.scannerText}>
+            Camera QR scanning requires a native mobile app. Use manual
+            fingerprint comparison below.
+          </p>
+        </div>
 
         {/* Manual fingerprint entry fallback */}
         <div style={styles.manualEntry}>
@@ -135,6 +146,11 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
           />
         </div>
       </div>
+
+      {/* Verification error */}
+      {verificationError && (
+        <p style={{ margin: 0, fontSize: 13, color: '#f85149' }}>{verificationError}</p>
+      )}
 
       {/* Actions */}
       <div style={{

@@ -175,6 +175,7 @@ export async function initCrypto(
   currentDeviceId = deviceId;
 
   setupBroadcastChannel();
+  startPrekeyMonitor();
 }
 
 /**
@@ -244,11 +245,67 @@ export async function processOutgoingRequests(): Promise<void> {
   }
 }
 
+// TODO: Implement backup key export/import for device recovery.
+// When all devices are lost, users currently cannot recover message history.
+// Future: export encrypted backup key to user, import on new device.
+
+// ── Prekey replenishment ──
+
+const PREKEY_REPLENISH_THRESHOLD = 10;
+const PREKEY_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+let prekeyCheckTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Check the server-side one-time key (OTK) count and replenish if below
+ * threshold. When the count drops below {@link PREKEY_REPLENISH_THRESHOLD},
+ * `processOutgoingRequests()` is called — the OlmMachine will automatically
+ * include a KeysUploadRequest with fresh OTKs.
+ */
+export async function checkAndReplenishPrekeys(): Promise<void> {
+  try {
+    const response = await apiRequest<{ count: number }>('/keys/count', {
+      method: 'GET',
+    });
+
+    if (response.count < PREKEY_REPLENISH_THRESHOLD) {
+      console.log(
+        `[F.R.A.M.E.] OTK count is ${response.count} (threshold: ${PREKEY_REPLENISH_THRESHOLD}). Replenishing prekeys...`,
+      );
+      await processOutgoingRequests();
+      console.log('[F.R.A.M.E.] Prekey replenishment complete.');
+    }
+  } catch (err) {
+    console.error('[F.R.A.M.E.] Failed to check/replenish prekeys:', err);
+  }
+}
+
+/**
+ * Start a periodic timer that checks and replenishes prekeys every 5 minutes.
+ * Called automatically after OlmMachine initialisation.
+ */
+function startPrekeyMonitor(): void {
+  stopPrekeyMonitor();
+  prekeyCheckTimer = setInterval(() => {
+    void checkAndReplenishPrekeys();
+  }, PREKEY_CHECK_INTERVAL_MS);
+}
+
+/**
+ * Stop the periodic prekey replenishment timer.
+ */
+function stopPrekeyMonitor(): void {
+  if (prekeyCheckTimer !== null) {
+    clearInterval(prekeyCheckTimer);
+    prekeyCheckTimer = null;
+  }
+}
+
 /**
  * Destroy the current OlmMachine and reset state.
  * Primarily for logout / account switch.
  */
 export function destroyCrypto(): void {
+  stopPrekeyMonitor();
   machine = null;
   currentUserId = null;
   currentDeviceId = null;

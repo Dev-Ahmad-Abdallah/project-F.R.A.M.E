@@ -9,6 +9,7 @@ import { redisClient, closeRedis, connectRedis } from './redis/client';
 import { errorHandler, asyncHandler, ApiError } from './middleware/errorHandler';
 import { requireAuth } from './middleware/auth';
 import { apiLimiter } from './middleware/rateLimit';
+import { logger } from './logger';
 import { authRouter } from './routes/auth';
 import { keysRouter } from './routes/keys';
 import { messagesRouter } from './routes/messages';
@@ -16,6 +17,7 @@ import { devicesRouter } from './routes/devices';
 import { federationRouter } from './routes/federation';
 import { healthRouter } from './routes/health';
 import { roomsRouter } from './routes/rooms';
+import { pushRouter } from './routes/push';
 
 const config = getConfig();
 const app = express();
@@ -54,6 +56,21 @@ app.use(cors({
 // ── Body parsing ──
 app.use(express.json({ limit: '64kb' }));
 
+// ── Request logging ──
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    logger.info('request', {
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      ms: Date.now() - start,
+      userId: req.auth?.sub,
+    });
+  });
+  next();
+});
+
 // ── Root info ──
 app.get('/', (_req, res) => {
   res.json({
@@ -68,6 +85,7 @@ app.get('/', (_req, res) => {
       devices: '/devices',
       rooms: '/rooms',
       federation: '/federation',
+      push: '/push',
       discovery: '/.well-known/frame/server',
     },
   });
@@ -81,6 +99,7 @@ app.use('/messages', messagesRouter);
 app.use('/devices', devicesRouter);
 app.use('/federation', federationRouter);
 app.use('/rooms', roomsRouter);
+app.use('/push', pushRouter);
 
 // ── Zod schema for sendToDevice body ──
 const sendToDeviceSchema = z.object({
@@ -179,40 +198,42 @@ let server: ReturnType<typeof app.listen>;
 
 async function startServer() {
   await connectRedis();
-  console.info('Redis connected');
+  logger.info('Redis connected');
 
   server = app.listen(config.PORT, () => {
-    console.info(`Homeserver running on port ${config.PORT}`);
-    console.info(`Domain: ${config.HOMESERVER_DOMAIN}`);
-    console.info(`Environment: ${config.NODE_ENV}`);
+    logger.info('Homeserver started', {
+      port: config.PORT,
+      domain: config.HOMESERVER_DOMAIN,
+      environment: config.NODE_ENV,
+    });
   });
 }
 
 startServer().catch((err: unknown) => {
-  console.error('Failed to start server:', err);
+  logger.error('Failed to start server', { error: String(err) });
   process.exit(1);
 });
 
 // ── Graceful shutdown ──
 function shutdown(signal: string) {
-  console.info(`Received ${signal}. Shutting down gracefully...`);
+  logger.info('Shutting down gracefully', { signal });
 
   server.close(() => {
-    console.info('HTTP server closed');
+    logger.info('HTTP server closed');
 
     const cleanupAndExit = async () => {
       try {
         await closeRedis();
-        console.info('Redis connections closed');
+        logger.info('Redis connections closed');
       } catch (err) {
-        console.error('Error closing Redis:', err);
+        logger.error('Error closing Redis', { error: String(err) });
       }
 
       try {
         await closePool();
-        console.info('PostgreSQL pool closed');
+        logger.info('PostgreSQL pool closed');
       } catch (err) {
-        console.error('Error closing PostgreSQL:', err);
+        logger.error('Error closing PostgreSQL', { error: String(err) });
       }
 
       process.exit(0);
@@ -223,7 +244,7 @@ function shutdown(signal: string) {
 
   // Force shutdown after 10 seconds
   setTimeout(() => {
-    console.error('Forced shutdown after timeout');
+    logger.error('Forced shutdown after timeout');
     process.exit(1);
   }, 10000);
 }

@@ -13,9 +13,11 @@ import {
   type DeviceInfo,
   type RegisterDeviceParams,
 } from '../api/devicesAPI';
+import { listRooms } from '../api/roomsAPI';
 import { getEncrypted, setEncrypted } from '../storage/secureStorage';
 import { generateFingerprint, randomBytes } from '../crypto/cryptoUtils';
 import { getIdentityKeys } from '../crypto/olmMachine';
+import { invalidateOutboundSession } from '../crypto/sessionManager';
 
 // ── Constants ──
 
@@ -108,6 +110,10 @@ export async function getDeviceList(userId: string): Promise<DeviceInfo[]> {
 
 /**
  * Remove a device via the backend API and update the local known list.
+ *
+ * After removal, invalidates the outbound Megolm session for every room
+ * the user belongs to. This ensures the next message in each room triggers
+ * a fresh key share that excludes the revoked device.
  */
 export async function removeDevice(
   userId: string,
@@ -119,6 +125,21 @@ export async function removeDevice(
   const known = await getKnownDevices(userId);
   const filtered = known.filter((d) => d.deviceId !== deviceId);
   await setEncrypted('devices', `${KNOWN_DEVICES_KEY}:${userId}`, filtered);
+
+  // Invalidate outbound Megolm sessions for all rooms so the revoked device
+  // is excluded from future key shares. Failures are logged but not thrown —
+  // the backend also publishes key-rotation notifications as a fallback.
+  try {
+    const rooms = await listRooms();
+    await Promise.all(
+      rooms.map((room) => invalidateOutboundSession(room.roomId)),
+    );
+  } catch (err) {
+    console.error(
+      '[F.R.A.M.E.] Failed to invalidate Megolm sessions after device removal:',
+      err,
+    );
+  }
 }
 
 /**

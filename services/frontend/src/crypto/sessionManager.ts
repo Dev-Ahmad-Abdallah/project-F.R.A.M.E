@@ -322,6 +322,23 @@ export async function invalidateRoomSession(roomId: string): Promise<void> {
   await machine.invalidateGroupSession(roomIdObj);
 }
 
+/**
+ * Invalidate the outbound Megolm session for a room after a device revocation.
+ *
+ * This is a thin wrapper around invalidateRoomSession, called when a device
+ * is removed/revoked. The next encrypt call for this room will create a fresh
+ * Megolm session and share it only with currently valid devices, effectively
+ * excluding the revoked device from future message decryption.
+ *
+ * @param roomId The room whose outbound Megolm session should be invalidated
+ */
+export async function invalidateOutboundSession(roomId: string): Promise<void> {
+  console.info(
+    `[F.R.A.M.E.] Invalidating outbound Megolm session for room ${roomId} due to device revocation`,
+  );
+  await invalidateRoomSession(roomId);
+}
+
 // ── Sync Processing ──
 
 /**

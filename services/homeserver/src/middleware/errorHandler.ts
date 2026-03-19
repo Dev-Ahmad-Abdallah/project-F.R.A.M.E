@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { logger } from '../logger';
 
 // Async route wrapper for Express 4 (AD-013: avoids Express 5 beta risk)
 export function asyncHandler(
@@ -42,7 +43,7 @@ export function errorHandler(
   }
 
   // Log error server-side (no sensitive data)
-  console.error(`[${statusCode}] ${code}: ${err.message}`);
+  logger.error('Request error', { statusCode, code, error: err.message });
 
   res.status(statusCode).json({
     error: {

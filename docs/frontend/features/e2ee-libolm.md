@@ -38,85 +38,74 @@ Every message is encrypted on the sender's device and can only be decrypted on t
 
 ```
 src/crypto/
-├── keyManager.ts        # Key generation, storage, rotation
-├── olmSession.ts        # Olm 1:1 session lifecycle
-├── megolmSession.ts     # Megolm group session management
-└── cryptoUtils.ts       # Web Crypto API wrappers
+├── olmMachine.ts        # WASM OlmMachine lifecycle, outgoing-request processing, multi-tab coordination
+├── keyManager.ts        # Orchestrates OlmMachine init, key upload, and contact key retrieval
+├── sessionManager.ts    # Olm/Megolm session establishment and message encrypt/decrypt
+└── cryptoUtils.ts       # Web Crypto API wrappers (AES-GCM, PBKDF2, fingerprints)
+```
+
+### olmMachine.ts
+
+**Responsibilities:**
+- Initialise the WASM runtime (`initAsync`) and create the `OlmMachine` singleton
+- OlmMachine auto-generates Curve25519 + Ed25519 identity keys inside the WASM boundary
+- Process outgoing requests (KeysUpload, KeysQuery, KeysClaim, ToDevice) and feed responses back via `markRequestAsSent`
+- Mutex-protect concurrent access to OlmMachine methods
+- Multi-tab coordination via BroadcastChannel to prevent concurrent instances
+- Monitor one-time prekey count and auto-replenish when below threshold
+
+**Outgoing Request Flow:**
+```
+processOutgoingRequests():
+1. Acquire mutex (serialise concurrent callers)
+2. Call machine.outgoingRequests() → list of pending requests
+3. For each request, dispatch to the correct homeserver endpoint:
+   - KeysUpload  → POST /keys/upload
+   - KeysQuery   → POST /keys/query
+   - KeysClaim   → POST /keys/claim
+   - ToDevice    → PUT /sendToDevice/:eventType/:txnId
+4. Feed each response back via machine.markRequestAsSent()
+5. Release mutex
 ```
 
 ### keyManager.ts
 
 **Responsibilities:**
-- Generate identity key pair (Curve25519) on first launch using Web Crypto API
-- Generate batch of one-time prekeys (e.g., 50 at a time)
-- Generate signed prekey (rotated periodically)
-- Publish public keys to backend: `POST /keys/upload`
-- Store private keys in IndexedDB (encrypted at rest)
-- Monitor one-time prekey count — replenish when below threshold
+- High-level orchestrator that delegates key generation to OlmMachine
+- Calls `initCrypto()` (which creates the OlmMachine and auto-generates keys)
+- Extracts public identity keys via `getIdentityKeys()` and uploads them
+- Triggers `processOutgoingRequests()` to push the OlmMachine's KeysUploadRequest (signed pre-key + one-time pre-keys)
+- Fetches contact key bundles and verifies them against the key transparency log
 
-**Key Generation Flow:**
+**Key Generation Flow (delegation pattern):**
 ```
 First Launch:
-1. Generate Curve25519 identity key pair (Web Crypto API)
-2. Generate Ed25519 signing key pair
-3. Generate signed prekey + signature
-4. Generate 50 one-time prekeys
-5. Store all private keys in encrypted IndexedDB
-6. Upload public keys to homeserver: POST /keys/upload
-   Payload: { identityKey, signedPrekey, signedPrekeySig, oneTimePrekeys[] }
+1. initCrypto(userId, deviceId) → OlmMachine auto-generates all keys inside WASM
+2. getIdentityKeys() → extract Curve25519 + Ed25519 public keys
+3. processOutgoingRequests() → OlmMachine pushes KeysUploadRequest to server
+   (contains signed pre-key, signature, and one-time pre-keys)
+4. uploadKeys() → secondary identity key upload for homeserver key directory
 ```
 
-### olmSession.ts
+### sessionManager.ts
 
 **Responsibilities:**
-- Create outbound Olm session (initiator side)
-- Create inbound Olm session (responder side)
-- Encrypt/decrypt individual messages within a session
-- Persist session state to IndexedDB after each operation
-- Handle session recovery and fallback keys
-
-**Session Creation Flow:**
-```
-Sender (Alice) → Recipient (Bob):
-1. Alice fetches Bob's key bundle: GET /keys/:bobId
-   Response: { identityKey, signedPrekey, oneTimePrekey }
-2. Alice creates outbound Olm session using Bob's keys
-3. Alice encrypts first message → produces Olm prekey message
-4. Alice sends ciphertext: POST /messages/send
-5. Bob receives ciphertext: GET /messages/sync
-6. Bob creates inbound Olm session from prekey message
-7. Bob decrypts → gets plaintext
-8. Ratchet advances on both sides
-```
-
-### megolmSession.ts
-
-**Responsibilities:**
-- Create outbound Megolm session for a room
-- Distribute session key to all room members via Olm 1:1 sessions
-- Encrypt messages using outbound session
-- Decrypt messages using inbound session
-- Rotate outbound session on: member join/leave, after N messages, periodically
-
-**Group Encryption Flow:**
-```
-Sender encrypts for group:
-1. Check if outbound Megolm session exists for this room
-2. If not → create new session, distribute key to all members via Olm
-3. Encrypt plaintext with Megolm outbound session
-4. Send ciphertext to room: POST /messages/send
-5. Each recipient decrypts using their inbound Megolm session
-```
+- Establish Olm 1:1 sessions and Megolm group sessions using the OlmMachine
+- Encrypt/decrypt messages through the OlmMachine's session management
+- Handle session key distribution to room members
+- Rotate outbound Megolm sessions on membership changes
 
 ### cryptoUtils.ts
 
 **Responsibilities:**
-- Wrapper around Web Crypto API for common operations
-- `generateKeyPair()` — Curve25519 key pair generation
-- `deriveKey(passphrase, salt)` — PBKDF2 key derivation for at-rest encryption
-- `hash(data)` — SHA-256 hashing for fingerprints
-- `sign(data, privateKey)` / `verify(data, signature, publicKey)` — Ed25519 signatures
-- `randomBytes(n)` — Cryptographically secure random generation
+- Wrapper around Web Crypto API for supplementary cryptographic operations
+- `deriveStorageKey(passphrase, salt)` — PBKDF2 key derivation (100k iterations) for AES-256-GCM at-rest encryption
+- `encryptData(key, data)` — AES-256-GCM encrypt with fresh random IV
+- `decryptData(key, iv, ciphertext)` — AES-256-GCM decrypt
+- `generateFingerprint(publicKey)` — SHA-256 fingerprint as lowercase hex string (for safety-number display)
+- `randomBytes(n)` — Cryptographically secure random generation via `crypto.getRandomValues`
+
+> **Note:** Curve25519/Ed25519 key generation and Olm/Megolm signing are handled entirely by vodozemac inside the WASM boundary. cryptoUtils.ts only provides Web Crypto API helpers for at-rest encryption and fingerprinting.
 
 ---
 
@@ -137,9 +126,11 @@ Sender encrypts for group:
 | Decision | Choice | Alternative Considered | Rationale |
 |----------|--------|----------------------|-----------|
 | Crypto library | vodozemac (Rust/WASM) via `matrix-sdk-crypto-wasm` | libolm (JS, deprecated) | vodozemac is maintained, audited, memory-safe. libolm is deprecated with no security patches. WASM build is handled by the npm package. |
-| Key type | Curve25519 | X25519/Ed25519 via Web Crypto | vodozemac uses Curve25519 natively; Web Crypto for supplementary operations |
-| Session persistence | IndexedDB | In-memory only | Sessions must survive page reloads; IndexedDB is persistent |
-| Prekey count | 50 initial | 100+ | Sufficient for expected user count; replenish at 10 remaining |
+| Key management | OlmMachine delegation (keys generated inside WASM) | Manual key generation via Web Crypto API | OlmMachine handles all Olm/Megolm key lifecycle internally; reduces surface for key-handling bugs |
+| Supplementary crypto | Web Crypto API (AES-GCM, PBKDF2, SHA-256) | Third-party JS crypto libraries | Native browser API; non-extractable keys; used only for at-rest encryption and fingerprinting |
+| Session persistence | IndexedDB (passphrase-protected store per user/device) | In-memory only | Sessions must survive page reloads; IndexedDB is persistent; store name scoped to user+device to avoid key confusion |
+| Multi-tab safety | BroadcastChannel coordination | No coordination | Concurrent OlmMachine instances sharing IndexedDB cause key conflicts and decryption failures |
+| Prekey count | 50 initial | 100+ | Sufficient for expected user count; auto-replenish via `checkAndReplenishPrekeys()` when count drops below 10 |
 
 ---
 

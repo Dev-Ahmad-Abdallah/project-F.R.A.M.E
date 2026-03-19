@@ -73,7 +73,7 @@ roomsRouter.get(
     if (!req.auth) {
       throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
     }
-    const rooms = await getUserRooms(req.auth.sub);
+    const rooms = await getUserRooms(req.auth.sub, req.auth.deviceId);
     res.json({ rooms });
   }),
 );

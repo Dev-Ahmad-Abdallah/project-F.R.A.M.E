@@ -88,10 +88,11 @@ export async function createRoom(
 }
 
 /**
- * List all rooms the user is a member of, including member lists.
+ * List all rooms the user is a member of, including member lists,
+ * last message, and unread counts.
  */
-export async function getUserRooms(userId: string): Promise<RoomWithMembers[]> {
-  return getUserRoomsWithMembers(userId);
+export async function getUserRooms(userId: string, deviceId?: string): Promise<RoomWithMembers[]> {
+  return getUserRoomsWithMembers(userId, deviceId);
 }
 
 /**

@@ -12,6 +12,8 @@ const envSchema = z.object({
   FEDERATION_PEERS: z.string().default(''),
   CORS_ORIGINS: z.string().default(''),
   DB_SSL_REJECT_UNAUTHORIZED: z.coerce.boolean().default(true),
+  VAPID_PUBLIC_KEY: z.string().default(''),
+  VAPID_PRIVATE_KEY: z.string().default(''),
 });
 
 export type Config = z.infer<typeof envSchema>;
