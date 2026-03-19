@@ -8,9 +8,17 @@
  *
  * Each room shows name, last message preview, unread indicator,
  * star button, and archive action. All rendered content is sanitized via DOMPurify.
+ *
+ * Enhancements:
+ * - Smooth transition animations when rooms reorder (starred moves to top)
+ * - Unread pulse animation on rooms with new messages
+ * - Swipe gesture hints for star/archive (subtle arrow indicators on hover)
+ * - Online presence indicator (green dot) on room avatars
+ * - Pinch/pop animation when starring
+ * - Search bar focus expand animation
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import type { RoomSummary } from '../api/roomsAPI';
@@ -128,6 +136,45 @@ function getAvatarColor(str: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
+// ── Inject keyframes for animations ──
+
+function injectRoomListKeyframes(): void {
+  const styleId = 'frame-roomlist-keyframes';
+  if (document.getElementById(styleId)) return;
+  const style = document.createElement('style');
+  style.id = styleId;
+  style.textContent = `
+    @keyframes frame-unread-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.4); }
+      50% { box-shadow: 0 0 0 4px rgba(88, 166, 255, 0); }
+    }
+    @keyframes frame-star-pop {
+      0% { transform: scale(1); }
+      30% { transform: scale(1.5); }
+      50% { transform: scale(0.85); }
+      70% { transform: scale(1.15); }
+      100% { transform: scale(1); }
+    }
+    @keyframes frame-search-glow {
+      0% { box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.3); }
+      100% { box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1); }
+    }
+    @keyframes frame-online-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    @keyframes frame-swipe-hint-left {
+      0%, 100% { transform: translateX(0); opacity: 0; }
+      50% { transform: translateX(-3px); opacity: 0.6; }
+    }
+    @keyframes frame-swipe-hint-right {
+      0%, 100% { transform: translateX(0); opacity: 0; }
+      50% { transform: translateX(3px); opacity: 0.6; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 // ── Component ──
 
 const RoomList: React.FC<RoomListProps> = ({
@@ -142,9 +189,21 @@ const RoomList: React.FC<RoomListProps> = ({
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => getStoredSet(ARCHIVED_KEY));
   const [showArchived, setShowArchived] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [starAnimatingId, setStarAnimatingId] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Inject animation keyframes on mount
+  useEffect(() => {
+    injectRoomListKeyframes();
+  }, []);
 
   const toggleStar = useCallback((roomId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    // Trigger star pop animation
+    setStarAnimatingId(roomId);
+    setTimeout(() => setStarAnimatingId(null), 500);
+
     setStarredIds((prev) => {
       const next = new Set(prev);
       if (next.has(roomId)) {
@@ -220,6 +279,12 @@ const RoomList: React.FC<RoomListProps> = ({
     const isArchived = archivedIds.has(room.roomId);
     const displayName = getRoomDisplayName(room, currentUserId);
     const unread = unreadByRoom?.[room.roomId] ?? room.unreadCount;
+    const isStarAnimating = starAnimatingId === room.roomId;
+
+    // Simulate online presence from last message recency (within 5 min)
+    const isOnline = room.lastMessage
+      ? (Date.now() - new Date(room.lastMessage.timestamp).getTime()) < 5 * 60 * 1000
+      : false;
 
     return (
       <button
@@ -228,24 +293,68 @@ const RoomList: React.FC<RoomListProps> = ({
         style={{
           ...styles.roomItem,
           ...(isSelected ? styles.roomItemSelected : {}),
-          ...(isHovered && !isSelected ? { backgroundColor: '#161b22' } : {}),
+          ...(isHovered && !isSelected ? { backgroundColor: '#1c2128' } : {}),
+          // Smooth transition for reordering
+          transition: 'background-color 0.2s ease, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease',
+          // Unread pulse animation
+          ...(unread > 0 && !isSelected ? {
+            animation: 'frame-unread-pulse 2s ease-in-out infinite',
+          } : {}),
         }}
         onClick={() => onSelectRoom(room.roomId)}
         onMouseEnter={() => setHoveredRoomId(room.roomId)}
         onMouseLeave={() => setHoveredRoomId(null)}
         aria-current={isSelected ? 'true' : undefined}
       >
-        {/* Avatar placeholder */}
-        <div style={{ ...styles.avatar, backgroundColor: getAvatarColor(room.roomId || displayName) }}>
-          {displayName.charAt(0).toUpperCase()}
+        {/* Swipe hint left (star) */}
+        {isHovered && !isStarred && (
+          <div style={{
+            position: 'absolute' as const,
+            left: 4,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            animation: 'frame-swipe-hint-left 2s ease-in-out infinite',
+            color: '#d29922',
+            fontSize: 10,
+            pointerEvents: 'none' as const,
+          }}>
+            &#9733;
+          </div>
+        )}
+
+        {/* Avatar with online indicator */}
+        <div style={{ position: 'relative' as const, flexShrink: 0 }}>
+          <div style={{ ...styles.avatar, backgroundColor: getAvatarColor(room.roomId || displayName) }}>
+            {displayName.charAt(0).toUpperCase()}
+          </div>
+          {/* Online presence indicator (green dot) */}
+          {isOnline && (
+            <div style={{
+              position: 'absolute' as const,
+              bottom: 0,
+              right: 0,
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              backgroundColor: '#3fb950',
+              border: '2px solid #161b22',
+              animation: 'frame-online-pulse 3s ease-in-out infinite',
+            }} />
+          )}
         </div>
 
         {/* Room info */}
         <div style={styles.roomInfo}>
           <div style={styles.roomHeader}>
-            <span style={styles.roomName}>{displayName}</span>
+            <span style={{
+              ...styles.roomName,
+              ...(unread > 0 ? { color: '#f0f6fc', fontWeight: 700 } : {}),
+            }}>{displayName}</span>
             {room.lastMessage && (
-              <span style={styles.timestamp}>
+              <span style={{
+                ...styles.timestamp,
+                ...(unread > 0 ? { color: '#58a6ff' } : {}),
+              }}>
                 {formatTimestamp(room.lastMessage.timestamp)}
               </span>
             )}
@@ -256,7 +365,10 @@ const RoomList: React.FC<RoomListProps> = ({
             </div>
           )}
           <div style={styles.roomPreview}>
-            <span style={styles.previewText}>
+            <span style={{
+              ...styles.previewText,
+              ...(unread > 0 ? { color: '#c9d1d9' } : {}),
+            }}>
               {room.lastMessage
                 ? truncate(room.lastMessage.body, 40)
                 : 'No messages yet'}
@@ -271,7 +383,7 @@ const RoomList: React.FC<RoomListProps> = ({
 
         {/* Action buttons (star + archive) */}
         <div style={styles.actionButtons}>
-          {/* Star button: always visible if starred, visible on hover otherwise */}
+          {/* Star button with pop animation */}
           <button
             type="button"
             style={{
@@ -279,6 +391,9 @@ const RoomList: React.FC<RoomListProps> = ({
               ...(isStarred
                 ? { color: '#d29922', opacity: 1 }
                 : { opacity: isHovered ? 0.7 : 0 }),
+              ...(isStarAnimating ? {
+                animation: 'frame-star-pop 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+              } : {}),
             }}
             onClick={(e) => toggleStar(room.roomId, e)}
             title={isStarred ? 'Unstar' : 'Star'}
@@ -300,25 +415,64 @@ const RoomList: React.FC<RoomListProps> = ({
             {isArchived ? '\u21A9' : '\u2193'}
           </button>
         </div>
+
+        {/* Swipe hint right (archive) */}
+        {isHovered && !isArchived && (
+          <div style={{
+            position: 'absolute' as const,
+            right: 4,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            animation: 'frame-swipe-hint-right 2s ease-in-out infinite',
+            color: '#484f58',
+            fontSize: 10,
+            pointerEvents: 'none' as const,
+          }}>
+            &#8615;
+          </div>
+        )}
       </button>
     );
   };
 
   return (
     <div style={styles.container}>
-      {/* Search / filter bar */}
-      <div style={styles.searchContainer}>
-        <div style={styles.searchInputWrap}>
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
-            <circle cx="7" cy="7" r="5" stroke="#484f58" strokeWidth="1.5" fill="none" />
-            <path d="M11 11l3.5 3.5" stroke="#484f58" strokeWidth="1.5" strokeLinecap="round" />
+      {/* Search / filter bar with focus expand animation */}
+      <div style={{
+        ...styles.searchContainer,
+        ...(searchFocused ? { padding: '10px 8px 6px' } : {}),
+        transition: 'padding 0.2s ease',
+      }}>
+        <div style={{
+          ...styles.searchInputWrap,
+          ...(searchFocused ? {
+            borderColor: '#58a6ff',
+            backgroundColor: '#0d1117',
+            animation: 'frame-search-glow 0.3s ease-out forwards',
+            padding: '8px 12px',
+          } : {}),
+          transition: 'border-color 0.2s ease, padding 0.2s ease, box-shadow 0.3s ease',
+        }}>
+          <svg width={searchFocused ? 16 : 14} height={searchFocused ? 16 : 14} viewBox="0 0 16 16" fill="none" style={{
+            flexShrink: 0,
+            transition: 'all 0.2s ease',
+          }}>
+            <circle cx="7" cy="7" r="5" stroke={searchFocused ? '#58a6ff' : '#484f58'} strokeWidth="1.5" fill="none" />
+            <path d="M11 11l3.5 3.5" stroke={searchFocused ? '#58a6ff' : '#484f58'} strokeWidth="1.5" strokeLinecap="round" />
           </svg>
           <input
+            ref={searchInputRef}
             type="text"
-            style={styles.searchInput}
-            placeholder="Search conversations..."
+            style={{
+              ...styles.searchInput,
+              ...(searchFocused ? { fontSize: 14 } : {}),
+              transition: 'font-size 0.2s ease',
+            }}
+            placeholder={searchFocused ? 'Type to filter conversations...' : 'Search conversations...'}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
             aria-label="Search conversations"
           />
           {searchQuery && (
@@ -342,7 +496,10 @@ const RoomList: React.FC<RoomListProps> = ({
       {/* Starred section */}
       {starredRooms.length > 0 && (
         <>
-          <div style={styles.sectionHeader}>Starred</div>
+          <div style={styles.sectionHeader}>
+            <span style={{ color: '#d29922', marginRight: 6, fontSize: 10 }}>&#9733;</span>
+            Starred
+          </div>
           {starredRooms.map(renderRoomItem)}
         </>
       )}
@@ -365,7 +522,11 @@ const RoomList: React.FC<RoomListProps> = ({
             style={styles.archivedToggle}
             onClick={() => setShowArchived((prev) => !prev)}
           >
-            <span>{showArchived ? '\u25BC' : '\u25B6'}</span>
+            <span style={{
+              transition: 'transform 0.2s ease',
+              display: 'inline-block',
+              transform: showArchived ? 'rotate(90deg)' : 'rotate(0deg)',
+            }}>{'\u25B6'}</span>
             <span>Show archived ({archivedRooms.length})</span>
           </button>
           {showArchived && archivedRooms.map(renderRoomItem)}
@@ -396,7 +557,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     border: '1px solid #30363d',
     backgroundColor: '#0d1117',
-    transition: 'border-color 0.15s',
+    transition: 'border-color 0.2s ease, padding 0.2s ease, box-shadow 0.3s ease',
   },
   searchInput: {
     flex: 1,
@@ -451,6 +612,8 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#484f58',
     textTransform: 'uppercase' as const,
     letterSpacing: '0.05em',
+    display: 'flex',
+    alignItems: 'center',
   },
   roomItem: {
     display: 'flex',
@@ -463,9 +626,10 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     textAlign: 'left',
     width: '100%',
-    transition: 'background-color 0.15s',
     fontFamily: 'inherit',
     borderLeft: '3px solid transparent',
+    position: 'relative' as const,
+    overflow: 'hidden' as const,
   },
   roomItemSelected: {
     backgroundColor: '#1c2128',
@@ -481,7 +645,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     fontSize: 16,
     fontWeight: 600,
-    color: '#58a6ff',
+    color: '#ffffff',
     flexShrink: 0,
   },
   roomInfo: {
@@ -554,7 +718,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '2px 4px',
     lineHeight: 1,
     color: '#8b949e',
-    transition: 'opacity 0.15s, color 0.15s',
+    transition: 'opacity 0.15s, color 0.15s, transform 0.15s',
     fontFamily: 'inherit',
   },
   archiveButton: {

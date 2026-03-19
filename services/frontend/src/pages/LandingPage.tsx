@@ -7,7 +7,7 @@
  * or images. SVG icons are inlined.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 
 // ── Props ──
 
@@ -29,6 +29,68 @@ const C = {
   white: '#f0f6fc',
   font: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
 };
+
+// ── Scroll-triggered fade-in hook ──
+
+function useScrollReveal(threshold = 0.15) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect(); } },
+      { threshold },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [threshold]);
+
+  return { ref, visible };
+}
+
+// ── Animated counter hook ──
+
+function useCountUp(target: number, duration = 1400, trigger = true) {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    if (!trigger) { setValue(0); return; }
+    let start: number | null = null;
+    let raf: number;
+    const step = (ts: number) => {
+      if (start === null) start = ts;
+      const progress = Math.min((ts - start) / duration, 1);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setValue(Math.round(eased * target));
+      if (progress < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration, trigger]);
+  return value;
+}
+
+// ── Typewriter hook ──
+
+function useTypewriter(text: string, speed = 90, startDelay = 600) {
+  const [displayed, setDisplayed] = useState('');
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+    let i = 0;
+    const chars = text.split('');
+    timeout = setTimeout(function tick() {
+      if (i < chars.length) {
+        setDisplayed(text.slice(0, i + 1));
+        i++;
+        timeout = setTimeout(tick, speed);
+      }
+    }, startDelay);
+    return () => clearTimeout(timeout);
+  }, [text, speed, startDelay]);
+  return displayed;
+}
 
 // ── Inline SVG icons ──
 
@@ -158,6 +220,30 @@ const keyframesCSS = `
   0% { stroke-dashoffset: 100; }
   100% { stroke-dashoffset: 0; }
 }
+@keyframes frame-cta-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(88,166,255,0.25), 0 0 0 0 rgba(88,166,255,0.4);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(88,166,255,0.35), 0 0 0 8px rgba(88,166,255,0);
+  }
+}
+@keyframes frame-glow-hover {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(88,166,255,0); }
+  50% { box-shadow: 0 0 20px 2px rgba(88,166,255,0.15); }
+}
+@keyframes frame-data-flow {
+  0% { stroke-dashoffset: 20; }
+  100% { stroke-dashoffset: 0; }
+}
+@keyframes frame-typewriter-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+@keyframes frame-scroll-reveal {
+  from { opacity: 0; transform: translateY(32px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 html { scroll-behavior: smooth; }
 `;
 
@@ -237,6 +323,25 @@ function MobileMenu({ scrollTo }: { scrollTo: (id: string) => void }) {
   );
 }
 
+// ── Scroll-reveal wrapper ──
+
+function ScrollReveal({ children, delay = 0, style }: { children: React.ReactNode; delay?: number; style?: React.CSSProperties }) {
+  const { ref, visible } = useScrollReveal(0.12);
+  return (
+    <div
+      ref={ref}
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0)' : 'translateY(32px)',
+        transition: `opacity 0.7s ease ${delay}ms, transform 0.7s ease ${delay}ms`,
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 // ── Component ──
 
 export default function LandingPage({ onGetStarted }: LandingPageProps) {
@@ -254,10 +359,21 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // ── Typewriter for hero subtitle ──
+  const subtitleText = 'F.R.A.M.E. is a federated end-to-end encrypted messenger where the server never sees your messages.';
+  const typedSubtitle = useTypewriter(subtitleText, 30, 800);
+
+  // ── Trust signal counter trigger ──
+  const trustRef = useScrollReveal(0.3);
+
+  // ── Counter animations for trust signals ──
+  const count256 = useCountUp(256, 1600, trustRef.visible);
+  const count100 = useCountUp(100, 1400, trustRef.visible);
+
   // ── Trust signal data ──
   const trustSignals = [
-    { icon: <EncryptedIcon />, label: 'End-to-End Encrypted' },
-    { icon: <OpenSourceIcon />, label: 'Open Source' },
+    { icon: <EncryptedIcon />, label: 'End-to-End Encrypted', countLabel: `${count256}-bit Encryption` },
+    { icon: <OpenSourceIcon />, label: `${count100}% Open Source` },
     { icon: <ZeroKnowledgeIcon />, label: 'Zero Knowledge Server' },
     { icon: <FederatedIcon />, label: 'Federated' },
   ];
@@ -332,6 +448,21 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
       ),
     },
   ];
+
+  // ── Feature card hover handlers ──
+  const handleCardEnter = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    el.style.borderColor = C.accent + '60';
+    el.style.transform = 'translateY(-4px)';
+    el.style.boxShadow = `0 0 24px 4px rgba(88,166,255,0.12), 0 4px 16px rgba(0,0,0,0.3)`;
+  }, []);
+
+  const handleCardLeave = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    el.style.borderColor = C.border;
+    el.style.transform = 'translateY(0)';
+    el.style.boxShadow = 'none';
+  }, []);
 
   return (
     <>
@@ -427,20 +558,26 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             <ShieldIcon />
           </div>
 
+          {/* Enhancement #8: Gradient text on headline */}
           <h1 style={{
             margin: 0,
             fontSize: isMobile ? 32 : 52,
             fontWeight: 800,
-            color: C.white,
+            background: 'linear-gradient(135deg, #58a6ff 0%, #c9d1d9 40%, #f0f6fc 60%, #58a6ff 100%)',
+            backgroundSize: '200% 200%',
+            animation: 'frame-gradient-shift 6s ease infinite, frame-fade-in 0.8s ease-out',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
             lineHeight: 1.15,
             maxWidth: 700,
             position: 'relative',
             zIndex: 1,
-            animation: 'frame-fade-in 0.8s ease-out',
           }}>
             Your messages. Your keys.{isMobile ? ' ' : <br />}Your privacy.
           </h1>
 
+          {/* Enhancement #1: Typewriter subtitle */}
           <p style={{
             margin: '20px 0 0',
             fontSize: isMobile ? 16 : 19,
@@ -449,9 +586,20 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             lineHeight: 1.6,
             position: 'relative',
             zIndex: 1,
-            animation: 'frame-fade-in 0.8s ease-out 0.15s both',
+            minHeight: isMobile ? 52 : 30,
           }}>
-            F.R.A.M.E. is a federated end-to-end encrypted messenger where the server never sees your messages.
+            {typedSubtitle}
+            <span style={{
+              display: 'inline-block',
+              width: 2,
+              height: '1em',
+              backgroundColor: C.accent,
+              marginLeft: 2,
+              verticalAlign: 'text-bottom',
+              animation: 'frame-typewriter-cursor 0.8s step-end infinite',
+              opacity: typedSubtitle.length < subtitleText.length ? 1 : 0,
+              transition: 'opacity 0.3s',
+            }} />
           </p>
 
           <div style={{
@@ -466,6 +614,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             justifyContent: 'center',
             width: isMobile ? '100%' : 'auto',
           }}>
+            {/* Enhancement #5: Pulsing CTA button */}
             <button type="button" onClick={onGetStarted} style={{
               padding: '14px 36px',
               fontSize: 16,
@@ -476,8 +625,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               borderRadius: 8,
               cursor: 'pointer',
               fontFamily: C.font,
-              transition: 'transform 0.15s, box-shadow 0.15s',
-              boxShadow: '0 0 20px rgba(88,166,255,0.25)',
+              transition: 'transform 0.15s',
+              animation: 'frame-cta-pulse 2.5s ease-in-out infinite',
               width: isMobile ? '100%' : 'auto',
               minHeight: 48,
             }}>
@@ -503,24 +652,32 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
         </section>
 
         {/* ─── Trust Signals Bar ─── */}
-        <section style={{
-          display: 'flex',
-          justifyContent: 'center',
-          flexWrap: 'wrap',
-          gap: isMobile ? 16 : 40,
-          padding: isMobile ? '24px 16px' : '32px 48px',
-          borderBottom: `1px solid ${C.border}`,
-          backgroundColor: C.darkerBg,
-        }}>
-          {trustSignals.map((s) => (
-            <div key={s.label} style={{
+        {/* Enhancement #3: Counter animation on trust signals */}
+        <section
+          ref={trustRef.ref}
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+            gap: isMobile ? 16 : 40,
+            padding: isMobile ? '24px 16px' : '32px 48px',
+            borderBottom: `1px solid ${C.border}`,
+            backgroundColor: C.darkerBg,
+          }}
+        >
+          {trustSignals.map((s, i) => (
+            <div key={i} style={{
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              opacity: 0.9,
+              opacity: trustRef.visible ? 0.9 : 0,
+              transform: trustRef.visible ? 'translateY(0)' : 'translateY(12px)',
+              transition: `opacity 0.5s ease ${i * 120}ms, transform 0.5s ease ${i * 120}ms`,
             }}>
               {s.icon}
-              <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{s.label}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+                {s.countLabel || s.label}
+              </span>
             </div>
           ))}
         </section>
@@ -531,51 +688,52 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           maxWidth: 1120,
           margin: '0 auto',
         }}>
-          <h2 style={{
-            textAlign: 'center',
-            fontSize: isMobile ? 26 : 36,
-            fontWeight: 700,
-            color: C.white,
-            margin: '0 0 12px',
-          }}>
-            Security by Design
-          </h2>
-          <p style={{
-            textAlign: 'center',
-            fontSize: 16,
-            color: C.textSecondary,
-            margin: '0 auto 48px',
-            maxWidth: 520,
-          }}>
-            Every layer of F.R.A.M.E. is built to protect your conversations.
-          </p>
+          <ScrollReveal>
+            <h2 style={{
+              textAlign: 'center',
+              fontSize: isMobile ? 26 : 36,
+              fontWeight: 700,
+              color: C.white,
+              margin: '0 0 12px',
+            }}>
+              Security by Design
+            </h2>
+            <p style={{
+              textAlign: 'center',
+              fontSize: 16,
+              color: C.textSecondary,
+              margin: '0 auto 48px',
+              maxWidth: 520,
+            }}>
+              Every layer of F.R.A.M.E. is built to protect your conversations.
+            </p>
+          </ScrollReveal>
+          {/* Enhancement #2: Staggered fade-in + Enhancement #4: Hover glow */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
             gap: 20,
           }}>
-            {features.map((f) => (
-              <div key={f.title} style={{
-                backgroundColor: C.cardBg,
-                border: `1px solid ${C.border}`,
-                borderRadius: 12,
-                padding: 28,
-                transition: 'border-color 0.2s, transform 0.2s',
-                cursor: 'default',
-              }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.borderColor = C.accent + '60';
-                  (e.currentTarget as HTMLDivElement).style.transform = 'translateY(-2px)';
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.borderColor = C.border;
-                  (e.currentTarget as HTMLDivElement).style.transform = 'translateY(0)';
-                }}
-              >
-                <div style={{ marginBottom: 16 }}>{f.icon}</div>
-                <h3 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 600, color: C.white }}>{f.title}</h3>
-                <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: C.textSecondary }}>{f.desc}</p>
-              </div>
+            {features.map((f, i) => (
+              <ScrollReveal key={f.title} delay={i * 100}>
+                <div
+                  style={{
+                    backgroundColor: C.cardBg,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 12,
+                    padding: 28,
+                    transition: 'border-color 0.3s, transform 0.3s, box-shadow 0.3s',
+                    cursor: 'default',
+                    height: '100%',
+                  }}
+                  onMouseEnter={handleCardEnter}
+                  onMouseLeave={handleCardLeave}
+                >
+                  <div style={{ marginBottom: 16 }}>{f.icon}</div>
+                  <h3 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 600, color: C.white }}>{f.title}</h3>
+                  <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: C.textSecondary }}>{f.desc}</p>
+                </div>
+              </ScrollReveal>
             ))}
           </div>
         </section>
@@ -585,24 +743,26 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           backgroundColor: C.darkerBg,
           padding: isMobile ? '60px 16px' : '96px 48px',
         }}>
-          <h2 style={{
-            textAlign: 'center',
-            fontSize: isMobile ? 26 : 36,
-            fontWeight: 700,
-            color: C.white,
-            margin: '0 0 12px',
-          }}>
-            How It Works
-          </h2>
-          <p style={{
-            textAlign: 'center',
-            fontSize: 16,
-            color: C.textSecondary,
-            margin: '0 auto 56px',
-            maxWidth: 480,
-          }}>
-            Get up and running in three simple steps.
-          </p>
+          <ScrollReveal>
+            <h2 style={{
+              textAlign: 'center',
+              fontSize: isMobile ? 26 : 36,
+              fontWeight: 700,
+              color: C.white,
+              margin: '0 0 12px',
+            }}>
+              How It Works
+            </h2>
+            <p style={{
+              textAlign: 'center',
+              fontSize: 16,
+              color: C.textSecondary,
+              margin: '0 auto 56px',
+              maxWidth: 480,
+            }}>
+              Get up and running in three simple steps.
+            </p>
+          </ScrollReveal>
           <div style={{
             display: 'flex',
             flexDirection: isMobile ? 'column' : 'row',
@@ -614,49 +774,51 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           }}>
             {steps.map((step, i) => (
               <React.Fragment key={step.num}>
-                <div style={{
-                  flex: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  textAlign: 'center',
-                  padding: '0 20px',
-                }}>
+                <ScrollReveal delay={i * 200}>
                   <div style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: '50%',
-                    backgroundColor: C.cardBg,
-                    border: `2px solid ${C.accent}`,
+                    flex: 1,
                     display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    marginBottom: 16,
-                    position: 'relative',
+                    textAlign: 'center',
+                    padding: '0 20px',
                   }}>
-                    <span style={{
-                      position: 'absolute',
-                      top: -8,
-                      right: -8,
-                      width: 22,
-                      height: 22,
+                    <div style={{
+                      width: 56,
+                      height: 56,
                       borderRadius: '50%',
-                      backgroundColor: C.accent,
-                      color: '#fff',
-                      fontSize: 12,
-                      fontWeight: 700,
+                      backgroundColor: C.cardBg,
+                      border: `2px solid ${C.accent}`,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
+                      marginBottom: 16,
+                      position: 'relative',
                     }}>
-                      {step.num}
-                    </span>
-                    {step.icon}
+                      <span style={{
+                        position: 'absolute',
+                        top: -8,
+                        right: -8,
+                        width: 22,
+                        height: 22,
+                        borderRadius: '50%',
+                        backgroundColor: C.accent,
+                        color: '#fff',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        {step.num}
+                      </span>
+                      {step.icon}
+                    </div>
+                    <h3 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 600, color: C.white }}>{step.title}</h3>
+                    <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: C.textSecondary, maxWidth: 220 }}>{step.desc}</p>
                   </div>
-                  <h3 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 600, color: C.white }}>{step.title}</h3>
-                  <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: C.textSecondary, maxWidth: 220 }}>{step.desc}</p>
-                </div>
-                {/* Connector line between steps (desktop only) */}
+                </ScrollReveal>
+                {/* Connector line between steps (desktop only) — Enhancement #7 partial: animated dashes */}
                 {!isMobile && i < steps.length - 1 && (
                   <div style={{
                     display: 'flex',
@@ -664,7 +826,13 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
                     paddingBottom: 60,
                   }}>
                     <svg width="40" height="2" viewBox="0 0 40 2">
-                      <line x1="0" y1="1" x2="40" y2="1" stroke={C.border} strokeWidth="2" strokeDasharray="6 4" />
+                      <line
+                        x1="0" y1="1" x2="40" y2="1"
+                        stroke={C.accent}
+                        strokeWidth="2"
+                        strokeDasharray="6 4"
+                        style={{ animation: 'frame-data-flow 1.5s linear infinite' }}
+                      />
                     </svg>
                   </div>
                 )}
@@ -679,107 +847,131 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           maxWidth: 800,
           margin: '0 auto',
         }}>
-          <h2 style={{
-            textAlign: 'center',
-            fontSize: isMobile ? 26 : 36,
-            fontWeight: 700,
-            color: C.white,
-            margin: '0 0 12px',
-          }}>
-            Security Architecture
-          </h2>
-          <p style={{
-            textAlign: 'center',
-            fontSize: 16,
-            color: C.textSecondary,
-            margin: '0 auto 48px',
-            maxWidth: 520,
-          }}>
-            The server is an untrusted relay. All encryption happens on YOUR device.
-          </p>
-
-          {/* Architecture diagram */}
-          <div style={{
-            backgroundColor: C.cardBg,
-            border: `1px solid ${C.border}`,
-            borderRadius: 12,
-            padding: isMobile ? 20 : 40,
-            textAlign: 'center',
-          }}>
-            <div style={{
-              display: 'flex',
-              flexDirection: isMobile ? 'column' : 'row',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: isMobile ? 16 : 0,
+          <ScrollReveal>
+            <h2 style={{
+              textAlign: 'center',
+              fontSize: isMobile ? 26 : 36,
+              fontWeight: 700,
+              color: C.white,
+              margin: '0 0 12px',
             }}>
-              {/* Client A */}
-              <div style={archBox(true)}>
-                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-                  <rect x="4" y="4" width="20" height="16" rx="2" stroke={C.success} strokeWidth="1.5" fill="none" />
-                  <line x1="10" y1="20" x2="18" y2="20" stroke={C.success} strokeWidth="1.5" />
-                  <line x1="14" y1="20" x2="14" y2="24" stroke={C.success} strokeWidth="1.5" />
-                  <line x1="10" y1="24" x2="18" y2="24" stroke={C.success} strokeWidth="1.5" />
-                </svg>
-                <span style={{ fontSize: 13, fontWeight: 600, color: C.success }}>Your Device</span>
-                <span style={{ fontSize: 11, color: C.textSecondary }}>Trusted</span>
-              </div>
-
-              {/* Arrow + "Encrypted" */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: isMobile ? '4px 0' : '0 8px' }}>
-                <span style={{ fontSize: 10, color: C.accent, fontWeight: 600, marginBottom: 4 }}>ENCRYPTED</span>
-                <svg width={isMobile ? '2' : '60'} height={isMobile ? '24' : '2'} viewBox={isMobile ? '0 0 2 24' : '0 0 60 2'}>
-                  {isMobile ? (
-                    <line x1="1" y1="0" x2="1" y2="24" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" />
-                  ) : (
-                    <line x1="0" y1="1" x2="60" y2="1" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" />
-                  )}
-                </svg>
-              </div>
-
-              {/* Server */}
-              <div style={archBox(false)}>
-                <ServerIcon />
-                <span style={{ fontSize: 13, fontWeight: 600, color: C.textSecondary }}>Server</span>
-                <span style={{ fontSize: 11, color: '#f8514966' }}>Untrusted Relay</span>
-              </div>
-
-              {/* Arrow + "Encrypted" */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: isMobile ? '4px 0' : '0 8px' }}>
-                <span style={{ fontSize: 10, color: C.accent, fontWeight: 600, marginBottom: 4 }}>ENCRYPTED</span>
-                <svg width={isMobile ? '2' : '60'} height={isMobile ? '24' : '2'} viewBox={isMobile ? '0 0 2 24' : '0 0 60 2'}>
-                  {isMobile ? (
-                    <line x1="1" y1="0" x2="1" y2="24" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" />
-                  ) : (
-                    <line x1="0" y1="1" x2="60" y2="1" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" />
-                  )}
-                </svg>
-              </div>
-
-              {/* Client B */}
-              <div style={archBox(true)}>
-                <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-                  <rect x="6" y="2" width="16" height="24" rx="3" stroke={C.success} strokeWidth="1.5" fill="none" />
-                  <circle cx="14" cy="22" r="1.5" fill={C.success} />
-                  <line x1="10" y1="4" x2="18" y2="4" stroke={C.success} strokeWidth="1" />
-                </svg>
-                <span style={{ fontSize: 13, fontWeight: 600, color: C.success }}>Recipient</span>
-                <span style={{ fontSize: 11, color: C.textSecondary }}>Trusted</span>
-              </div>
-            </div>
-
+              Security Architecture
+            </h2>
             <p style={{
-              margin: '32px auto 0',
-              fontSize: 14,
-              lineHeight: 1.7,
+              textAlign: 'center',
+              fontSize: 16,
               color: C.textSecondary,
-              maxWidth: 480,
+              margin: '0 auto 48px',
+              maxWidth: 520,
             }}>
-              Messages are encrypted on your device before being sent.
-              The server stores and relays ciphertext it cannot decrypt.
-              Only the intended recipient&apos;s device holds the keys to read your messages.
+              The server is an untrusted relay. All encryption happens on YOUR device.
             </p>
-          </div>
+          </ScrollReveal>
+
+          {/* Architecture diagram — Enhancement #7: animated data flow lines */}
+          <ScrollReveal delay={150}>
+            <div style={{
+              backgroundColor: C.cardBg,
+              border: `1px solid ${C.border}`,
+              borderRadius: 12,
+              padding: isMobile ? 20 : 40,
+              textAlign: 'center',
+            }}>
+              <div style={{
+                display: 'flex',
+                flexDirection: isMobile ? 'column' : 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: isMobile ? 16 : 0,
+              }}>
+                {/* Client A */}
+                <div style={archBox(true)}>
+                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                    <rect x="4" y="4" width="20" height="16" rx="2" stroke={C.success} strokeWidth="1.5" fill="none" />
+                    <line x1="10" y1="20" x2="18" y2="20" stroke={C.success} strokeWidth="1.5" />
+                    <line x1="14" y1="20" x2="14" y2="24" stroke={C.success} strokeWidth="1.5" />
+                    <line x1="10" y1="24" x2="18" y2="24" stroke={C.success} strokeWidth="1.5" />
+                  </svg>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: C.success }}>Your Device</span>
+                  <span style={{ fontSize: 11, color: C.textSecondary }}>Trusted</span>
+                </div>
+
+                {/* Animated flow arrow */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: isMobile ? '4px 0' : '0 8px' }}>
+                  <span style={{ fontSize: 10, color: C.accent, fontWeight: 600, marginBottom: 4 }}>ENCRYPTED</span>
+                  <svg
+                    width={isMobile ? '2' : '60'}
+                    height={isMobile ? '24' : '6'}
+                    viewBox={isMobile ? '0 0 2 24' : '0 0 60 6'}
+                    style={{ overflow: 'visible' }}
+                  >
+                    {isMobile ? (
+                      <line x1="1" y1="0" x2="1" y2="24" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
+                    ) : (
+                      <>
+                        <line x1="0" y1="3" x2="60" y2="3" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
+                        {/* Arrowhead */}
+                        <polygon points="55,0 60,3 55,6" fill={C.accent} opacity="0.7" />
+                      </>
+                    )}
+                  </svg>
+                </div>
+
+                {/* Server */}
+                <div style={{
+                  ...archBox(false),
+                  animation: 'frame-pulse-border 3s ease-in-out infinite',
+                }}>
+                  <ServerIcon />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: C.textSecondary }}>Server</span>
+                  <span style={{ fontSize: 11, color: '#f8514966' }}>Untrusted Relay</span>
+                </div>
+
+                {/* Animated flow arrow */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: isMobile ? '4px 0' : '0 8px' }}>
+                  <span style={{ fontSize: 10, color: C.accent, fontWeight: 600, marginBottom: 4 }}>ENCRYPTED</span>
+                  <svg
+                    width={isMobile ? '2' : '60'}
+                    height={isMobile ? '24' : '6'}
+                    viewBox={isMobile ? '0 0 2 24' : '0 0 60 6'}
+                    style={{ overflow: 'visible' }}
+                  >
+                    {isMobile ? (
+                      <line x1="1" y1="0" x2="1" y2="24" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
+                    ) : (
+                      <>
+                        <line x1="0" y1="3" x2="60" y2="3" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
+                        <polygon points="55,0 60,3 55,6" fill={C.accent} opacity="0.7" />
+                      </>
+                    )}
+                  </svg>
+                </div>
+
+                {/* Client B */}
+                <div style={archBox(true)}>
+                  <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+                    <rect x="6" y="2" width="16" height="24" rx="3" stroke={C.success} strokeWidth="1.5" fill="none" />
+                    <circle cx="14" cy="22" r="1.5" fill={C.success} />
+                    <line x1="10" y1="4" x2="18" y2="4" stroke={C.success} strokeWidth="1" />
+                  </svg>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: C.success }}>Recipient</span>
+                  <span style={{ fontSize: 11, color: C.textSecondary }}>Trusted</span>
+                </div>
+              </div>
+
+              <p style={{
+                margin: '32px auto 0',
+                fontSize: 14,
+                lineHeight: 1.7,
+                color: C.textSecondary,
+                maxWidth: 480,
+              }}>
+                Messages are encrypted on your device before being sent.
+                The server stores and relays ciphertext it cannot decrypt.
+                Only the intended recipient&apos;s device holds the keys to read your messages.
+              </p>
+            </div>
+          </ScrollReveal>
         </section>
 
         {/* ─── CTA Banner ─── */}
@@ -789,37 +981,40 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
           textAlign: 'center',
           borderTop: `1px solid ${C.border}`,
         }}>
-          <h2 style={{
-            margin: 0,
-            fontSize: isMobile ? 24 : 32,
-            fontWeight: 700,
-            color: C.white,
-          }}>
-            Ready for private messaging?
-          </h2>
-          <p style={{
-            margin: '12px 0 32px',
-            fontSize: 16,
-            color: C.textSecondary,
-          }}>
-            Join F.R.A.M.E. and take control of your conversations.
-          </p>
-          <button type="button" onClick={onGetStarted} style={{
-            padding: '14px 48px',
-            fontSize: 16,
-            fontWeight: 600,
-            backgroundColor: C.accent,
-            color: '#fff',
-            border: 'none',
-            borderRadius: 8,
-            cursor: 'pointer',
-            fontFamily: C.font,
-            boxShadow: '0 0 24px rgba(88,166,255,0.2)',
-            width: isMobile ? '100%' : 'auto',
-            minHeight: 48,
-          }}>
-            Get Started
-          </button>
+          <ScrollReveal>
+            <h2 style={{
+              margin: 0,
+              fontSize: isMobile ? 24 : 32,
+              fontWeight: 700,
+              color: C.white,
+            }}>
+              Ready for private messaging?
+            </h2>
+            <p style={{
+              margin: '12px 0 32px',
+              fontSize: 16,
+              color: C.textSecondary,
+            }}>
+              Join F.R.A.M.E. and take control of your conversations.
+            </p>
+            {/* Enhancement #5: Pulsing CTA (bottom) */}
+            <button type="button" onClick={onGetStarted} style={{
+              padding: '14px 48px',
+              fontSize: 16,
+              fontWeight: 600,
+              backgroundColor: C.accent,
+              color: '#fff',
+              border: 'none',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontFamily: C.font,
+              animation: 'frame-cta-pulse 2.5s ease-in-out infinite',
+              width: isMobile ? '100%' : 'auto',
+              minHeight: 48,
+            }}>
+              Get Started
+            </button>
+          </ScrollReveal>
         </section>
 
         {/* ─── Footer ─── */}

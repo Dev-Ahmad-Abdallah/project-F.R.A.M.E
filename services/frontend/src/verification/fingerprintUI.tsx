@@ -5,6 +5,9 @@
  * public key, formatted as groups of 5 digits. Also shows a QR
  * code for in-person verification and a "Verify Contact" button.
  *
+ * Visual polish: alternating color groups for safety numbers,
+ * "Copy" button with checkmark animation (Signal inspired).
+ *
  * SECURITY: Never log or expose raw key material.
  */
 
@@ -12,6 +15,34 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { generateFingerprint } from '../crypto/cryptoUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
+
+// ── Keyframes (injected once) ──
+
+const FINGERPRINT_KEYFRAMES_ID = 'frame-fingerprint-ui-keyframes';
+
+function injectKeyframes() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(FINGERPRINT_KEYFRAMES_ID)) return;
+  const style = document.createElement('style');
+  style.id = FINGERPRINT_KEYFRAMES_ID;
+  style.textContent = `
+    @keyframes frameCopyCheckIn {
+      0% { transform: scale(0); opacity: 0; }
+      50% { transform: scale(1.3); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes frameCopyFadeOut {
+      0% { opacity: 1; }
+      80% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    @keyframes frameSafetyNumberFadeIn {
+      0% { opacity: 0; transform: translateY(4px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 // ── Types ──
 
@@ -54,6 +85,23 @@ function formatSafetyNumber(hexFingerprint: string): string {
   return groups.join(' ');
 }
 
+function getSafetyNumberGroups(hexFingerprint: string): string[] {
+  const digits = hexFingerprint
+    .split('')
+    .map((c) => parseInt(c, 16).toString())
+    .join('')
+    .slice(0, 60);
+
+  const groups: string[] = [];
+  for (let i = 0; i < digits.length; i += 5) {
+    groups.push(digits.slice(i, i + 5).padEnd(5, '0'));
+  }
+  return groups;
+}
+
+// Alternating colors for safety number groups (Signal-style readability)
+const GROUP_COLORS = ['#58a6ff', '#c9d1d9'];
+
 // ── Styles ──
 
 const styles: Record<string, React.CSSProperties> = {
@@ -86,6 +134,16 @@ const styles: Record<string, React.CSSProperties> = {
     textTransform: 'uppercase' as const,
     letterSpacing: 1,
   },
+  safetyNumberContainer: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    justifyContent: 'center',
+    gap: '4px 10px',
+    maxWidth: 320,
+    fontFamily: '"SF Mono", "Fira Code", monospace',
+    fontSize: 16,
+    lineHeight: 1.8,
+  },
   safetyNumber: {
     fontFamily: '"SF Mono", "Fira Code", monospace',
     fontSize: 16,
@@ -94,6 +152,33 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center' as const,
     wordSpacing: 8,
     maxWidth: 320,
+  },
+  copyButtonRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  copyButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '4px 12px',
+    fontSize: 12,
+    fontWeight: 500,
+    backgroundColor: '#21262d',
+    color: '#8b949e',
+    border: '1px solid #30363d',
+    borderRadius: 4,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    transition: 'border-color 0.15s, color 0.15s',
+  },
+  copiedText: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: '#3fb950',
+    animation: 'frameCopyFadeOut 2s ease-out forwards',
   },
   qrContainer: {
     margin: '20px 0',
@@ -131,11 +216,71 @@ const styles: Record<string, React.CSSProperties> = {
     border: 'none',
     borderRadius: 6,
     cursor: 'pointer',
+    transition: 'background-color 0.15s',
   },
   verifyButtonDisabled: {
     opacity: 0.5,
     cursor: 'default',
   },
+};
+
+// ── SafetyNumberDisplay — colored groups sub-component ──
+
+const SafetyNumberDisplay: React.FC<{
+  hexFingerprint: string;
+  isMobile: boolean;
+  label: string;
+  onCopy?: () => void;
+  copied?: boolean;
+}> = ({ hexFingerprint, isMobile, label, onCopy, copied }) => {
+  const groups = getSafetyNumberGroups(hexFingerprint);
+
+  return (
+    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <p style={styles.safetyNumberLabel}>{label}</p>
+      <div style={{
+        ...styles.safetyNumberContainer,
+        ...(isMobile ? { fontSize: 14, maxWidth: '100%' } : {}),
+      }}>
+        {groups.map((group, i) => (
+          <span
+            key={i}
+            style={{
+              color: GROUP_COLORS[i % 2],
+              fontWeight: i % 2 === 0 ? 600 : 400,
+              padding: '2px 4px',
+              borderRadius: 3,
+              backgroundColor: i % 2 === 0 ? 'rgba(88, 166, 255, 0.06)' : 'transparent',
+              animation: `frameSafetyNumberFadeIn 0.3s ease-out ${i * 0.03}s both`,
+            }}
+          >
+            {group}
+          </span>
+        ))}
+      </div>
+      {onCopy && (
+        <div style={styles.copyButtonRow}>
+          <button
+            type="button"
+            style={styles.copyButton}
+            onClick={onCopy}
+          >
+            {copied ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" style={{ animation: 'frameCopyCheckIn 0.3s ease-out' }}>
+                <path d="M5 13l4 4L19 7" stroke="#3fb950" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg width="13" height="13" viewBox="0 0 24 24">
+                <rect x="9" y="9" width="13" height="13" rx="2" stroke="#8b949e" strokeWidth="1.5" fill="none" />
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="#8b949e" strokeWidth="1.5" fill="none" />
+              </svg>
+            )}
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 };
 
 // ── Component ──
@@ -153,6 +298,10 @@ const FingerprintUI: React.FC<FingerprintUIProps> = ({
   const [ourFingerprint, setOurFingerprint] = useState<string>('');
   const [verified, setVerified] = useState(isVerified);
   const [loading, setLoading] = useState(true);
+  const [copiedTheirs, setCopiedTheirs] = useState(false);
+  const [copiedOurs, setCopiedOurs] = useState(false);
+
+  useEffect(() => { injectKeyframes(); }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -175,12 +324,23 @@ const FingerprintUI: React.FC<FingerprintUIProps> = ({
   }, [publicKey, ownPublicKey]);
 
   const handleVerify = useCallback(() => {
-    // Compare fingerprints — in a real flow the user would compare
-    // the displayed safety numbers out-of-band (in person, voice call, etc.)
-    // and then tap "Verify" to confirm they match.
     setVerified(true);
     onVerified?.(userId, deviceId);
   }, [userId, deviceId, onVerified]);
+
+  const handleCopyTheirs = useCallback(() => {
+    const text = formatSafetyNumber(theirFingerprint);
+    void navigator.clipboard.writeText(text);
+    setCopiedTheirs(true);
+    setTimeout(() => setCopiedTheirs(false), 2000);
+  }, [theirFingerprint]);
+
+  const handleCopyOurs = useCallback(() => {
+    const text = formatSafetyNumber(ourFingerprint);
+    void navigator.clipboard.writeText(text);
+    setCopiedOurs(true);
+    setTimeout(() => setCopiedOurs(false), 2000);
+  }, [ourFingerprint]);
 
   if (loading) {
     return (
@@ -196,9 +356,6 @@ const FingerprintUI: React.FC<FingerprintUIProps> = ({
     deviceId,
     fingerprint: theirFingerprint,
   });
-
-  const theirSafetyNumber = formatSafetyNumber(theirFingerprint);
-  const ourSafetyNumber = formatSafetyNumber(ourFingerprint);
 
   return (
     <div style={{
@@ -223,19 +380,23 @@ const FingerprintUI: React.FC<FingerprintUIProps> = ({
         <QRCodeSVG value={qrPayload} size={isMobile ? 160 : 200} level="M" />
       </div>
 
-      {/* Their safety number */}
-      <p style={styles.safetyNumberLabel}>Their Safety Number</p>
-      <p style={{
-        ...styles.safetyNumber,
-        ...(isMobile ? { fontSize: 14, maxWidth: '100%' } : {}),
-      }}>{theirSafetyNumber}</p>
+      {/* Their safety number — with colored groups and copy */}
+      <SafetyNumberDisplay
+        hexFingerprint={theirFingerprint}
+        isMobile={isMobile}
+        label="Their Safety Number"
+        onCopy={handleCopyTheirs}
+        copied={copiedTheirs}
+      />
 
-      {/* Our safety number */}
-      <p style={styles.safetyNumberLabel}>Your Safety Number</p>
-      <p style={{
-        ...styles.safetyNumber,
-        ...(isMobile ? { fontSize: 14, maxWidth: '100%' } : {}),
-      }}>{ourSafetyNumber}</p>
+      {/* Our safety number — with colored groups and copy */}
+      <SafetyNumberDisplay
+        hexFingerprint={ourFingerprint}
+        isMobile={isMobile}
+        label="Your Safety Number"
+        onCopy={handleCopyOurs}
+        copied={copiedOurs}
+      />
 
       {/* Verify button */}
       {!verified && (

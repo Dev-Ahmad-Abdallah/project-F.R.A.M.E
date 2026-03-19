@@ -4,6 +4,9 @@
  * Lists every device on the account with display name, last seen time,
  * verification status, and a remove button. The current device is
  * highlighted with a "This device" indicator.
+ *
+ * Visual polish: staggered fade-in entry animation for device rows,
+ * gentle pulse on "This device" badge (Signal / Apple inspired).
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -19,6 +22,32 @@ import {
   type KnownDevice,
 } from '../devices/deviceManager';
 import type { DeviceInfo } from '../api/devicesAPI';
+
+// ── Keyframes (injected once) ──
+
+const DEVICE_LIST_KEYFRAMES_ID = 'frame-device-list-keyframes';
+
+function injectKeyframes() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(DEVICE_LIST_KEYFRAMES_ID)) return;
+  const style = document.createElement('style');
+  style.id = DEVICE_LIST_KEYFRAMES_ID;
+  style.textContent = `
+    @keyframes frameDeviceRowFadeIn {
+      0% { opacity: 0; transform: translateY(12px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes frameCurrentBadgePulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(35, 134, 54, 0.5); }
+      50% { box-shadow: 0 0 8px 3px rgba(35, 134, 54, 0.35); }
+    }
+    @keyframes frameDeviceRowHoverGlow {
+      0% { border-color: #30363d; }
+      100% { border-color: #484f58; }
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 // ── Types ──
 
@@ -42,6 +71,8 @@ const DeviceList: React.FC<DeviceListProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+
+  useEffect(() => { injectKeyframes(); }, []);
 
   const loadDevices = useCallback(async () => {
     setLoading(true);
@@ -148,7 +179,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
         <p style={styles.emptyText}>No devices found.</p>
       ) : (
         <div style={styles.list}>
-          {devices.map((device) => {
+          {devices.map((device, index) => {
             const isCurrent = device.deviceId === currentDeviceId;
             const isRemoving = removingId === device.deviceId;
 
@@ -164,6 +195,8 @@ const DeviceList: React.FC<DeviceListProps> = ({
                     gap: 10,
                     padding: '12px 14px',
                   } : {}),
+                  // Staggered fade-in animation
+                  animation: `frameDeviceRowFadeIn 0.4s ease-out ${index * 0.07}s both`,
                 }}
               >
                 <div style={styles.deviceInfo}>
@@ -318,10 +351,12 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #30363d',
     borderRadius: 8,
     gap: 12,
+    transition: 'border-color 0.2s ease, background-color 0.2s ease',
   },
   currentDeviceRow: {
     borderColor: '#238636',
     backgroundColor: '#0d1117',
+    boxShadow: '0 0 12px rgba(35, 134, 54, 0.1)',
   },
   deviceInfo: {
     display: 'flex',
@@ -348,6 +383,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#ffffff',
     borderRadius: 10,
     whiteSpace: 'nowrap',
+    animation: 'frameCurrentBadgePulse 2.5s ease-in-out infinite',
   },
   deviceMeta: {
     display: 'flex',
@@ -375,6 +411,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: 'none',
     borderRadius: 6,
     cursor: 'pointer',
+    transition: 'background-color 0.15s, transform 0.1s',
   },
   buttonDisabled: {
     opacity: 0.5,

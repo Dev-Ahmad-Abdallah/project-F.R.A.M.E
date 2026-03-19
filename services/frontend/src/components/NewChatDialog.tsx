@@ -6,6 +6,11 @@
  * to add the new room and select it.
  *
  * All user input is sanitized before display. Uses DOMPurify.
+ *
+ * Enhancements:
+ * - Smooth slide-up entrance animation (from bottom)
+ * - Success state with checkmark animation on room creation
+ * - Sliding pill indicator for type toggle
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
@@ -24,6 +29,50 @@ interface NewChatDialogProps {
   onClose: () => void;
 }
 
+// ── Inject keyframes ──
+
+function injectNewChatKeyframes(): void {
+  const styleId = 'frame-newchat-keyframes';
+  if (document.getElementById(styleId)) return;
+  const style = document.createElement('style');
+  style.id = styleId;
+  style.textContent = `
+    @keyframes frame-dialog-slide-up {
+      0% {
+        opacity: 0;
+        transform: translateY(40px) scale(0.97);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+    @keyframes frame-dialog-overlay-fade {
+      0% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+    @keyframes frame-success-checkmark {
+      0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+      50% { transform: scale(1.2) rotate(0deg); opacity: 1; }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+    @keyframes frame-success-ring {
+      0% { transform: scale(0.5); opacity: 0; }
+      50% { transform: scale(1.1); opacity: 0.8; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes frame-success-sparkle {
+      0% { transform: scale(0) rotate(0deg); opacity: 1; }
+      100% { transform: scale(1) rotate(180deg); opacity: 0; }
+    }
+    @keyframes frame-pill-slide {
+      0% { transform: translateX(var(--pill-from, 0)); }
+      100% { transform: translateX(var(--pill-to, 0)); }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 // ── Component ──
 
 const NewChatDialog: React.FC<NewChatDialogProps> = ({
@@ -40,7 +89,15 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   const [roomPassword, setRoomPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [successRoom, setSuccessRoom] = useState<RoomSummary | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const typeSelectorRef = useRef<HTMLDivElement>(null);
+
+  // Inject animation keyframes
+  useEffect(() => {
+    injectNewChatKeyframes();
+  }, []);
 
   // Auto-focus the input on mount
   useEffect(() => {
@@ -100,7 +157,12 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         unreadCount: 0,
       };
 
-      onCreated(newRoom);
+      // Show success animation before closing
+      setSuccessRoom(newRoom);
+      setShowSuccess(true);
+      setTimeout(() => {
+        onCreated(newRoom);
+      }, 1200);
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
@@ -128,14 +190,84 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
     }
   };
 
+  // Success state overlay
+  if (showSuccess) {
+    return (
+      <div style={{
+        ...styles.overlay,
+        animation: 'frame-dialog-overlay-fade 0.2s ease-out',
+      }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column' as const,
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 20,
+        }}>
+          {/* Success ring */}
+          <div style={{
+            position: 'relative' as const,
+            width: 80,
+            height: 80,
+          }}>
+            {/* Outer ring */}
+            <div style={{
+              position: 'absolute' as const,
+              top: 0,
+              left: 0,
+              width: 80,
+              height: 80,
+              borderRadius: '50%',
+              border: '3px solid #3fb950',
+              animation: 'frame-success-ring 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+            }} />
+            {/* Checkmark */}
+            <svg width="80" height="80" viewBox="0 0 80 80" style={{
+              position: 'absolute' as const,
+              top: 0,
+              left: 0,
+              animation: 'frame-success-checkmark 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.2s both',
+            }}>
+              <path d="M24 40l10 10 22-22" stroke="#3fb950" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            </svg>
+            {/* Sparkle particles */}
+            {[0, 60, 120, 180, 240, 300].map((angle, i) => (
+              <div key={i} style={{
+                position: 'absolute' as const,
+                top: 40 + Math.sin(angle * Math.PI / 180) * 50 - 3,
+                left: 40 + Math.cos(angle * Math.PI / 180) * 50 - 3,
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                backgroundColor: i % 2 === 0 ? '#58a6ff' : '#3fb950',
+                animation: `frame-success-sparkle 0.8s ease-out ${0.3 + i * 0.05}s both`,
+              }} />
+            ))}
+          </div>
+          <p style={{
+            color: '#e6edf3',
+            fontSize: 16,
+            fontWeight: 600,
+            margin: 0,
+            animation: 'frame-dialog-slide-up 0.4s ease-out 0.3s both',
+          }}>
+            Conversation created!
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       ...styles.overlay,
       ...(isMobile ? { padding: 0 } : {}),
+      animation: 'frame-dialog-overlay-fade 0.2s ease-out',
     }} onClick={handleOverlayClick}>
       <div
         style={{
           ...styles.modal,
+          animation: 'frame-dialog-slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
           ...(isMobile ? {
             maxWidth: '100%',
             width: '100%',
@@ -145,6 +277,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
             padding: '24px 20px',
             display: 'flex',
             flexDirection: 'column' as const,
+            animation: 'frame-dialog-slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
           } : {}),
         }}
         role="dialog"
@@ -173,18 +306,45 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
           </div>
         )}
 
-        {/* Room type selector */}
+        {/* Room type selector with sliding pill */}
         <div style={styles.fieldGroup}>
           <label style={styles.label}>Type</label>
-          <div style={{
-            ...styles.typeSelector,
-            ...(isNarrow ? { flexDirection: 'column' as const } : {}),
-          }}>
+          <div
+            ref={typeSelectorRef}
+            style={{
+              ...styles.typeSelector,
+              ...(isNarrow ? { flexDirection: 'column' as const } : {}),
+              position: 'relative' as const,
+            }}
+          >
+            {/* Sliding pill background */}
+            {!isNarrow && (
+              <div style={{
+                position: 'absolute' as const,
+                top: 0,
+                left: roomType === 'direct' ? 0 : 'calc(50% + 4px)',
+                width: 'calc(50% - 4px)',
+                height: '100%',
+                backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                border: '1px solid #58a6ff',
+                borderRadius: 6,
+                transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                pointerEvents: 'none' as const,
+                zIndex: 0,
+              }} />
+            )}
             <button
               type="button"
               style={{
                 ...styles.typeButton,
                 ...(roomType === 'direct' ? styles.typeButtonActive : {}),
+                position: 'relative' as const,
+                zIndex: 1,
+                border: isNarrow ? (roomType === 'direct' ? '1px solid #58a6ff' : '1px solid #30363d') : '1px solid transparent',
+                backgroundColor: isNarrow
+                  ? (roomType === 'direct' ? 'rgba(88, 166, 255, 0.1)' : '#21262d')
+                  : 'transparent',
+                transition: 'color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease',
               }}
               aria-pressed={roomType === 'direct'}
               onClick={() => setRoomType('direct')}
@@ -196,6 +356,13 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
               style={{
                 ...styles.typeButton,
                 ...(roomType === 'group' ? styles.typeButtonActive : {}),
+                position: 'relative' as const,
+                zIndex: 1,
+                border: isNarrow ? (roomType === 'group' ? '1px solid #58a6ff' : '1px solid #30363d') : '1px solid transparent',
+                backgroundColor: isNarrow
+                  ? (roomType === 'group' ? 'rgba(88, 166, 255, 0.1)' : '#21262d')
+                  : 'transparent',
+                transition: 'color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease',
               }}
               aria-pressed={roomType === 'group'}
               onClick={() => setRoomType('group')}
@@ -238,6 +405,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 style={{
                   ...styles.toggleButton,
                   ...(isPrivate ? styles.toggleButtonActive : {}),
+                  transition: 'all 0.2s ease',
                 }}
                 onClick={() => setIsPrivate(!isPrivate)}
                 disabled={loading}
@@ -287,6 +455,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 ...(username.trim() && /^@[^:]+:.+$/.test(username.trim())
                   ? styles.inputValid
                   : {}),
+                transition: 'border-color 0.2s ease',
               }}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -312,7 +481,10 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         <div style={styles.actions}>
           <button
             type="button"
-            style={styles.cancelButton}
+            style={{
+              ...styles.cancelButton,
+              transition: 'background-color 0.15s ease, border-color 0.15s ease',
+            }}
             onClick={onClose}
             disabled={loading}
           >
@@ -323,6 +495,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
             style={{
               ...styles.createButton,
               ...(loading || !username.trim() ? styles.buttonDisabled : {}),
+              transition: 'background-color 0.15s ease, opacity 0.15s ease, transform 0.1s ease',
             }}
             onClick={() => void handleCreate()}
             disabled={loading || !username.trim()}
@@ -361,7 +534,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: FONT_BODY,
     color: '#c9d1d9',
     boxShadow: '0 16px 48px rgba(0, 0, 0, 0.4)',
-    animation: 'frame-modal-enter 0.15s ease-out',
   },
   header: {
     display: 'flex',
@@ -383,6 +555,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     padding: '4px 8px',
     lineHeight: 1,
+    transition: 'color 0.15s ease',
   },
   error: {
     backgroundColor: '#3d1f28',
@@ -419,24 +592,25 @@ const styles: Record<string, React.CSSProperties> = {
   typeSelector: {
     display: 'flex',
     gap: 8,
+    backgroundColor: '#21262d',
+    borderRadius: 6,
+    padding: 4,
   },
   typeButton: {
     flex: 1,
     padding: '10px 12px',
     fontSize: 13,
     fontWeight: 500,
-    backgroundColor: '#21262d',
+    backgroundColor: 'transparent',
     color: '#8b949e',
-    border: '1px solid #30363d',
+    border: '1px solid transparent',
     borderRadius: 6,
     cursor: 'pointer',
     fontFamily: 'inherit',
     minHeight: 44,
   },
   typeButtonActive: {
-    backgroundColor: '#1c2128',
     color: '#58a6ff',
-    borderColor: '#58a6ff',
   },
   typeHint: {
     margin: '4px 0 0',

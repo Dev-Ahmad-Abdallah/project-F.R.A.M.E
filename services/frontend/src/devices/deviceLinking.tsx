@@ -4,12 +4,48 @@
  * Displays a QR code containing the current device's public key
  * fingerprint, a camera scanner placeholder, and manual fingerprint
  * comparison with approve/reject actions.
+ *
+ * Visual polish: scanning grid pattern on QR placeholder, animated
+ * border with corner brackets (Signal / WhatsApp QR scanner inspired).
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { generateFingerprint } from '../crypto/cryptoUtils';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
+
+// ── Keyframes (injected once) ──
+
+const DEVICE_LINKING_KEYFRAMES_ID = 'frame-device-linking-keyframes';
+
+function injectKeyframes() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(DEVICE_LINKING_KEYFRAMES_ID)) return;
+  const style = document.createElement('style');
+  style.id = DEVICE_LINKING_KEYFRAMES_ID;
+  style.textContent = `
+    @keyframes frameQrBorderRotate {
+      0% { border-color: #58a6ff; box-shadow: 0 0 12px rgba(88, 166, 255, 0.2); }
+      33% { border-color: #bc8cff; box-shadow: 0 0 12px rgba(188, 140, 255, 0.2); }
+      66% { border-color: #3fb950; box-shadow: 0 0 12px rgba(63, 185, 80, 0.2); }
+      100% { border-color: #58a6ff; box-shadow: 0 0 12px rgba(88, 166, 255, 0.2); }
+    }
+    @keyframes frameQrScanLine {
+      0% { top: 8px; }
+      50% { top: calc(100% - 12px); }
+      100% { top: 8px; }
+    }
+    @keyframes frameScannerPulse {
+      0%, 100% { border-color: #30363d; }
+      50% { border-color: #58a6ff; }
+    }
+    @keyframes frameQrCornerPulse {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 // ── Types ──
 
@@ -27,6 +63,74 @@ interface DeviceLinkingProps {
   onReject: () => void;
 }
 
+// ── QR Corner Brackets Component ──
+
+const QrCornerBrackets: React.FC = () => {
+  const cornerStyle: React.CSSProperties = {
+    position: 'absolute',
+    width: 20,
+    height: 20,
+    animation: 'frameQrCornerPulse 2s ease-in-out infinite',
+  };
+  const borderColor = '#58a6ff';
+  const bw = '3px solid ' + borderColor;
+
+  return (
+    <>
+      {/* Top-left */}
+      <div style={{ ...cornerStyle, top: -2, left: -2, borderTop: bw, borderLeft: bw, borderTopLeftRadius: 4 }} />
+      {/* Top-right */}
+      <div style={{ ...cornerStyle, top: -2, right: -2, borderTop: bw, borderRight: bw, borderTopRightRadius: 4 }} />
+      {/* Bottom-left */}
+      <div style={{ ...cornerStyle, bottom: -2, left: -2, borderBottom: bw, borderLeft: bw, borderBottomLeftRadius: 4 }} />
+      {/* Bottom-right */}
+      <div style={{ ...cornerStyle, bottom: -2, right: -2, borderBottom: bw, borderRight: bw, borderBottomRightRadius: 4 }} />
+    </>
+  );
+};
+
+// ── Scanning Grid Pattern Component ──
+
+const ScanningGrid: React.FC = () => {
+  const lines: React.ReactElement[] = [];
+  const gridColor = 'rgba(88, 166, 255, 0.08)';
+
+  // Vertical lines
+  for (let i = 1; i < 8; i++) {
+    lines.push(
+      <div
+        key={`v${i}`}
+        style={{
+          position: 'absolute',
+          left: `${(i / 8) * 100}%`,
+          top: 0,
+          bottom: 0,
+          width: 1,
+          backgroundColor: gridColor,
+        }}
+      />
+    );
+  }
+  // Horizontal lines
+  for (let i = 1; i < 8; i++) {
+    lines.push(
+      <div
+        key={`h${i}`}
+        style={{
+          position: 'absolute',
+          top: `${(i / 8) * 100}%`,
+          left: 0,
+          right: 0,
+          height: 1,
+          backgroundColor: gridColor,
+        }}
+      />
+    );
+  }
+
+  return <>{lines}</>;
+};
+
 // ── Component ──
 
 const DeviceLinking: React.FC<DeviceLinkingProps> = ({
@@ -40,6 +144,8 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
   const [qrPayload, setQrPayload] = useState<string>('');
   const [scannedFingerprint, setScannedFingerprint] = useState<string>('');
   const [verificationError, setVerificationError] = useState<string | null>(null);
+
+  useEffect(() => { injectKeyframes(); }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,18 +203,26 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
           fingerprint text manually.
         </p>
 
-        {/* QR Code — rendered as a text-based placeholder.
-            In production, use a library like `qrcode.react` to generate
-            a real QR code from the fingerprint string. */}
+        {/* QR Code placeholder with scanning grid and animated border */}
         <div style={{
-          ...styles.qrPlaceholder,
-          ...(isMobile ? { width: 140, height: 140 } : {}),
+          ...styles.qrOuterFrame,
+          ...(isMobile ? { width: 160, height: 160 } : {}),
         }}>
-          <div style={styles.qrInner}>
-            <span style={styles.qrLabel}>QR Code</span>
-            <span style={styles.qrData}>
-              {qrPayload ? qrPayload.slice(0, 24) + '...' : 'Generating...'}
-            </span>
+          <QrCornerBrackets />
+          <div style={{
+            ...styles.qrPlaceholder,
+            ...(isMobile ? { width: 140, height: 140 } : {}),
+          }}>
+            {/* Scanning grid pattern */}
+            <ScanningGrid />
+            {/* Animated scan line */}
+            <div style={styles.qrScanLine} />
+            <div style={styles.qrInner}>
+              <span style={styles.qrLabel}>QR Code</span>
+              <span style={styles.qrData}>
+                {qrPayload ? qrPayload.slice(0, 24) + '...' : 'Generating...'}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -125,6 +239,10 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
         <h3 style={styles.subheading}>Scan Other Device</h3>
 
         <div style={styles.scannerPlaceholder}>
+          <svg width="32" height="32" viewBox="0 0 24 24" style={{ opacity: 0.4 }}>
+            <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" stroke="#58a6ff" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+            <rect x="7" y="7" width="10" height="10" rx="1" stroke="#58a6ff" strokeWidth="1" fill="none" opacity="0.3" />
+          </svg>
           <p style={styles.scannerText}>
             Camera QR scanning requires a native mobile app. Use manual
             fingerprint comparison below.
@@ -185,7 +303,7 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
 
 /**
  * Format a hex fingerprint into groups of 4 for readability.
- * e.g. "abcd1234ef56" → "abcd 1234 ef56"
+ * e.g. "abcd1234ef56" -> "abcd 1234 ef56"
  */
 function formatFingerprint(hex: string): string {
   return hex.replace(/(.{4})/g, '$1 ').trim();
@@ -229,7 +347,18 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#8b949e',
     lineHeight: 1.5,
   },
+  qrOuterFrame: {
+    position: 'relative' as const,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 200,
+    height: 200,
+    alignSelf: 'center',
+    padding: 8,
+  },
   qrPlaceholder: {
+    position: 'relative' as const,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -237,13 +366,28 @@ const styles: Record<string, React.CSSProperties> = {
     height: 180,
     backgroundColor: '#ffffff',
     borderRadius: 8,
-    alignSelf: 'center',
+    overflow: 'hidden',
+    animation: 'frameQrBorderRotate 4s linear infinite',
+    border: '2px solid #58a6ff',
+  },
+  qrScanLine: {
+    position: 'absolute' as const,
+    left: 8,
+    right: 8,
+    height: 2,
+    backgroundColor: 'rgba(88, 166, 255, 0.4)',
+    borderRadius: 1,
+    animation: 'frameQrScanLine 3s ease-in-out infinite',
+    boxShadow: '0 0 8px rgba(88, 166, 255, 0.3)',
+    zIndex: 1,
   },
   qrInner: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: 8,
+    zIndex: 2,
+    position: 'relative' as const,
   },
   qrLabel: {
     fontSize: 14,
@@ -273,11 +417,12 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
     padding: 24,
     backgroundColor: '#0d1117',
     border: '1px dashed #30363d',
     borderRadius: 8,
+    animation: 'frameScannerPulse 3s ease-in-out infinite',
   },
   scannerText: {
     margin: 0,
@@ -307,6 +452,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     boxSizing: 'border-box' as const,
     minHeight: 44,
+    transition: 'border-color 0.15s ease',
   },
   actions: {
     display: 'flex',
@@ -323,6 +469,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: 'none',
     borderRadius: 6,
     cursor: 'pointer',
+    transition: 'background-color 0.15s',
   },
   rejectButton: {
     flex: 1,
@@ -334,6 +481,7 @@ const styles: Record<string, React.CSSProperties> = {
     border: 'none',
     borderRadius: 6,
     cursor: 'pointer',
+    transition: 'background-color 0.15s',
   },
   secondaryButton: {
     padding: '8px 16px',

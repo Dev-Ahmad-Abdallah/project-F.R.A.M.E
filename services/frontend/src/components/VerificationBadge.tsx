@@ -3,9 +3,40 @@
  *
  * Shows a green shield when verified, yellow warning when not.
  * Includes a tooltip explaining the status.
+ *
+ * Visual polish: subtle shimmer animation on verified shield icon
+ * (Apple / 1Password trust indicator inspired).
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+
+// ── Keyframes (injected once) ──
+
+const BADGE_KEYFRAMES_ID = 'frame-verification-badge-keyframes';
+
+function injectKeyframes() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(BADGE_KEYFRAMES_ID)) return;
+  const style = document.createElement('style');
+  style.id = BADGE_KEYFRAMES_ID;
+  style.textContent = `
+    @keyframes frameShieldShimmer {
+      0% { filter: brightness(1) drop-shadow(0 0 0 transparent); }
+      50% { filter: brightness(1.15) drop-shadow(0 0 4px rgba(35, 134, 54, 0.4)); }
+      100% { filter: brightness(1) drop-shadow(0 0 0 transparent); }
+    }
+    @keyframes frameShieldEntrance {
+      0% { transform: scale(0.8); opacity: 0.5; }
+      60% { transform: scale(1.05); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes frameTooltipFadeIn {
+      0% { opacity: 0; transform: translateX(-50%) translateY(4px); }
+      100% { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 // ── Types ──
 
@@ -21,6 +52,8 @@ const VerificationBadge: React.FC<VerificationBadgeProps> = ({
   size = 'medium',
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
+
+  useEffect(() => { injectKeyframes(); }, []);
 
   const iconSize = size === 'small' ? 16 : 22;
   const tooltipText = verified
@@ -42,7 +75,10 @@ const VerificationBadge: React.FC<VerificationBadgeProps> = ({
           viewBox="0 0 24 24"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
-          style={styles.icon}
+          style={{
+            ...styles.icon,
+            animation: 'frameShieldShimmer 3s ease-in-out infinite, frameShieldEntrance 0.4s ease-out',
+          }}
         >
           {/* Shield with check mark */}
           <path
@@ -61,7 +97,10 @@ const VerificationBadge: React.FC<VerificationBadgeProps> = ({
           viewBox="0 0 24 24"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
-          style={styles.icon}
+          style={{
+            ...styles.icon,
+            animation: 'frameShieldEntrance 0.4s ease-out',
+          }}
         >
           {/* Warning triangle */}
           <path
@@ -121,6 +160,7 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: 100,
     pointerEvents: 'none',
     boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+    animation: 'frameTooltipFadeIn 0.15s ease-out',
   },
   tooltipSmall: {
     fontSize: 11,

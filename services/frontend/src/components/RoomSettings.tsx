@@ -4,13 +4,75 @@
  * Shows room name (editable), type, member list, invite, leave,
  * and a placeholder disappearing messages toggle.
  * Dark themed with inline styles matching the rest of the app.
+ *
+ * Visual polish: smooth slide-in from right, member avatar colors
+ * from a palette, confirmation animation on success actions.
  */
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { renameRoom, inviteToRoom, leaveRoom } from '../api/roomsAPI';
 import type { RoomSummary, RoomMember } from '../api/roomsAPI';
+
+// ── Keyframes (injected once) ──
+
+const ROOM_SETTINGS_KEYFRAMES_ID = 'frame-room-settings-keyframes';
+
+function injectKeyframes() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(ROOM_SETTINGS_KEYFRAMES_ID)) return;
+  const style = document.createElement('style');
+  style.id = ROOM_SETTINGS_KEYFRAMES_ID;
+  style.textContent = `
+    @keyframes frameRoomSlideIn {
+      0% { transform: translateX(100%); opacity: 0.5; }
+      100% { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes frameRoomOverlayFade {
+      0% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+    @keyframes frameRoomSuccessCheck {
+      0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+      50% { transform: scale(1.2) rotate(0deg); opacity: 1; }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+    @keyframes frameRoomSuccessFade {
+      0% { opacity: 1; }
+      70% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    @keyframes frameRoomMemberFadeIn {
+      0% { opacity: 0; transform: translateX(8px); }
+      100% { opacity: 1; transform: translateX(0); }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+// ── Avatar color palette (Signal / WhatsApp inspired) ──
+
+const AVATAR_COLORS = [
+  '#58a6ff', // blue
+  '#bc8cff', // purple
+  '#f78166', // coral
+  '#3fb950', // green
+  '#d29922', // amber
+  '#f47067', // red
+  '#79c0ff', // light blue
+  '#d2a8ff', // lavender
+  '#56d364', // lime
+  '#e3b341', // gold
+];
+
+function avatarColorForUser(userId: string): string {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = ((hash << 5) - hash + userId.charCodeAt(i)) | 0;
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
 
 interface RoomSettingsProps {
   room: RoomSummary;
@@ -51,6 +113,16 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
   // Disappearing messages placeholder
   const [disappearingEnabled, setDisappearingEnabled] = useState(false);
 
+  // Success flash state
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => { injectKeyframes(); }, []);
+
+  const showSuccess = useCallback((msg: string) => {
+    setSuccessMessage(msg);
+    setTimeout(() => setSuccessMessage(null), 2000);
+  }, []);
+
   // Derive display name
   const displayName = room.name
     ? DOMPurify.sanitize(room.name, PURIFY_CONFIG)
@@ -88,12 +160,13 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
       await renameRoom(room.roomId, trimmed);
       onRoomRenamed?.(room.roomId, trimmed);
       setIsEditingName(false);
+      showSuccess('Room renamed');
     } catch (err) {
       console.error('Failed to rename room:', err);
     } finally {
       setIsRenaming(false);
     }
-  }, [editNameValue, displayName, room.roomId, onRoomRenamed, handleCancelRename]);
+  }, [editNameValue, displayName, room.roomId, onRoomRenamed, handleCancelRename, showSuccess]);
 
   const handleRenameKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -114,12 +187,13 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
       setInviteUserId('');
       setShowInviteInput(false);
       onMemberInvited?.(room.roomId);
+      showSuccess('Invite sent');
     } catch (err: unknown) {
       setInviteError(err instanceof Error ? err.message : 'Failed to invite user');
     } finally {
       setIsInviting(false);
     }
-  }, [inviteUserId, room.roomId, onMemberInvited]);
+  }, [inviteUserId, room.roomId, onMemberInvited, showSuccess]);
 
   const handleLeave = useCallback(async () => {
     setIsLeaving(true);
@@ -156,6 +230,19 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
             &times;
           </button>
         </div>
+
+        {/* Success flash banner */}
+        {successMessage && (
+          <div style={styles.successBanner}>
+            <svg width="16" height="16" viewBox="0 0 24 24" style={{
+              animation: 'frameRoomSuccessCheck 0.4s ease-out',
+            }}>
+              <circle cx="12" cy="12" r="11" fill="#238636" />
+              <path d="M7 13l3 3 7-7" stroke="#fff" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span>{successMessage}</span>
+          </div>
+        )}
 
         <div style={styles.panelBody}>
           {/* Room Name */}
@@ -223,24 +310,38 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
               Members ({room.members.length})
             </div>
             <div style={styles.memberList}>
-              {room.members.map((member: RoomMember) => (
-                <div key={member.userId} style={styles.memberItem}>
-                  <div style={styles.memberAvatar}>
-                    {(member.displayName || member.userId).charAt(0).toUpperCase()}
-                  </div>
-                  <div style={styles.memberInfo}>
-                    <span style={styles.memberName}>
-                      {DOMPurify.sanitize(member.displayName || member.userId, PURIFY_CONFIG)}
+              {room.members.map((member: RoomMember, index: number) => {
+                const avatarColor = avatarColorForUser(member.userId);
+                return (
+                  <div
+                    key={member.userId}
+                    style={{
+                      ...styles.memberItem,
+                      animation: `frameRoomMemberFadeIn 0.3s ease-out ${index * 0.05}s both`,
+                    }}
+                  >
+                    <div style={{
+                      ...styles.memberAvatar,
+                      backgroundColor: `${avatarColor}22`,
+                      color: avatarColor,
+                      border: `1.5px solid ${avatarColor}44`,
+                    }}>
+                      {(member.displayName || member.userId).charAt(0).toUpperCase()}
+                    </div>
+                    <div style={styles.memberInfo}>
+                      <span style={styles.memberName}>
+                        {DOMPurify.sanitize(member.displayName || member.userId, PURIFY_CONFIG)}
+                      </span>
+                      {member.userId === currentUserId && (
+                        <span style={styles.youBadge}>you</span>
+                      )}
+                    </div>
+                    <span style={styles.verifiedBadge} title="Verified">
+                      &#10003;
                     </span>
-                    {member.userId === currentUserId && (
-                      <span style={styles.youBadge}>you</span>
-                    )}
                   </div>
-                  <span style={styles.verifiedBadge} title="Verified">
-                    &#10003;
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -370,6 +471,7 @@ const styles: Record<string, React.CSSProperties> = {
     zIndex: 1000,
     display: 'flex',
     justifyContent: 'flex-end',
+    animation: 'frameRoomOverlayFade 0.2s ease-out',
   },
   panel: {
     width: 340,
@@ -380,7 +482,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    animation: 'slideIn 0.2s ease-out',
+    animation: 'frameRoomSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
   },
   panelHeader: {
     display: 'flex',
@@ -409,6 +511,18 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     fontFamily: 'inherit',
     transition: 'border-color 0.15s, color 0.15s',
+  },
+  successBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '10px 20px',
+    backgroundColor: 'rgba(35, 134, 54, 0.1)',
+    borderBottom: '1px solid rgba(35, 134, 54, 0.3)',
+    color: '#3fb950',
+    fontSize: 13,
+    fontWeight: 500,
+    animation: 'frameRoomSuccessFade 2s ease-out forwards',
   },
   panelBody: {
     flex: 1,
@@ -498,14 +612,13 @@ const styles: Record<string, React.CSSProperties> = {
     width: 30,
     height: 30,
     borderRadius: '50%',
-    backgroundColor: '#30363d',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: 13,
     fontWeight: 600,
-    color: '#58a6ff',
     flexShrink: 0,
+    transition: 'transform 0.15s ease',
   },
   memberInfo: {
     flex: 1,

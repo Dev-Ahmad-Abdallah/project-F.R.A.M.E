@@ -5,6 +5,9 @@
  * fingerprints side-by-side and forces the user to choose an action
  * before the modal can be dismissed (fail-closed design).
  *
+ * Visual polish: pulsing warning animation, visual diff highlighting
+ * of changed fingerprint groups (Signal inspired).
+ *
  * Actions:
  *   - "View Fingerprint" — navigate to the fingerprint verification screen
  *   - "Accept New Key"   — trust the new key and continue
@@ -17,6 +20,40 @@
 import React, { useState, useEffect } from 'react';
 import { generateFingerprint } from '../crypto/cryptoUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
+
+// ── Keyframes (injected once) ──
+
+const KEY_CHANGE_KEYFRAMES_ID = 'frame-key-change-alert-keyframes';
+
+function injectKeyframes() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(KEY_CHANGE_KEYFRAMES_ID)) return;
+  const style = document.createElement('style');
+  style.id = KEY_CHANGE_KEYFRAMES_ID;
+  style.textContent = `
+    @keyframes frameKeyChangeEnter {
+      0% { transform: scale(0.9); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes frameKeyChangeWarningPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+    }
+    @keyframes frameKeyChangeBorderPulse {
+      0%, 100% { border-color: #f85149; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4); }
+      50% { border-color: #ff8c82; box-shadow: 0 16px 48px rgba(248, 81, 73, 0.2); }
+    }
+    @keyframes frameKeyChangeDiffHighlight {
+      0%, 100% { background-color: rgba(248, 81, 73, 0.1); }
+      50% { background-color: rgba(248, 81, 73, 0.25); }
+    }
+    @keyframes frameKeyChangeGroupFadeIn {
+      0% { opacity: 0; transform: translateY(4px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 // ── Types ──
 
@@ -35,6 +72,20 @@ export interface KeyChangeAlertProps {
 
 // ── Helpers ──
 
+function getSafetyNumberGroups(hex: string): string[] {
+  const digits = hex
+    .split('')
+    .map((c) => parseInt(c, 16).toString())
+    .join('')
+    .slice(0, 60);
+
+  const groups: string[] = [];
+  for (let i = 0; i < digits.length; i += 5) {
+    groups.push(digits.slice(i, i + 5).padEnd(5, '0'));
+  }
+  return groups;
+}
+
 function formatFingerprint(hex: string): string {
   const digits = hex
     .split('')
@@ -48,6 +99,58 @@ function formatFingerprint(hex: string): string {
   }
   return groups.join(' ');
 }
+
+// ── Fingerprint Diff Display ──
+
+const FingerprintDiffDisplay: React.FC<{
+  oldGroups: string[];
+  newGroups: string[];
+  label: string;
+  groups: string[];
+  color: string;
+  isNew: boolean;
+}> = ({ oldGroups, newGroups, label, groups, color, isNew }) => {
+  return (
+    <div style={styles.fingerprintColumn}>
+      <p style={{ ...styles.fingerprintLabel, color }}>{label}</p>
+      <div style={{
+        display: 'flex',
+        flexWrap: 'wrap' as const,
+        gap: '2px 6px',
+        fontFamily: '"SF Mono", "Fira Code", monospace',
+        fontSize: 12,
+        lineHeight: 1.6,
+      }}>
+        {groups.map((group, i) => {
+          // eslint-disable-next-line security/detect-object-injection
+          const otherGroup = isNew ? oldGroups[i] : newGroups[i]; // Safe: i is from .map() index
+          const isDifferent = otherGroup !== undefined && otherGroup !== group;
+
+          return (
+            <span
+              key={i}
+              style={{
+                color: isDifferent ? (isNew ? '#3fb950' : '#f85149') : color,
+                fontWeight: isDifferent ? 700 : 400,
+                padding: '1px 4px',
+                borderRadius: 3,
+                backgroundColor: isDifferent
+                  ? (isNew ? 'rgba(63, 185, 80, 0.15)' : 'rgba(248, 81, 73, 0.15)')
+                  : 'transparent',
+                animation: isDifferent
+                  ? `frameKeyChangeDiffHighlight 1.5s ease-in-out infinite, frameKeyChangeGroupFadeIn 0.3s ease-out ${i * 0.03}s both`
+                  : `frameKeyChangeGroupFadeIn 0.3s ease-out ${i * 0.03}s both`,
+                textDecoration: isDifferent && !isNew ? 'line-through' : 'none',
+              }}
+            >
+              {group}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 // ── Styles ──
 
@@ -72,8 +175,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 32,
     maxWidth: 520,
     width: '90%',
-    boxShadow: '0 16px 48px rgba(0, 0, 0, 0.4)',
-    animation: 'frame-modal-enter 0.15s ease-out',
+    animation: 'frameKeyChangeEnter 0.3s ease-out, frameKeyChangeBorderPulse 3s ease-in-out infinite',
   },
   warningIcon: {
     fontSize: 32,
@@ -135,6 +237,20 @@ const styles: Record<string, React.CSSProperties> = {
   newKey: {
     color: '#3fb950',
   },
+  diffLegend: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    marginBottom: 20,
+    fontSize: 11,
+    color: '#8b949e',
+  },
+  diffLegendItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+  },
   actions: {
     display: 'flex',
     gap: 12,
@@ -149,6 +265,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     border: 'none',
     minWidth: 130,
+    transition: 'background-color 0.15s',
   },
   viewButton: {
     backgroundColor: '#58a6ff',
@@ -176,6 +293,8 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
   const [oldFingerprint, setOldFingerprint] = useState<string>('');
   const [newFingerprint, setNewFingerprint] = useState<string>('');
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => { injectKeyframes(); }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -222,6 +341,13 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
     );
   }
 
+  const oldGroups = getSafetyNumberGroups(oldFingerprint);
+  const newGroups = getSafetyNumberGroups(newFingerprint);
+
+  // Count differences for summary
+  // eslint-disable-next-line security/detect-object-injection
+  const diffCount = oldGroups.reduce((count, g, i) => count + (g !== newGroups[i] ? 1 : 0), 0); // Safe: i from reduce index
+
   return (
     <div style={{
       ...styles.overlay,
@@ -248,8 +374,10 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
       >
         {/* Warning header */}
         <div style={styles.warningIcon} aria-hidden="true">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L1 21h22L12 2z" stroke="#f85149" strokeWidth="1.5" fill="rgba(248,81,73,0.1)" />
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" style={{
+            animation: 'frameKeyChangeWarningPulse 2s ease-in-out infinite',
+          }}>
+            <path d="M12 2L1 21h22L12 2z" stroke="#f85149" strokeWidth="1.5" fill="rgba(248,81,73,0.15)" />
             <path d="M12 9v4M12 16v.5" stroke="#f85149" strokeWidth="2" strokeLinecap="round" />
           </svg>
         </div>
@@ -263,27 +391,53 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
           new fingerprint before continuing.
         </p>
 
-        {/* Side-by-side fingerprints (stacked on mobile) */}
+        {/* Diff legend */}
+        <div style={styles.diffLegend}>
+          <div style={styles.diffLegendItem}>
+            <span style={{
+              display: 'inline-block',
+              width: 8,
+              height: 8,
+              borderRadius: 2,
+              backgroundColor: 'rgba(248, 81, 73, 0.3)',
+              border: '1px solid #f85149',
+            }} />
+            <span>Changed ({diffCount} groups)</span>
+          </div>
+          <div style={styles.diffLegendItem}>
+            <span style={{
+              display: 'inline-block',
+              width: 8,
+              height: 8,
+              borderRadius: 2,
+              backgroundColor: '#21262d',
+              border: '1px solid #30363d',
+            }} />
+            <span>Unchanged</span>
+          </div>
+        </div>
+
+        {/* Side-by-side fingerprints with visual diff (stacked on mobile) */}
         <div style={{
           ...styles.fingerprintRow,
           ...(isMobile ? { flexDirection: 'column' as const, gap: 12 } : {}),
         }}>
-          <div style={styles.fingerprintColumn}>
-            <p style={{ ...styles.fingerprintLabel, ...styles.oldKey }}>
-              Previous Key
-            </p>
-            <p style={{ ...styles.fingerprintValue, ...styles.oldKey }}>
-              {formatFingerprint(oldFingerprint)}
-            </p>
-          </div>
-          <div style={styles.fingerprintColumn}>
-            <p style={{ ...styles.fingerprintLabel, ...styles.newKey }}>
-              New Key
-            </p>
-            <p style={{ ...styles.fingerprintValue, ...styles.newKey }}>
-              {formatFingerprint(newFingerprint)}
-            </p>
-          </div>
+          <FingerprintDiffDisplay
+            oldGroups={oldGroups}
+            newGroups={newGroups}
+            label="Previous Key"
+            groups={oldGroups}
+            color="#f85149"
+            isNew={false}
+          />
+          <FingerprintDiffDisplay
+            oldGroups={oldGroups}
+            newGroups={newGroups}
+            label="New Key"
+            groups={newGroups}
+            color="#3fb950"
+            isNew={true}
+          />
         </div>
 
         {/* Actions — user MUST choose one */}

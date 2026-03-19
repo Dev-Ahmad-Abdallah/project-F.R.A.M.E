@@ -646,15 +646,32 @@ function App() {
           ...styles.sidebar,
           ...(isMobile ? styles.sidebarMobile : {}),
         }}>
-          {/* User info */}
+          {/* User info — enhanced with larger avatar and status indicator */}
           <div style={styles.userInfo}>
-            <div style={styles.userAvatar}>
-              {auth.userId.charAt(0) === '@'
-                ? auth.userId.charAt(1).toUpperCase()
-                : auth.userId.charAt(0).toUpperCase()}
+            <div style={{ position: 'relative' as const, flexShrink: 0 }}>
+              <div style={styles.userAvatar}>
+                {auth.userId.charAt(0) === '@'
+                  ? auth.userId.charAt(1).toUpperCase()
+                  : auth.userId.charAt(0).toUpperCase()}
+              </div>
+              {/* Online status indicator */}
+              <div style={{
+                position: 'absolute' as const,
+                bottom: 0,
+                right: 0,
+                width: 12,
+                height: 12,
+                borderRadius: '50%',
+                backgroundColor: connectionLost ? '#d29922' : '#3fb950',
+                border: '2px solid #161b22',
+                transition: 'background-color 0.3s ease',
+              }} />
             </div>
             <div style={styles.userDetails}>
               <span style={styles.userName}>{formatDisplayName(auth.userId)}</span>
+              <span style={styles.userStatus}>
+                {connectionLost ? 'Reconnecting...' : 'Online'}
+              </span>
               <span style={styles.userDevice}>
                 Device: {auth.deviceId.slice(0, 8)}...
               </span>
@@ -685,7 +702,7 @@ function App() {
             </div>
           )}
 
-          {/* Room list */}
+          {/* Room list with scroll fade gradient */}
           <div style={styles.roomListContainer}>
             <RoomList
               rooms={rooms}
@@ -694,6 +711,8 @@ function App() {
               onSelectRoom={handleSelectRoom}
               unreadByRoom={unreadByRoom}
             />
+            {/* Gradient overlay at the bottom indicating scrollability */}
+            <div style={styles.scrollFadeOverlay} />
           </div>
 
           {/* Bottom actions */}
@@ -858,18 +877,18 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 12,
-    padding: '16px 16px 12px',
+    padding: '18px 16px 14px',
     borderBottom: '1px solid #30363d',
   },
   userAvatar: {
-    width: 36,
-    height: 36,
+    width: 42,
+    height: 42,
     borderRadius: '50%',
     backgroundColor: '#30363d',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 700,
     color: '#58a6ff',
     flexShrink: 0,
@@ -887,8 +906,13 @@ const styles: Record<string, React.CSSProperties> = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
   },
-  userDevice: {
+  userStatus: {
     fontSize: 11,
+    color: '#3fb950',
+    fontWeight: 500,
+  },
+  userDevice: {
+    fontSize: 10,
     color: '#484f58',
   },
   totalUnreadBadge: {
@@ -989,6 +1013,17 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
+    position: 'relative' as const,
+  },
+  scrollFadeOverlay: {
+    position: 'absolute' as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 40,
+    background: 'linear-gradient(to bottom, rgba(22, 27, 34, 0), rgba(22, 27, 34, 0.95))',
+    pointerEvents: 'none' as const,
+    zIndex: 1,
   },
 
   // ── Sidebar actions ──

@@ -221,7 +221,18 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // Inject typing indicator animation keyframes
+  // Track newly sent message IDs for slide-up animation
+  const [recentlySentIds, setRecentlySentIds] = useState<Set<string>>(new Set());
+  // Track newly arrived message IDs for pop-in animation
+  const [recentlyArrivedIds, setRecentlyArrivedIds] = useState<Set<string>>(new Set());
+  // Track encryption lock pulse
+  const [recentlyEncryptedIds, setRecentlyEncryptedIds] = useState<Set<string>>(new Set());
+  // Track textarea focus for glow
+  const [isTextareaFocused, setIsTextareaFocused] = useState(false);
+  // Track send button animation
+  const [sendButtonAnimating, setSendButtonAnimating] = useState(false);
+
+  // Inject animation keyframes
   useEffect(() => {
     const styleId = 'frame-typing-keyframes';
     if (!document.getElementById(styleId)) {
@@ -233,6 +244,43 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           40% { transform: translateY(-4px); opacity: 1; }
         }
         textarea::placeholder { color: #484f58; }
+        @keyframes frame-msg-slide-up {
+          0% { opacity: 0; transform: translateY(20px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes frame-msg-pop-in {
+          0% { opacity: 0; transform: scale(0.95); }
+          60% { opacity: 1; transform: scale(1.01); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+        @keyframes frame-textarea-glow {
+          0%, 100% { box-shadow: 0 0 4px rgba(88, 166, 255, 0.3), 0 0 8px rgba(88, 166, 255, 0.1); }
+          50% { box-shadow: 0 0 8px rgba(88, 166, 255, 0.5), 0 0 16px rgba(88, 166, 255, 0.15); }
+        }
+        @keyframes frame-send-launch {
+          0% { transform: scale(1); }
+          30% { transform: scale(0.88); }
+          60% { transform: scale(1.08); }
+          100% { transform: scale(1); }
+        }
+        @keyframes frame-lock-pulse {
+          0% { transform: scale(1); opacity: 1; }
+          25% { transform: scale(1.4); opacity: 0.6; color: #3fb950; }
+          50% { transform: scale(0.9); opacity: 1; }
+          75% { transform: scale(1.15); opacity: 0.8; color: #3fb950; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes frame-welcome-float {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-8px); }
+        }
+        @keyframes frame-context-menu-in {
+          0% { opacity: 0; transform: scale(0.92); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+        .frame-context-menu-item:hover {
+          background-color: rgba(248, 81, 73, 0.15) !important;
+        }
       `;
       document.head.appendChild(style);
     }
@@ -373,6 +421,35 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
           if (decryptedEvents.length > 0) {
             setMessages((prev) => [...prev, ...decryptedEvents]);
+            // Mark new messages for pop-in + encryption pulse animation
+            const newIds = decryptedEvents.map((e) => e.event.eventId);
+            setRecentlyArrivedIds((prev) => {
+              const next = new Set(prev);
+              newIds.forEach((id) => next.add(id));
+              return next;
+            });
+            setRecentlyEncryptedIds((prev) => {
+              const next = new Set(prev);
+              decryptedEvents
+                .filter((e) => e.isEncrypted && !e.decryptionError)
+                .forEach((e) => next.add(e.event.eventId));
+              return next;
+            });
+            // Clear animations after they play
+            setTimeout(() => {
+              setRecentlyArrivedIds((prev) => {
+                const next = new Set(prev);
+                newIds.forEach((id) => next.delete(id));
+                return next;
+              });
+            }, 400);
+            setTimeout(() => {
+              setRecentlyEncryptedIds((prev) => {
+                const next = new Set(prev);
+                newIds.forEach((id) => next.delete(id));
+                return next;
+              });
+            }, 800);
           }
           setOptimisticMessages((prev) =>
             prev.filter((om) => om.status === 'failed'),
@@ -425,6 +502,18 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     };
 
     setOptimisticMessages((prev) => [...prev, optimistic]);
+    setRecentlySentIds((prev) => new Set(prev).add(optimisticId));
+    // Clear animation class after animation completes
+    setTimeout(() => {
+      setRecentlySentIds((prev) => {
+        const next = new Set(prev);
+        next.delete(optimisticId);
+        return next;
+      });
+    }, 400);
+    // Trigger send button launch animation
+    setSendButtonAnimating(true);
+    setTimeout(() => setSendButtonAnimating(false), 350);
     if (!retryText) {
       setInputValue('');
       setViewOnceMode(false);
@@ -564,8 +653,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       );
     }
 
+    const isPulsing = recentlyEncryptedIds.has(decrypted.event.eventId);
     return (
-      <span style={styles.encryptionLock} title="Encrypted">
+      <span
+        style={{
+          ...styles.encryptionLock,
+          ...(isPulsing
+            ? { animation: 'frame-lock-pulse 0.8s ease-out', display: 'inline-block' }
+            : {}),
+        }}
+        title="Encrypted"
+      >
         &#128274;
       </span>
     );
@@ -681,6 +779,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             borderBottomRightRadius: 12,
           };
 
+      const hasPopIn = recentlyArrivedIds.has(event.eventId);
       elements.push(
         <div
           key={event.eventId}
@@ -691,6 +790,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             alignSelf: isOwn ? 'flex-end' : 'flex-start',
             maxWidth: isMobile ? '85%' : '70%',
             marginTop: isFirstInGroup ? 8 : 2,
+            ...(hasPopIn
+              ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }
+              : {}),
           }}
         >
           {/* Avatar — only show on first message in a group from other users */}
@@ -772,7 +874,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
     return (
       <div style={styles.welcomeContainer}>
-        <div style={styles.welcomeIconWrap}>
+        <div style={{
+          ...styles.welcomeIconWrap,
+          animation: 'frame-welcome-float 3s ease-in-out infinite',
+        }}>
           {isGroup ? (
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
               <circle cx="18" cy="16" r="6" stroke="#58a6ff" strokeWidth="1.5" fill="none" />
@@ -955,6 +1060,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               ...(om.status === 'sending' ? styles.optimisticSending : {}),
               ...(om.status === 'failed' ? styles.optimisticFailed : {}),
               alignSelf: 'flex-end' as const,
+              ...(recentlySentIds.has(om.id)
+                ? { animation: 'frame-msg-slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }
+                : {}),
             }}
           >
             <div style={styles.messageBody}>
@@ -1019,10 +1127,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           style={{
             ...styles.textarea,
             ...(isMobile ? { padding: '10px 12px', fontSize: 16 } : {}),
+            ...(isTextareaFocused
+              ? {
+                  borderColor: '#58a6ff',
+                  animation: 'frame-textarea-glow 2s ease-in-out infinite',
+                  outline: 'none',
+                }
+              : {}),
           }}
           value={inputValue}
           onChange={handleTextareaChange}
           onKeyDown={handleKeyDown}
+          onFocus={() => setIsTextareaFocused(true)}
+          onBlur={() => setIsTextareaFocused(false)}
           placeholder={viewOnceMode ? 'View-once message...' : 'Type a message...'}
           disabled={isSending}
           aria-label="Message input"
@@ -1033,6 +1150,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             ...styles.sendButton,
             ...(isMobile ? { padding: '10px 12px', minWidth: 44, minHeight: 44 } : {}),
             ...((isSending || !inputValue.trim()) ? { opacity: 0.4, cursor: 'not-allowed' } : {}),
+            ...(sendButtonAnimating
+              ? { animation: 'frame-send-launch 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)' }
+              : {}),
           }}
           onClick={() => void handleSend()}
           disabled={isSending || !inputValue.trim()}
@@ -1065,6 +1185,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         >
           <button
             type="button"
+            className="frame-context-menu-item"
             style={styles.contextMenuItem}
             onClick={() => void handleDeleteMessage(contextMenuEventId)}
           >
@@ -1196,6 +1317,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: 2,
+    scrollBehavior: 'smooth' as const,
+    WebkitOverflowScrolling: 'touch' as const,
   },
 
   // ── Date separators ──
@@ -1375,25 +1498,28 @@ const styles: Record<string, React.CSSProperties> = {
   contextMenu: {
     position: 'fixed' as const,
     zIndex: 9999,
-    backgroundColor: '#21262d',
-    border: '1px solid #30363d',
-    borderRadius: 6,
-    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-    padding: 4,
-    minWidth: 120,
+    backgroundColor: '#1c2128',
+    border: '1px solid rgba(99, 110, 123, 0.35)',
+    borderRadius: 10,
+    boxShadow: '0 12px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)',
+    padding: 6,
+    minWidth: 140,
+    backdropFilter: 'blur(12px)',
+    animation: 'frame-context-menu-in 0.15s ease-out',
   },
   contextMenuItem: {
     display: 'block',
     width: '100%',
-    padding: '6px 12px',
+    padding: '8px 14px',
     fontSize: 13,
     color: '#f85149',
     backgroundColor: 'transparent',
     border: 'none',
-    borderRadius: 4,
+    borderRadius: 6,
     cursor: 'pointer',
     textAlign: 'left' as const,
     fontFamily: 'inherit',
+    transition: 'background-color 0.12s',
   },
   expiredText: {
     fontStyle: 'italic',

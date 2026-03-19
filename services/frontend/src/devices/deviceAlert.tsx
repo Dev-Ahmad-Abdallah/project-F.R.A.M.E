@@ -4,12 +4,52 @@
  * Shown when an unrecognized device is detected on the user's account.
  * Displays device details and offers Verify / Remove / Ignore actions.
  *
- * Uses urgent red warning styling to draw attention.
+ * Uses urgent red warning styling with dramatic entrance animation
+ * and pulsing red border for urgency (Signal / WhatsApp inspired).
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
+
+// ── Keyframes (injected once) ──
+
+const DEVICE_ALERT_KEYFRAMES_ID = 'frame-device-alert-keyframes';
+
+function injectKeyframes() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(DEVICE_ALERT_KEYFRAMES_ID)) return;
+  const style = document.createElement('style');
+  style.id = DEVICE_ALERT_KEYFRAMES_ID;
+  style.textContent = `
+    @keyframes frameAlertEnter {
+      0% { transform: scale(0.85) translateY(20px); opacity: 0; }
+      60% { transform: scale(1.02) translateY(-2px); opacity: 1; }
+      100% { transform: scale(1) translateY(0); opacity: 1; }
+    }
+    @keyframes frameAlertOverlayFade {
+      0% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+    @keyframes frameAlertBorderPulse {
+      0%, 100% { border-color: #f85149; box-shadow: 0 0 40px rgba(248, 81, 73, 0.25); }
+      50% { border-color: #ff6b6b; box-shadow: 0 0 60px rgba(248, 81, 73, 0.45); }
+    }
+    @keyframes frameAlertWarningShake {
+      0%, 100% { transform: translateX(0); }
+      15% { transform: translateX(-3px) rotate(-2deg); }
+      30% { transform: translateX(3px) rotate(2deg); }
+      45% { transform: translateX(-2px) rotate(-1deg); }
+      60% { transform: translateX(2px) rotate(1deg); }
+      75% { transform: translateX(-1px); }
+    }
+    @keyframes frameAlertUrgentGlow {
+      0%, 100% { text-shadow: 0 0 4px rgba(248, 81, 73, 0.3); }
+      50% { text-shadow: 0 0 12px rgba(248, 81, 73, 0.6); }
+    }
+  `;
+  document.head.appendChild(style);
+}
 
 // ── Types ──
 
@@ -39,6 +79,8 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
 }) => {
   const isMobile = useIsMobile();
 
+  useEffect(() => { injectKeyframes(); }, []);
+
   return (
     <div style={{
       ...styles.overlay,
@@ -60,8 +102,10 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
         {/* Warning header */}
         <div style={styles.header}>
           <span style={styles.warningIcon} aria-hidden="true">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L1 21h22L12 2z" stroke="#f85149" strokeWidth="1.5" fill="rgba(248,81,73,0.1)" />
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style={{
+              animation: 'frameAlertWarningShake 0.6s ease-out',
+            }}>
+              <path d="M12 2L1 21h22L12 2z" stroke="#f85149" strokeWidth="1.5" fill="rgba(248,81,73,0.15)" />
               <path d="M12 9v4M12 16v.5" stroke="#f85149" strokeWidth="2" strokeLinecap="round" />
             </svg>
           </span>
@@ -74,6 +118,12 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
           A device you do not recognize has been added to your account.
           If you did not add this device, your account may be compromised.
         </p>
+
+        {/* Urgency indicator bar */}
+        <div style={styles.urgencyBar}>
+          <div style={styles.urgencyBarInner} />
+          <span style={styles.urgencyLabel}>HIGH PRIORITY</span>
+        </div>
 
         {/* Device details */}
         <div style={styles.detailsBox}>
@@ -145,12 +195,13 @@ const styles: Record<string, React.CSSProperties> = {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 9999,
     padding: 16,
+    animation: 'frameAlertOverlayFade 0.3s ease-out',
   },
   modal: {
     backgroundColor: '#161b22',
@@ -161,8 +212,7 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     fontFamily: FONT_BODY,
     color: '#c9d1d9',
-    boxShadow: '0 0 40px rgba(248, 81, 73, 0.3)',
-    animation: 'frame-modal-enter 0.15s ease-out',
+    animation: 'frameAlertEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1), frameAlertBorderPulse 2s ease-in-out infinite',
   },
   header: {
     display: 'flex',
@@ -180,12 +230,41 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 18,
     fontWeight: 700,
     color: '#f85149',
+    animation: 'frameAlertUrgentGlow 2s ease-in-out infinite',
   },
   warningText: {
-    margin: '0 0 20px',
+    margin: '0 0 16px',
     fontSize: 14,
     lineHeight: 1.6,
     color: '#d29922',
+  },
+  urgencyBar: {
+    position: 'relative' as const,
+    height: 3,
+    backgroundColor: '#21262d',
+    borderRadius: 2,
+    marginBottom: 20,
+    overflow: 'hidden',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  urgencyBarInner: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    height: '100%',
+    width: '100%',
+    background: 'linear-gradient(90deg, #f85149 0%, #ff6b6b 50%, #f85149 100%)',
+    borderRadius: 2,
+  },
+  urgencyLabel: {
+    position: 'absolute' as const,
+    right: 0,
+    top: -18,
+    fontSize: 9,
+    fontWeight: 700,
+    color: '#f85149',
+    letterSpacing: '0.1em',
   },
   detailsBox: {
     display: 'flex',
@@ -237,6 +316,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     width: '100%',
     minHeight: 44,
+    transition: 'background-color 0.15s',
   },
   removeButton: {
     padding: '12px 16px',
@@ -249,6 +329,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     width: '100%',
     minHeight: 44,
+    transition: 'background-color 0.15s',
   },
   ignoreButton: {
     padding: '12px 16px',
@@ -261,6 +342,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     width: '100%',
     minHeight: 44,
+    transition: 'border-color 0.15s, color 0.15s',
   },
 };
 
