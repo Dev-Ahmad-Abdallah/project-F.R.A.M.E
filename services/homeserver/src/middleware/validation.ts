@@ -69,14 +69,14 @@ export const keyUploadSchema = z.object({
   oneTimePrekeys: z.array(z.string()).max(100).optional(),
   signedPrekey: z.string().optional(),
   signedPrekeySig: z.string().optional(),
-}).passthrough();
+});
 
 export const deviceRegisterSchema = z.object({
   deviceId: z.string().min(1),
   deviceDisplayName: z.string().max(64).optional(),
   devicePublicKey: z.string().min(1),
   deviceSigningKey: z.string().min(1),
-});
+}).strict();
 
 export const createRoomSchema = z.object({
   roomType: z.enum(['direct', 'group']),
@@ -91,7 +91,7 @@ export const keysQuerySchema = z.object({
     z.array(z.string()),
     z.record(z.string(), z.string()),
   ])),
-}).passthrough();
+});
 
 export const keysClaimSchema = z.object({
   one_time_keys: z.record(z.string(), z.record(z.string(), z.string())),
@@ -104,11 +104,15 @@ export const roomRenameSchema = z.object({
 export const roomSettingsSchema = z.object({
   disappearingMessages: z.object({
     enabled: z.boolean(),
-    timeoutSeconds: z.number().min(30).max(604800),
+    timeoutSeconds: z.number().min(0).max(604800),
   }).optional(),
   isPrivate: z.boolean().optional(),
   password: z.string().max(128).optional(),
-}).passthrough();
+}).strict();
+
+export const joinWithPasswordSchema = z.object({
+  password: z.string().min(1).max(128),
+});
 
 export const roomInviteSchema = z.object({
   userId: z.string().min(1),

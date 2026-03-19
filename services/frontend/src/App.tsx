@@ -505,6 +505,26 @@ function App() {
                 })
               }
             />
+            <button
+              type="button"
+              style={{
+                padding: '10px 20px',
+                fontSize: 14,
+                fontWeight: 600,
+                backgroundColor: '#238636',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: 6,
+                cursor: 'pointer',
+                alignSelf: 'center',
+                marginTop: 8,
+                maxWidth: 560,
+                width: '100%',
+              }}
+              onClick={() => setActiveView('link-device')}
+            >
+              Link a New Device
+            </button>
           </div>
         );
 

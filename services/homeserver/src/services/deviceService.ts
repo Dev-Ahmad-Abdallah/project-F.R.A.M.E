@@ -30,6 +30,7 @@ export async function listDevices(userId: string) {
     devices: devices.map((d) => ({
       deviceId: d.device_id,
       userId: d.user_id,
+      deviceDisplayName: d.display_name,
       displayName: d.display_name,
       devicePublicKey: d.device_public_key,
       deviceSigningKey: d.device_signing_key,
@@ -44,7 +45,7 @@ export async function removeDevice(deviceId: string, userId: string) {
   if (!deleted) {
     throw new ApiError(404, 'M_NOT_FOUND', 'Device not found or not owned by user');
   }
-  return { success: true };
+  return { removed: true, success: true };
 }
 
 export async function heartbeat(deviceId: string) {

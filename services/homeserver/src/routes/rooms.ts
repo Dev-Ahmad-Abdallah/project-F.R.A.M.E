@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { apiLimiter } from '../middleware/rateLimit';
 import { asyncHandler } from '../middleware/errorHandler';
-import { validateBody, createRoomSchema, roomRenameSchema, roomSettingsSchema, roomInviteSchema } from '../middleware/validation';
+import { validateBody, createRoomSchema, roomRenameSchema, roomSettingsSchema, roomInviteSchema, joinWithPasswordSchema } from '../middleware/validation';
 import {
   createRoom,
   getUserRooms,
@@ -126,6 +126,7 @@ roomsRouter.post(
   '/:roomId/join-with-password',
   requireAuth,
   apiLimiter,
+  validateBody(joinWithPasswordSchema),
   asyncHandler(async (req, res) => {
     const result = await joinRoomWithPassword(
       req.params.roomId,

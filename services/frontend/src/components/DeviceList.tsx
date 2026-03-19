@@ -41,6 +41,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
 
   const loadDevices = useCallback(async () => {
     setLoading(true);
@@ -79,27 +80,45 @@ const DeviceList: React.FC<DeviceListProps> = ({
     loadDevices();
   }, [loadDevices]);
 
-  const handleRemove = useCallback(
-    async (deviceId: string) => {
-      if (deviceId === currentDeviceId) return; // Cannot remove current device
-
-      setRemovingId(deviceId);
-      try {
-        await removeDevice(userId, deviceId);
-        setDevices((prev) => prev.filter((d) => d.deviceId !== deviceId));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to remove device');
-      } finally {
-        setRemovingId(null);
-      }
+  const handleRemoveRequest = useCallback(
+    (deviceId: string) => {
+      if (deviceId === currentDeviceId) return;
+      setConfirmRemoveId(deviceId);
     },
-    [userId, currentDeviceId],
+    [currentDeviceId],
   );
+
+  const handleRemoveConfirm = useCallback(async () => {
+    if (!confirmRemoveId) return;
+    const deviceId = confirmRemoveId;
+    setConfirmRemoveId(null);
+    setRemovingId(deviceId);
+    try {
+      await removeDevice(userId, deviceId);
+      setDevices((prev) => prev.filter((d) => d.deviceId !== deviceId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove device');
+    } finally {
+      setRemovingId(null);
+    }
+  }, [userId, confirmRemoveId]);
 
   const formatLastSeen = (isoDate?: string): string => {
     if (!isoDate) return 'Never';
     try {
-      return new Date(isoDate).toLocaleString();
+      const date = new Date(isoDate);
+      const now = Date.now();
+      const diffMs = now - date.getTime();
+      if (diffMs < 0) return 'Just now';
+      const diffSec = Math.floor(diffMs / 1000);
+      if (diffSec < 60) return 'Just now';
+      const diffMin = Math.floor(diffSec / 60);
+      if (diffMin < 60) return `${diffMin}m ago`;
+      const diffHr = Math.floor(diffMin / 60);
+      if (diffHr < 24) return `${diffHr}h ago`;
+      const diffDay = Math.floor(diffHr / 24);
+      if (diffDay < 30) return `${diffDay}d ago`;
+      return date.toLocaleDateString();
     } catch {
       return 'Unknown';
     }
@@ -171,6 +190,11 @@ const DeviceList: React.FC<DeviceListProps> = ({
                       Last seen: {formatLastSeen(device.lastSeen)}
                     </span>
                   </div>
+                  {device.fingerprint && (
+                    <div style={styles.deviceKey}>
+                      Key: {device.fingerprint.slice(0, 20)}...
+                    </div>
+                  )}
                 </div>
 
                 <div style={{
@@ -185,7 +209,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
                         ...(isRemoving ? styles.buttonDisabled : {}),
                         ...(isMobile ? { width: '100%', minHeight: 44 } : {}),
                       }}
-                      onClick={() => handleRemove(device.deviceId)}
+                      onClick={() => handleRemoveRequest(device.deviceId)}
                       disabled={isRemoving}
                     >
                       {isRemoving ? 'Removing...' : 'Remove'}
@@ -195,6 +219,33 @@ const DeviceList: React.FC<DeviceListProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Confirmation dialog for device removal */}
+      {confirmRemoveId && (
+        <div style={styles.confirmOverlay}>
+          <div style={styles.confirmDialog}>
+            <p style={styles.confirmText}>
+              Remove device <strong>{confirmRemoveId.slice(0, 12)}...</strong>? This will revoke its access.
+            </p>
+            <div style={styles.confirmActions}>
+              <button
+                type="button"
+                style={styles.confirmCancel}
+                onClick={() => setConfirmRemoveId(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                style={styles.confirmRemove}
+                onClick={handleRemoveConfirm}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -328,6 +379,63 @@ const styles: Record<string, React.CSSProperties> = {
   buttonDisabled: {
     opacity: 0.5,
     cursor: 'not-allowed',
+  },
+  deviceKey: {
+    fontSize: 11,
+    color: '#8b949e',
+    fontFamily: FONT_MONO,
+    marginTop: 2,
+  },
+  confirmOverlay: {
+    position: 'fixed' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+  },
+  confirmDialog: {
+    backgroundColor: '#161b22',
+    border: '1px solid #30363d',
+    borderRadius: 8,
+    padding: 24,
+    maxWidth: 400,
+    width: '90%',
+  },
+  confirmText: {
+    margin: '0 0 16px',
+    fontSize: 14,
+    color: '#c9d1d9',
+    lineHeight: 1.5,
+  },
+  confirmActions: {
+    display: 'flex',
+    gap: 12,
+    justifyContent: 'flex-end',
+  },
+  confirmCancel: {
+    padding: '8px 16px',
+    fontSize: 13,
+    fontWeight: 500,
+    backgroundColor: '#21262d',
+    color: '#c9d1d9',
+    border: '1px solid #30363d',
+    borderRadius: 6,
+    cursor: 'pointer',
+  },
+  confirmRemove: {
+    padding: '8px 16px',
+    fontSize: 13,
+    fontWeight: 500,
+    backgroundColor: '#da3633',
+    color: '#ffffff',
+    border: 'none',
+    borderRadius: 6,
+    cursor: 'pointer',
   },
   refreshButton: {
     padding: '8px 16px',

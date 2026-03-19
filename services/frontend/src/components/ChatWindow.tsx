@@ -230,9 +230,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       if (isViewOnce && !isOwn && !viewedOnceIds.has(eventId) && !hiddenOnceIds.has(eventId)) {
         // Mark as viewed
         setViewedOnceIds((prev) => new Set(prev).add(eventId));
-        // Start 5-second timer to hide
+        // Start 5-second timer to hide and remove content from state
         const timer = setTimeout(() => {
           setHiddenOnceIds((prev) => new Set(prev).add(eventId));
+          // Remove plaintext content from in-memory state so it cannot be recovered
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.event.eventId === eventId
+                ? { ...m, plaintext: null, decryptionError: 'View-once message already viewed' }
+                : m,
+            ),
+          );
         }, 5000);
         timers.push(timer);
       }

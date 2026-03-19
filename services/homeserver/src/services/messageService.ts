@@ -19,6 +19,38 @@ export interface SendMessageParams {
   content: Record<string, unknown>;
 }
 
+/**
+ * Server-side cleanup: soft-delete messages that have exceeded the room's
+ * disappearing messages timeout. Called periodically and before sync.
+ *
+ * This ensures messages are actually removed server-side, not just hidden
+ * on the client. The content is replaced with a tombstone and deleted_at is set.
+ */
+export async function cleanupExpiredMessages(): Promise<number> {
+  const result = await pool.query(
+    `UPDATE events e
+     SET content = '{"deleted": true, "reason": "expired"}'::jsonb,
+         deleted_at = NOW()
+     FROM rooms r
+     WHERE e.room_id = r.room_id
+       AND e.deleted_at IS NULL
+       AND r.settings IS NOT NULL
+       AND (r.settings->'disappearingMessages'->>'enabled')::boolean = true
+       AND (r.settings->'disappearingMessages'->>'timeoutSeconds')::int > 0
+       AND e.origin_ts < NOW() - (
+         ((r.settings->'disappearingMessages'->>'timeoutSeconds')::int) * INTERVAL '1 second'
+       )`,
+  );
+  return result.rowCount ?? 0;
+}
+
+// Run cleanup every 30 seconds
+setInterval(() => {
+  cleanupExpiredMessages().catch((err) =>
+    console.error('[Disappearing] Cleanup error:', err),
+  );
+}, 30_000);
+
 export async function sendMessage(params: SendMessageParams) {
   const { roomId, senderId, senderDeviceId, eventType, content } = params;
 
@@ -131,6 +163,9 @@ export async function syncMessages(
   limit: number,
   timeout: number
 ): Promise<{ events: Record<string, unknown>[]; nextBatch: string; hasMore: boolean; to_device?: unknown[] }> {
+  // Clean up expired disappearing messages before returning results
+  await cleanupExpiredMessages();
+
   // Clean up stale claimed messages (client disconnected mid-response more than 5 min ago)
   await pool.query(
     `DELETE FROM to_device_messages

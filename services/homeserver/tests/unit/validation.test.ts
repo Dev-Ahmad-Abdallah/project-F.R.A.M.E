@@ -274,11 +274,11 @@ describe('keyUploadSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('passes through unknown fields', () => {
+  it('strips unknown fields (security hardening — no passthrough)', () => {
     const result = keyUploadSchema.safeParse({ customField: 'value' });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect((result.data as any).customField).toBe('value');
+      expect((result.data as any).customField).toBeUndefined();
     }
   });
 

@@ -340,4 +340,71 @@ describe('revokeAllTokens', () => {
 
     await expect(revokeAllTokens('@nobody:test.frame.local')).resolves.toBeUndefined();
   });
+
+  it('deletes all tokens regardless of device', async () => {
+    mockPoolQuery.mockResolvedValue({ rowCount: 5, rows: [] });
+
+    await revokeAllTokens('@alice:test.frame.local');
+
+    // Should issue a single DELETE for all tokens belonging to the user
+    expect(mockPoolQuery).toHaveBeenCalledTimes(1);
+    expect(mockPoolQuery).toHaveBeenCalledWith(
+      'DELETE FROM refresh_tokens WHERE user_id = $1',
+      ['@alice:test.frame.local'],
+    );
+  });
+});
+
+// ── refresh token rotation ──
+
+describe('refresh token rotation', () => {
+  it('deletes old token and creates new one during rotation', async () => {
+    const refreshToken = jwt.sign(
+      { sub: '@alice:test.frame.local', deviceId: 'DEV1', type: 'refresh' },
+      JWT_SECRET,
+      { algorithm: 'HS256', expiresIn: '7d' },
+    );
+
+    // Mock: SELECT check passes, DELETE old, INSERT new
+    mockPoolQuery
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ '?column?': 1 }] }) // SELECT check
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] }) // DELETE old token
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] }); // INSERT new token
+
+    const result = await refreshAccessToken(refreshToken);
+
+    // Old token should be deleted (second call)
+    expect(mockPoolQuery).toHaveBeenCalledTimes(3);
+    expect(mockPoolQuery.mock.calls[1][0]).toBe('DELETE FROM refresh_tokens WHERE token_hash = $1');
+
+    // New token should be stored (third call)
+    expect(mockPoolQuery.mock.calls[2][0]).toContain('INSERT INTO refresh_tokens');
+
+    // New tokens should be valid JWTs
+    expect(result.accessToken).toBeTruthy();
+    expect(result.refreshToken).toBeTruthy();
+    // Verify the new refresh token is a valid JWT
+    const decoded = jwt.verify(result.refreshToken, JWT_SECRET) as any;
+    expect(decoded.sub).toBe('@alice:test.frame.local');
+    expect(decoded.type).toBe('refresh');
+  });
+
+  it('new access token preserves user and device from original', async () => {
+    const refreshToken = jwt.sign(
+      { sub: '@bob:test.frame.local', deviceId: 'MYDEV42', type: 'refresh' },
+      JWT_SECRET,
+      { algorithm: 'HS256', expiresIn: '7d' },
+    );
+
+    mockPoolQuery
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ '?column?': 1 }] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] });
+
+    const result = await refreshAccessToken(refreshToken);
+
+    const decoded = jwt.verify(result.accessToken, JWT_SECRET) as any;
+    expect(decoded.sub).toBe('@bob:test.frame.local');
+    expect(decoded.deviceId).toBe('MYDEV42');
+  });
 });

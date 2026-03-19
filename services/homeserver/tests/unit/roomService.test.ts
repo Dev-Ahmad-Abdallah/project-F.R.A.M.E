@@ -8,8 +8,13 @@ const mockAddRoomMember = jest.fn();
 const mockGetUserRoomsWithMembers = jest.fn();
 const mockGetRoomMembersWithDeviceCounts = jest.fn();
 const mockIsRoomMember = jest.fn();
+const mockUpdateRoomName = jest.fn();
+const mockUpdateRoomSettings = jest.fn();
+const mockRemoveRoomMember = jest.fn();
 
 const mockFindUserById = jest.fn();
+
+const mockPoolQuery = jest.fn();
 
 jest.mock('../../src/db/queries/rooms', () => ({
   createRoom: (...args: any[]) => mockDbCreateRoom(...args),
@@ -17,6 +22,13 @@ jest.mock('../../src/db/queries/rooms', () => ({
   getUserRoomsWithMembers: (...args: any[]) => mockGetUserRoomsWithMembers(...args),
   getRoomMembersWithDeviceCounts: (...args: any[]) => mockGetRoomMembersWithDeviceCounts(...args),
   isRoomMember: (...args: any[]) => mockIsRoomMember(...args),
+  updateRoomName: (...args: any[]) => mockUpdateRoomName(...args),
+  updateRoomSettings: (...args: any[]) => mockUpdateRoomSettings(...args),
+  removeRoomMember: (...args: any[]) => mockRemoveRoomMember(...args),
+}));
+
+jest.mock('../../src/db/pool', () => ({
+  pool: { query: (...args: any[]) => mockPoolQuery(...args) },
 }));
 
 jest.mock('../../src/db/queries/users', () => ({
@@ -39,7 +51,7 @@ jest.mock('../../src/config', () => ({
   }),
 }));
 
-import { createRoom, inviteToRoom, getRoomMemberList } from '../../src/services/roomService';
+import { createRoom, inviteToRoom, getRoomMemberList, renameRoom, updateSettings, leaveRoom } from '../../src/services/roomService';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -171,5 +183,191 @@ describe('getRoomMemberList', () => {
     });
 
     expect(mockGetRoomMembersWithDeviceCounts).not.toHaveBeenCalled();
+  });
+});
+
+// ── renameRoom() ──
+
+describe('renameRoom', () => {
+  it('renames room when requester is a member', async () => {
+    mockIsRoomMember.mockResolvedValue(true);
+    mockUpdateRoomName.mockResolvedValue({ room_id: '!room:test.frame.local', name: 'New Name' });
+
+    const result = await renameRoom('!room:test.frame.local', '@alice:test.frame.local', 'New Name');
+
+    expect(result.success).toBe(true);
+    expect(result.name).toBe('New Name');
+    expect(mockUpdateRoomName).toHaveBeenCalledWith('!room:test.frame.local', 'New Name');
+  });
+
+  it('throws 403 when requester is not a member', async () => {
+    mockIsRoomMember.mockResolvedValue(false);
+
+    await expect(
+      renameRoom('!room:test.frame.local', '@outsider:test.frame.local', 'New Name'),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'M_FORBIDDEN',
+    });
+
+    expect(mockUpdateRoomName).not.toHaveBeenCalled();
+  });
+
+  it('throws 400 when name is empty', async () => {
+    mockIsRoomMember.mockResolvedValue(true);
+
+    await expect(
+      renameRoom('!room:test.frame.local', '@alice:test.frame.local', ''),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'M_BAD_JSON',
+    });
+
+    expect(mockUpdateRoomName).not.toHaveBeenCalled();
+  });
+
+  it('throws 400 when name is only whitespace', async () => {
+    mockIsRoomMember.mockResolvedValue(true);
+
+    await expect(
+      renameRoom('!room:test.frame.local', '@alice:test.frame.local', '   '),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'M_BAD_JSON',
+    });
+
+    expect(mockUpdateRoomName).not.toHaveBeenCalled();
+  });
+
+  it('throws 400 when name exceeds 128 characters', async () => {
+    mockIsRoomMember.mockResolvedValue(true);
+    const longName = 'a'.repeat(129);
+
+    await expect(
+      renameRoom('!room:test.frame.local', '@alice:test.frame.local', longName),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'M_BAD_JSON',
+    });
+
+    expect(mockUpdateRoomName).not.toHaveBeenCalled();
+  });
+});
+
+// ── updateSettings() ──
+
+describe('updateSettings', () => {
+  it('updates settings when requester is a member', async () => {
+    mockIsRoomMember.mockResolvedValue(true);
+    mockPoolQuery.mockResolvedValue({ rows: [{ settings: {} }] });
+    mockUpdateRoomSettings.mockResolvedValue({
+      room_id: '!room:test.frame.local',
+      settings: { disappearingMessages: { enabled: true, ttl: 3600 } },
+    });
+
+    const result = await updateSettings(
+      '!room:test.frame.local',
+      '@alice:test.frame.local',
+      { disappearingMessages: { enabled: true, ttl: 3600 } },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.settings).toEqual({ disappearingMessages: { enabled: true, ttl: 3600 } });
+  });
+
+  it('throws 403 when requester is not a member', async () => {
+    mockIsRoomMember.mockResolvedValue(false);
+
+    await expect(
+      updateSettings('!room:test.frame.local', '@outsider:test.frame.local', { theme: 'dark' }),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'M_FORBIDDEN',
+    });
+
+    expect(mockUpdateRoomSettings).not.toHaveBeenCalled();
+  });
+
+  it('merges new settings with existing ones', async () => {
+    mockIsRoomMember.mockResolvedValue(true);
+    mockPoolQuery.mockResolvedValue({ rows: [{ settings: { existingKey: 'value' } }] });
+    mockUpdateRoomSettings.mockResolvedValue({
+      room_id: '!room:test.frame.local',
+      settings: { existingKey: 'value', newKey: 'newValue' },
+    });
+
+    const result = await updateSettings(
+      '!room:test.frame.local',
+      '@alice:test.frame.local',
+      { newKey: 'newValue' },
+    );
+
+    expect(result.success).toBe(true);
+    // Verify that dbUpdateRoomSettings was called with merged settings
+    expect(mockUpdateRoomSettings).toHaveBeenCalledWith(
+      '!room:test.frame.local',
+      expect.objectContaining({ existingKey: 'value', newKey: 'newValue' }),
+    );
+  });
+
+  it('handles disappearing messages settings', async () => {
+    mockIsRoomMember.mockResolvedValue(true);
+    mockPoolQuery.mockResolvedValue({ rows: [{ settings: {} }] });
+    const dmSettings = { disappearingMessages: { enabled: true, ttl: 86400 } };
+    mockUpdateRoomSettings.mockResolvedValue({
+      room_id: '!room:test.frame.local',
+      settings: dmSettings,
+    });
+
+    const result = await updateSettings(
+      '!room:test.frame.local',
+      '@alice:test.frame.local',
+      dmSettings,
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockUpdateRoomSettings).toHaveBeenCalledWith(
+      '!room:test.frame.local',
+      expect.objectContaining(dmSettings),
+    );
+  });
+});
+
+// ── leaveRoom() ──
+
+describe('leaveRoom', () => {
+  it('removes member and returns success', async () => {
+    mockIsRoomMember.mockResolvedValue(true);
+    mockRemoveRoomMember.mockResolvedValue(true);
+
+    const result = await leaveRoom('!room:test.frame.local', '@alice:test.frame.local');
+
+    expect(result.success).toBe(true);
+    expect(mockRemoveRoomMember).toHaveBeenCalledWith('!room:test.frame.local', '@alice:test.frame.local');
+  });
+
+  it('throws 403 when user is not a member', async () => {
+    mockIsRoomMember.mockResolvedValue(false);
+
+    await expect(
+      leaveRoom('!room:test.frame.local', '@outsider:test.frame.local'),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'M_FORBIDDEN',
+    });
+
+    expect(mockRemoveRoomMember).not.toHaveBeenCalled();
+  });
+
+  it('throws 404 when removeRoomMember returns false', async () => {
+    mockIsRoomMember.mockResolvedValue(true);
+    mockRemoveRoomMember.mockResolvedValue(false);
+
+    await expect(
+      leaveRoom('!room:test.frame.local', '@alice:test.frame.local'),
+    ).rejects.toMatchObject({
+      statusCode: 404,
+      code: 'M_NOT_FOUND',
+    });
   });
 });
