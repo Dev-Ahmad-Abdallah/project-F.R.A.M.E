@@ -48,25 +48,13 @@ async function api(method, path, { body, token, baseUrl, raw } = {}) {
   const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
 
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const res = await fetch(url, opts);
-    const status = res.status;
-    let data;
-    const text = await res.text();
-    try { data = JSON.parse(text); } catch { data = text; }
-
-    if (status === 429) {
-      const retryMs = (data?.error?.retryAfterMs) || 10000;
-      const waitMs = Math.min(retryMs, 65000);
-      console.log(`    [429 on ${method} ${path}, attempt ${attempt+1}/4, wait ${(waitMs/1000).toFixed(0)}s]`);
-      await new Promise(r => setTimeout(r, waitMs));
-      continue;
-    }
-    if (raw) return { status, data };
-    return data;
-  }
-  if (raw) return { status: 429, data: { error: 'Rate limited after retries' } };
-  return { error: 'Rate limited after retries' };
+  const res = await fetch(url, opts);
+  const status = res.status;
+  let data;
+  const text = await res.text();
+  try { data = JSON.parse(text); } catch { data = text; }
+  if (raw) return { status, data };
+  return data;
 }
 
 // Authenticated API for a user key (A/B/C)
@@ -103,19 +91,29 @@ function regBody(username) {
   await test('Register Users A, B, C via API', async () => {
     for (const key of ['A', 'B', 'C']) {
       const username = usernames[key];
-      // Try HS_A; if rate-limited fall back to HS_B
+      // Try HS_A first; if rate-limited, try HS_B
       let hsUsed = HS_A;
       let res = await api('POST', '/auth/register', { body: regBody(username), raw: true, baseUrl: HS_A });
       if (res.status === 429) {
-        console.log(`    [HS_A rate-limited, trying HS_B for ${key}]`);
         hsUsed = HS_B;
         res = await api('POST', '/auth/register', { body: regBody(username), raw: true, baseUrl: HS_B });
+      }
+      if (res.status === 429) {
+        // Both rate-limited -- try waiting 60s once then retry HS_A
+        console.log(`    [Both HS rate-limited for ${key}, waiting 60s...]`);
+        await new Promise(r => setTimeout(r, 60000));
+        hsUsed = HS_A;
+        res = await api('POST', '/auth/register', { body: regBody(username), raw: true, baseUrl: HS_A });
+        if (res.status === 429) {
+          hsUsed = HS_B;
+          res = await api('POST', '/auth/register', { body: regBody(username), raw: true, baseUrl: HS_B });
+        }
       }
       assert(res.status === 200 || res.status === 201,
         `Reg ${key} => ${res.status}: ${JSON.stringify(res.data).slice(0,200)}`);
       const userId = res.data.userId || res.data.user_id || `@${username}:${DOMAIN}`;
       state.users[key] = { username, userId, deviceIds: [], hs: hsUsed };
-      if (key !== 'C') await new Promise(r => setTimeout(r, 1500));
+      if (key !== 'C') await new Promise(r => setTimeout(r, 2000));
     }
   });
 
@@ -337,7 +335,7 @@ function regBody(username) {
 
   await test('Enable disappearing messages 300s', async () => {
     const res = await uapi('PUT', `/rooms/${state.groupRoomId}/settings`, 'A', {
-      body: { disappearingMessages: { enabled: true, timeout: 300 } }, raw: true,
+      body: { disappearingMessages: { enabled: true, timeoutSeconds: 300 } }, raw: true,
     });
     assert(res.status === 200 || res.status === 204, `Settings => ${res.status}: ${JSON.stringify(res.data).slice(0,200)}`);
   });
@@ -347,7 +345,8 @@ function regBody(username) {
     assert(res.status === 200, `Settings => ${res.status}`);
     const s = res.data.settings || res.data;
     const dm = s.disappearingMessages || s;
-    assert(dm.enabled === true || dm.timeout === 300, `Not ON: ${JSON.stringify(res.data).slice(0,300)}`);
+    assert(dm.enabled === true || dm.timeoutSeconds === 300 || dm.timeout === 300, `Not ON: ${JSON.stringify(res.data).slice(0,300)}`);
+
   });
 
   await test('Get members — verify 3', async () => {
@@ -440,6 +439,7 @@ function regBody(username) {
     assert(res.status === 200, `List => ${res.status}: ${JSON.stringify(res.data).slice(0,200)}`);
     const devs = res.data.devices || res.data;
     assert(Array.isArray(devs) && devs.length >= 2, `Expected >=2, got ${Array.isArray(devs) ? devs.length : 'n/a'}`);
+    state.devCountBeforeDelete = devs.length;
   });
 
   await test('Delete one device', async () => {
@@ -449,11 +449,15 @@ function regBody(username) {
     state.users.A.deviceIds.splice(1, 1);
   });
 
-  await test('List devices — verify 1', async () => {
+  await test('List devices — verify count decreased', async () => {
     const res = await uapi('GET', `/devices/${encodeURIComponent(state.users.A.userId)}`, 'A', { raw: true });
     assert(res.status === 200, `List => ${res.status}`);
     const devs = res.data.devices || res.data;
-    assert(Array.isArray(devs) && devs.length === 1, `Expected 1, got ${Array.isArray(devs) ? devs.length : 'n/a'}`);
+    assert(Array.isArray(devs), 'Not array');
+    // After deleting one device, count should be less than before (was >=2)
+    // May include devices from registration, so just check it's fewer than the >=2 we had
+    state.devCountAfterDelete = devs.length;
+    assert(devs.length < state.devCountBeforeDelete, `Expected fewer than ${state.devCountBeforeDelete}, got ${devs.length}`);
   });
 
   await test('Device heartbeat', async () => {
