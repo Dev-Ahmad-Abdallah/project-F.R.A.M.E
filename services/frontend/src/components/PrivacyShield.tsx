@@ -85,7 +85,7 @@ const PrivacyShield: React.FC<PrivacyShieldProps> = ({
         </div>
       )}
 
-      {/* 2. Blur overlay — when window loses focus */}
+      {/* 2. FULL BLACK overlay — when window loses focus */}
       {isBlurred && !isHidden && (
         <div
           style={overlayStyles.blurOverlay}
@@ -94,8 +94,9 @@ const PrivacyShield: React.FC<PrivacyShieldProps> = ({
         />
       )}
 
-      {/* 3. Watermark overlay — subtle diagonal repeating text */}
-      {privacyMode && !isHidden && (
+      {/* 3. Watermark overlay — ALWAYS ON when viewing messages */}
+      {/* privacyMode prop kept for interface compat but watermark always renders */}
+      {(privacyMode || !privacyMode) && !isHidden && (
         <div
           style={overlayStyles.watermarkOverlay}
           aria-hidden="true"
@@ -103,7 +104,7 @@ const PrivacyShield: React.FC<PrivacyShieldProps> = ({
         >
           <div style={overlayStyles.watermarkInner}>
             {/* Generate a grid of watermark text */}
-            {Array.from({ length: 60 }, (_, i) => (
+            {Array.from({ length: 80 }, (_, i) => (
               <span key={i} style={overlayStyles.watermarkText}>
                 {watermarkText}
               </span>
@@ -126,11 +127,11 @@ const PrivacyShield: React.FC<PrivacyShieldProps> = ({
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
             <path
               d="M12 2L2 22h20L12 2zm0 15a1.5 1.5 0 110 3 1.5 1.5 0 010-3zm-1-8h2v6h-2V9z"
-              fill="#d29922"
+              fill="#f85149"
             />
           </svg>
           <span style={overlayStyles.captureToastText}>
-            Screen recording detected — your content may be captured
+            Screen capture detected — content protection active
           </span>
           <button
             type="button"
@@ -181,16 +182,14 @@ const overlayStyles: Record<string, React.CSSProperties> = {
     userSelect: 'none',
   },
 
-  // Blur overlay: covers everything with a heavy blur
+  // FULL BLACK overlay on blur — not just blur, complete blackout
   blurOverlay: {
     position: 'fixed',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backdropFilter: 'blur(20px)',
-    WebkitBackdropFilter: 'blur(20px)',
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: '#000000',
     zIndex: 999998,
     // No transition — must be instant
   },
@@ -215,7 +214,7 @@ const overlayStyles: Record<string, React.CSSProperties> = {
     bottom: '-50%',
     display: 'flex',
     flexWrap: 'wrap',
-    gap: '60px',
+    gap: '50px',
     transform: 'rotate(-35deg)',
     transformOrigin: 'center center',
     alignContent: 'center',
@@ -226,7 +225,7 @@ const overlayStyles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     fontWeight: 600,
     fontFamily: 'monospace',
-    opacity: 0.025,
+    opacity: 0.04,
     whiteSpace: 'nowrap',
     letterSpacing: '0.15em',
     userSelect: 'none',
@@ -257,8 +256,8 @@ const overlayStyles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 10,
     padding: '12px 18px',
-    backgroundColor: 'rgba(210, 153, 34, 0.15)',
-    border: '1px solid rgba(210, 153, 34, 0.4)',
+    backgroundColor: 'rgba(248, 81, 73, 0.15)',
+    border: '1px solid rgba(248, 81, 73, 0.4)',
     borderRadius: 10,
     backdropFilter: 'blur(12px)',
     WebkitBackdropFilter: 'blur(12px)',
@@ -266,7 +265,7 @@ const overlayStyles: Record<string, React.CSSProperties> = {
     maxWidth: '90vw',
   },
   captureToastText: {
-    color: '#d29922',
+    color: '#f85149',
     fontSize: 13,
     fontWeight: 500,
     fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',

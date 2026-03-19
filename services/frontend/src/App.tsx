@@ -28,12 +28,10 @@ import NewChatDialog from './components/NewChatDialog';
 import DeviceAlert from './devices/deviceAlert';
 import type { UnknownDeviceInfo } from './devices/deviceAlert';
 import DeviceVerificationGate, {
-  UnverifiedDeviceBanner,
   deviceNeedsVerification,
-  isDeviceSkipped,
   setDeviceVerified,
-  setDeviceSkipped,
 } from './devices/DeviceVerificationGate';
+import { listDevices as listUserDevices } from './api/devicesAPI';
 import KeyChangeAlert from './verification/keyChangeAlert';
 import type { KeyChangeAction } from './verification/keyChangeAlert';
 import { getAccessToken, setApiToastCallback, setSessionExpiredCallback, clearTokens } from './api/client';
@@ -184,9 +182,8 @@ function App() {
   // Settings: dismissible device verification banner
   const [settingsVerifyBannerDismissed, setSettingsVerifyBannerDismissed] = useState(false);
 
-  // Device verification gate: blocks new/unverified devices until verified or skipped
+  // Device verification gate: blocks new/unverified devices until verified
   const [showDeviceGate, setShowDeviceGate] = useState(false);
-  const [showUnverifiedBanner, setShowUnverifiedBanner] = useState(false);
 
   // Modal overlay state
   const [deviceAlertInfo, setDeviceAlertInfo] =
@@ -576,11 +573,24 @@ function App() {
         if (!cancelled) {
           setInitPhase('done');
 
-          // Check device verification status on each app load
+          // Check device verification status on each app load.
+          // If this is the user's only device, auto-verify it (no gate needed).
+          // If there are other devices, the gate blocks until verification.
           if (deviceNeedsVerification(currentAuth.deviceId)) {
-            setShowDeviceGate(true);
-          } else if (isDeviceSkipped(currentAuth.deviceId)) {
-            setShowUnverifiedBanner(true);
+            try {
+              const deviceListResp = await listUserDevices(currentAuth.userId);
+              const deviceCount = deviceListResp.devices?.length ?? 0;
+              if (deviceCount <= 1) {
+                // First/only device — auto-verify, no gate
+                setDeviceVerified(currentAuth.deviceId);
+              } else {
+                // Multiple devices — must verify
+                setShowDeviceGate(true);
+              }
+            } catch {
+              // If device list fetch fails, show the gate to be safe
+              setShowDeviceGate(true);
+            }
           }
         }
       } catch (err) {
@@ -1212,7 +1222,6 @@ function App() {
                     }
                     // Mark current device as verified in localStorage
                     setDeviceVerified(auth.deviceId);
-                    setShowUnverifiedBanner(false);
                     setShowDeviceGate(false);
                   } catch (err) {
                     console.error('Failed to verify linked device:', err);
@@ -1387,15 +1396,7 @@ function App() {
       {/* Toast notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
-      {/* Unverified device warning banner */}
-      {showUnverifiedBanner && !auth.guest && (
-        <UnverifiedDeviceBanner
-          onVerify={() => {
-            setShowUnverifiedBanner(false);
-            setActiveView('link-device');
-          }}
-        />
-      )}
+
 
       {/* Guest mode banner */}
       {auth.guest && (
@@ -1730,11 +1731,6 @@ function App() {
           onVerify={() => {
             setShowDeviceGate(false);
             setActiveView('link-device');
-          }}
-          onSkip={() => {
-            setDeviceSkipped(auth.deviceId);
-            setShowDeviceGate(false);
-            setShowUnverifiedBanner(true);
           }}
         />
       )}

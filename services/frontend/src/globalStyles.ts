@@ -800,11 +800,22 @@ body {
   }
 }
 
-/* Screenshot & copy protection for message content */
+/* Screenshot & copy protection for message content — DRM-style */
 .frame-message-content, .frame-msg-bubble {
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
+  -webkit-filter: none;
+  mix-blend-mode: screen;
+}
+/* Text rendered via shadow trick — screenshots may capture transparent instead of shadow */
+.frame-msg-bubble .frame-msg-text {
+  color: transparent !important;
+  text-shadow: 0 0 0 #c9d1d9;
+}
+.frame-msg-bubble .frame-msg-text-own {
+  color: transparent !important;
+  text-shadow: 0 0 0 #ffffff;
 }
 .frame-message-content img, .frame-msg-bubble img {
   -webkit-user-drag: none;
