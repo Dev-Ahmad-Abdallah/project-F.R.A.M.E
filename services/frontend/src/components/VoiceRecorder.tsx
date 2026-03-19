@@ -162,13 +162,16 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onCancel }) => {
     setErrorMsg('');
     chunksRef.current = [];
 
-    // Always try getUserMedia directly — the Permission API for microphone
-    // is unreliable across browsers (may report 'denied' when it's actually
-    // 'prompt'). Let the browser handle the permission prompt natively.
+    // Suppress the screen protection blur overlay while the browser's
+    // permission dialog is open (it steals focus, triggering blur).
+    (window as unknown as Record<string, unknown>).__framePermissionPending = true;
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      (window as unknown as Record<string, unknown>).__framePermissionPending = false;
       beginRecordingWithStream(stream);
     } catch (err: unknown) {
+      (window as unknown as Record<string, unknown>).__framePermissionPending = false;
       cleanup();
       if (!mountedRef.current) return;
       setState('error');
