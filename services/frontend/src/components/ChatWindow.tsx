@@ -1315,7 +1315,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       if (isViewOnce && isHiddenOnce && !isOwn) {
         elements.push(
-          <div key={event.eventId} style={{ ...styles.messageBubble, maxWidth: 'clamp(200px, 75%, 600px)', ...styles.otherMessage, opacity: 0.5, alignSelf: 'flex-start' as const }}>
+          <div key={event.eventId} style={{ ...styles.messageBubble, maxWidth: isMobile ? '85%' : 'clamp(200px, 75%, 600px)', ...styles.otherMessage, opacity: 0.5, alignSelf: 'flex-start' as const }}>
             <div style={styles.messageBody}>
               <span style={styles.viewOnceIcon} title="View-once message">&#128065;</span>
               <span style={{ fontStyle: 'italic', color: '#8b949e' }}>Viewed</span>
@@ -1599,8 +1599,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   return (
     <div style={styles.container}>
-      {/* Room header */}
-      <div style={{ ...styles.header, padding: 'clamp(6px, 1vw, 10px) clamp(10px, 1.2vw, 14px)' }}>
+      {/* Room header -- compact on mobile (item 2) */}
+      <div style={{ ...styles.header, padding: isMobile ? '6px 8px' : 'clamp(6px, 1vw, 10px) clamp(10px, 1.2vw, 14px)' }}>
         <div style={styles.headerLeft}>
           <div style={styles.headerNameRow}>
             {roomType === 'group' && memberUserIds.length > 0 && (
@@ -1706,7 +1706,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               </span>
             )}
           </div>
-          <div style={styles.headerSubRow}>
+          <div style={{ ...styles.headerSubRow, ...(isMobile ? { flexWrap: 'nowrap' as const, overflow: 'hidden', gap: 4 } : {}) }}>
             <span style={styles.encryptionBadge} title="F.R.A.M.E. end-to-end encryption enabled">F.R.A.M.E. E2EE</span>
             {/* Password-protected badge */}
             {roomType === 'group' && (
@@ -1792,14 +1792,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
       </div>
 
-      {/* ── Feature: Search bar ── */}
+      {/* ── Feature: Search bar — full-width on mobile (item 13) ── */}
       {showSearch && (
-        <div style={styles.searchBar}>
+        <div style={{ ...styles.searchBar, ...(isMobile ? { position: 'relative' as const, zIndex: 50, padding: '8px 10px' } : {}) }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
           <input
             ref={searchInputRef}
             type="text"
-            style={styles.searchInput}
+            style={{ ...styles.searchInput, ...(isMobile ? { fontSize: 16, padding: '8px 8px' } : {}) }}
             placeholder="Search messages..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -1811,7 +1811,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               {filteredMessages.length} result{filteredMessages.length !== 1 ? 's' : ''}
             </span>
           )}
-          <button type="button" style={styles.searchCloseButton} onClick={() => { setShowSearch(false); setSearchQuery(''); }} aria-label="Close search">
+          <button type="button" style={{ ...styles.searchCloseButton, ...(isMobile ? { minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' } : {}) }} onClick={() => { setShowSearch(false); setSearchQuery(''); }} aria-label="Close search">
             &#10005;
           </button>
         </div>
@@ -1874,7 +1874,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         {renderWelcome()}
         {renderedMessages}
         {optimisticMessages.map((om) => (
-          <div key={om.id} style={{ ...styles.messageBubble, maxWidth: 'clamp(200px, 75%, 600px)', ...styles.ownMessage, ...(om.status === 'sending' ? styles.optimisticSending : {}), ...(om.status === 'failed' ? styles.optimisticFailed : {}), alignSelf: 'flex-end' as const, ...(recentlySentIds.has(om.id) ? { animation: 'frame-msg-slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}) }}>
+          <div key={om.id} style={{ ...styles.messageBubble, ...(isMobile ? { maxWidth: '85%', padding: '10px 14px', fontSize: 'clamp(14px, 3.8vw, 16px)' } : { maxWidth: 'clamp(200px, 75%, 600px)' }), ...styles.ownMessage, ...(om.status === 'sending' ? styles.optimisticSending : {}), ...(om.status === 'failed' ? styles.optimisticFailed : {}), alignSelf: 'flex-end' as const, ...(recentlySentIds.has(om.id) ? { animation: 'frame-msg-slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}) }}>
             <div style={styles.messageBody}>
               <span>{DOMPurify.sanitize(om.body, PURIFY_CONFIG)}</span>
             </div>
@@ -1888,12 +1888,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
         ))}
         {typingUsers.length > 0 && (
-          <div style={{ ...styles.typingIndicator, display: 'flex' }} aria-label="Typing indicator">
-            <div style={styles.typingDot} />
-            <div style={{ ...styles.typingDot, animationDelay: '0.2s' }} />
-            <div style={{ ...styles.typingDot, animationDelay: '0.4s' }} />
-            <span style={{ fontSize: 11, color: '#8b949e', marginLeft: 4 }}>
-              {typingUsers.map((u) => formatDisplayName(u)).join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing...
+          <div className={isMobile ? 'frame-typing-compact' : ''} style={{ ...styles.typingIndicator, display: 'flex', ...(isMobile ? { padding: '2px 6px', minHeight: 16 } : {}) }} aria-label="Typing indicator">
+            <div style={{ ...styles.typingDot, ...(isMobile ? { width: 5, height: 5 } : {}) }} />
+            <div style={{ ...styles.typingDot, animationDelay: '0.2s', ...(isMobile ? { width: 5, height: 5 } : {}) }} />
+            <div style={{ ...styles.typingDot, animationDelay: '0.4s', ...(isMobile ? { width: 5, height: 5 } : {}) }} />
+            <span style={{ fontSize: isMobile ? 10 : 11, color: '#8b949e', marginLeft: 4 }}>
+              {isMobile
+                ? `${typingUsers.map((u) => formatDisplayName(u)).join(', ')} typing...`
+                : `${typingUsers.map((u) => formatDisplayName(u)).join(', ')} ${typingUsers.length === 1 ? 'is' : 'are'} typing...`
+              }
             </span>
           </div>
         )}
@@ -1903,21 +1906,21 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       </div>
 
       {showNewMessagesPill && (
-        <button type="button" style={styles.newMessagesPill} onClick={scrollToBottom}>New messages</button>
+        <button type="button" className="frame-new-messages-pill" style={{ ...styles.newMessagesPill, ...(isMobile ? { bottom: 70 } : {}) }} onClick={scrollToBottom}>New messages</button>
       )}
 
-      {/* Reply preview bar */}
+      {/* Reply preview bar — compact on mobile (item 11) */}
       {replyTo && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderTop: '1px solid #30363d', backgroundColor: '#1c2128' }}>
+        <div className={isMobile ? 'frame-reply-preview-mobile' : ''} style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 8, padding: isMobile ? '4px 10px' : '6px 12px', borderTop: '1px solid #30363d', backgroundColor: '#1c2128' }}>
           <div style={{ flex: 1, borderLeft: `3px solid ${isAnonymous ? '#bc8cff' : getAvatarColor(replyTo.senderId)}`, paddingLeft: 8, overflow: 'hidden' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: isAnonymous ? '#bc8cff' : getAvatarColor(replyTo.senderId), marginBottom: 1 }}>
+            <div style={{ fontSize: isMobile ? 10 : 11, fontWeight: 600, color: isAnonymous ? '#bc8cff' : getAvatarColor(replyTo.senderId), marginBottom: 1 }}>
               {DOMPurify.sanitize(isAnonymous ? 'Anonymous' : formatDisplayName(replyTo.senderId), PURIFY_CONFIG)}
             </div>
-            <div style={{ fontSize: 12, color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
-              {DOMPurify.sanitize(replyTo.body.length > 100 ? replyTo.body.slice(0, 100) + '...' : replyTo.body, PURIFY_CONFIG)}
+            <div className="frame-reply-body" style={{ fontSize: isMobile ? 11 : 12, color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, maxWidth: isMobile ? 'calc(100vw - 80px)' : undefined }}>
+              {DOMPurify.sanitize(replyTo.body.length > (isMobile ? 60 : 100) ? replyTo.body.slice(0, isMobile ? 60 : 100) + '...' : replyTo.body, PURIFY_CONFIG)}
             </div>
           </div>
-          <button type="button" onClick={handleCancelReply} style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: 16, cursor: 'pointer', padding: '2px 6px', borderRadius: 4, lineHeight: 1, fontFamily: 'inherit', flexShrink: 0 }} title="Cancel reply" aria-label="Cancel reply">
+          <button type="button" onClick={handleCancelReply} style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: 16, cursor: 'pointer', padding: '2px 6px', borderRadius: 4, lineHeight: 1, fontFamily: 'inherit', flexShrink: 0, minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Cancel reply" aria-label="Cancel reply">
             &#10005;
           </button>
         </div>
@@ -1930,10 +1933,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           <button type="button" title="File sharing coming soon" aria-label="Attach file (coming soon)" style={{ background: 'none', border: 'none', cursor: 'default', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.35, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.49" /></svg>
           </button>
-          {/* View-once toggle with pill badge */}
-          <button type="button" onClick={() => setViewOnceMode((v) => !v)} title={viewOnceMode ? 'View-once enabled' : 'Enable view-once mode'} aria-label="Toggle view-once mode" style={{ background: viewOnceMode ? 'rgba(217,158,36,0.2)' : 'none', border: 'none', cursor: 'pointer', padding: viewOnceMode ? '3px 10px 3px 6px' : '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2, borderRadius: 12, transition: 'background-color 0.15s, padding 0.15s' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={viewOnceMode ? '#d99e24' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
-            {viewOnceMode && <span style={{ fontSize: 10, fontWeight: 700, color: '#d99e24', letterSpacing: 0.3, whiteSpace: 'nowrap' as const }}>View Once</span>}
+          {/* View-once toggle with pill badge — compact on mobile */}
+          <button type="button" onClick={() => setViewOnceMode((v) => !v)} title={viewOnceMode ? 'View-once enabled' : 'Enable view-once mode'} aria-label="Toggle view-once mode" style={{ background: viewOnceMode ? 'rgba(217,158,36,0.2)' : 'none', border: 'none', cursor: 'pointer', padding: viewOnceMode ? (isMobile ? '2px 6px 2px 4px' : '3px 10px 3px 6px') : (isMobile ? '4px' : '6px'), display: 'flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 2 : 4, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2, borderRadius: 12, transition: 'background-color 0.15s, padding 0.15s' }}>
+            <svg width={isMobile ? '14' : '16'} height={isMobile ? '14' : '16'} viewBox="0 0 24 24" fill="none" stroke={viewOnceMode ? '#d99e24' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+            {viewOnceMode && !isMobile && <span style={{ fontSize: 10, fontWeight: 700, color: '#d99e24', letterSpacing: 0.3, whiteSpace: 'nowrap' as const }}>View Once</span>}
           </button>
           {/* Textarea */}
           {/* eslint-disable-next-line security/detect-object-injection */}
@@ -1942,12 +1945,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           {inputValue.length > 500 && (
             <span style={{ position: 'absolute' as const, bottom: 6, right: inputValue.trim() ? 88 : 44, fontSize: 10, color: inputValue.length > 4500 ? '#f85149' : '#8b949e', fontFamily: 'inherit', pointerEvents: 'none' as const, transition: 'color 0.2s' }} aria-live="polite">{inputValue.length}/5000</span>
           )}
-          {/* Emoji picker */}
+          {/* Emoji picker — bottom sheet on mobile, popover on desktop */}
           <div ref={emojiPickerRef} style={{ position: 'relative' as const, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2 }}>
-            <button type="button" onClick={() => setShowEmojiPicker((v) => !v)} title="Insert emoji" aria-label="Emoji picker" style={{ background: showEmojiPicker ? 'rgba(88,166,255,0.15)' : 'none', border: 'none', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, transition: 'background-color 0.15s' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={showEmojiPicker ? '#58a6ff' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
+            <button type="button" onClick={() => { if (isMobile) { setShowMobileEmojiSheet((v) => !v); } else { setShowEmojiPicker((v) => !v); } }} title="Insert emoji" aria-label="Emoji picker" style={{ background: (showEmojiPicker || showMobileEmojiSheet) ? 'rgba(88,166,255,0.15)' : 'none', border: 'none', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, transition: 'background-color 0.15s' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={(showEmojiPicker || showMobileEmojiSheet) ? '#58a6ff' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
             </button>
-            {showEmojiPicker && (
+            {!isMobile && showEmojiPicker && (
               <div style={{ position: 'absolute' as const, bottom: 40, right: 0, backgroundColor: '#1c2128', border: '1px solid #30363d', borderRadius: 12, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.45)', zIndex: 1000, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 2, width: 228 }}>
                 {CHAT_EMOJIS.map((em) => (
                   <button key={em} type="button" onClick={() => insertEmojiAtCursor(em)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', padding: 4, borderRadius: 6, lineHeight: 1.2, transition: 'background-color 0.1s' }} onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(88,166,255,0.15)'; }} onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'; }}>{em}</button>
@@ -1955,27 +1958,46 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               </div>
             )}
           </div>
-          {/* Send button — only when text exists */}
+          {/* Send button — only when text exists. 44px min touch target on mobile */}
           {inputValue.trim() && (
-            <button style={{ padding: isMobile ? '8px 10px' : '6px 14px', borderRadius: 18, border: 'none', backgroundColor: '#58a6ff', color: '#fff', fontSize: 13, fontWeight: 600, cursor: isSending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background-color 0.15s, opacity 0.15s', alignSelf: 'flex-end', flexShrink: 0, marginBottom: 2, opacity: isSending ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4, ...(sendButtonAnimating ? { animation: 'frame-send-launch 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)' } : {}) }} onClick={() => void handleSend()} disabled={isSending} aria-label="Send message">
+            <button style={{ padding: isMobile ? '10px 12px' : '6px 14px', borderRadius: 18, border: 'none', backgroundColor: '#58a6ff', color: '#fff', fontSize: 13, fontWeight: 600, cursor: isSending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background-color 0.15s, opacity 0.15s', alignSelf: 'flex-end', flexShrink: 0, marginBottom: 2, opacity: isSending ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, minWidth: isMobile ? 44 : undefined, minHeight: isMobile ? 44 : undefined, ...(sendButtonAnimating ? { animation: 'frame-send-launch 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)' } : {}) }} onClick={() => void handleSend()} disabled={isSending} aria-label="Send message">
               {isMobile ? (isSending ? (<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 14" /></svg>) : (<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>)) : (isSending ? 'Sending...' : 'Send')}
             </button>
           )}
         </div>
       </div>
 
+      {/* Context menu: bottom sheet on mobile, fixed dropdown on desktop */}
       {contextMenuEventId && contextMenuPos && (
-        <div style={{ ...styles.contextMenu, top: contextMenuPos.y, left: contextMenuPos.x }}>
-          <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#c9d1d9' }} onClick={() => handleReplyToMessage(contextMenuEventId)}>Reply</button>
-          <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#c9d1d9' }} onClick={() => void handleForwardMessage(contextMenuEventId)}>Forward</button>
-          <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#c9d1d9' }} onClick={() => handleCopyText(contextMenuEventId)}>Copy Text</button>
-          <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#d29922' }} onClick={() => void handleTogglePin(contextMenuEventId)}>
-            {pinnedEventIds.includes(contextMenuEventId) ? 'Unpin' : 'Pin'}
-          </button>
-          {messages.find((m) => m.event.eventId === contextMenuEventId)?.event.senderId === currentUserId && (
-            <button type="button" className="frame-context-menu-item" style={styles.contextMenuItem} onClick={() => void handleDeleteMessage(contextMenuEventId)}>Delete</button>
-          )}
-        </div>
+        isMobile ? (
+          <>
+            <div style={{ position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9998, animation: 'frame-overlay-fade-in 0.2s ease-out' }} onClick={() => { setContextMenuEventId(null); setContextMenuPos(null); }} />
+            <div style={{ position: 'fixed' as const, bottom: 0, left: 0, right: 0, backgroundColor: '#21262d', borderTop: '1px solid #30363d', borderRadius: '16px 16px 0 0', padding: '8px 0', paddingBottom: 'env(safe-area-inset-bottom, 8px)', zIndex: 9999, animation: 'frame-bottom-sheet-slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1)', boxShadow: '0 -4px 24px rgba(0,0,0,0.4)' }}>
+              <div style={{ width: 36, height: 4, backgroundColor: '#484f58', borderRadius: 2, margin: '4px auto 12px' }} />
+              <button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: '#c9d1d9', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => handleReplyToMessage(contextMenuEventId)}>Reply</button>
+              <button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: '#c9d1d9', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => void handleForwardMessage(contextMenuEventId)}>Forward</button>
+              <button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: '#c9d1d9', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => handleCopyText(contextMenuEventId)}>Copy Text</button>
+              <button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: '#d29922', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => void handleTogglePin(contextMenuEventId)}>
+                {pinnedEventIds.includes(contextMenuEventId) ? 'Unpin' : 'Pin'}
+              </button>
+              {messages.find((m) => m.event.eventId === contextMenuEventId)?.event.senderId === currentUserId && (
+                <button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: '#f85149', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => void handleDeleteMessage(contextMenuEventId)}>Delete</button>
+              )}
+            </div>
+          </>
+        ) : (
+          <div style={{ ...styles.contextMenu, top: contextMenuPos.y, left: contextMenuPos.x }}>
+            <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#c9d1d9' }} onClick={() => handleReplyToMessage(contextMenuEventId)}>Reply</button>
+            <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#c9d1d9' }} onClick={() => void handleForwardMessage(contextMenuEventId)}>Forward</button>
+            <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#c9d1d9' }} onClick={() => handleCopyText(contextMenuEventId)}>Copy Text</button>
+            <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#d29922' }} onClick={() => void handleTogglePin(contextMenuEventId)}>
+              {pinnedEventIds.includes(contextMenuEventId) ? 'Unpin' : 'Pin'}
+            </button>
+            {messages.find((m) => m.event.eventId === contextMenuEventId)?.event.senderId === currentUserId && (
+              <button type="button" className="frame-context-menu-item" style={styles.contextMenuItem} onClick={() => void handleDeleteMessage(contextMenuEventId)}>Delete</button>
+            )}
+          </div>
+        )
       )}
 
       {/* Forward room picker dialog */}
@@ -2013,6 +2035,46 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             <button key={emoji} type="button" style={styles.reactionPickerEmoji} onClick={() => void handleReact(reactionPickerEventId, emoji)}>{emoji}</button>
           ))}
         </div>
+      )}
+
+      {/* ── Mobile "more" bottom sheet (item 4) ── */}
+      {isMobile && showMobileMoreMenu && (
+        <>
+          <div style={{ position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9998, animation: 'frame-overlay-fade-in 0.2s ease-out' }} onClick={() => setShowMobileMoreMenu(false)} />
+          <div style={{ position: 'fixed' as const, bottom: 0, left: 0, right: 0, backgroundColor: '#21262d', borderTop: '1px solid #30363d', borderRadius: '16px 16px 0 0', padding: '8px 0', paddingBottom: 'env(safe-area-inset-bottom, 8px)', zIndex: 9999, animation: 'frame-bottom-sheet-slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1)', boxShadow: '0 -4px 24px rgba(0,0,0,0.4)' }}>
+            <div style={{ width: 36, height: 4, backgroundColor: '#484f58', borderRadius: 2, margin: '4px auto 12px' }} />
+            <button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: disappearingSettings?.enabled ? '#d29922' : '#c9d1d9', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => { setShowMobileMoreMenu(false); setShowDisappearingMenu(!showDisappearingMenu); }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={disappearingSettings?.enabled ? '#d29922' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+              {disappearingSettings?.enabled ? 'Auto-delete ON' : 'Auto-delete'}
+            </button>
+            <button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: '#c9d1d9', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => { setShowMobileMoreMenu(false); onOpenSettings?.(); }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></svg>
+              Room Info
+            </button>
+            {onLeave && (
+              <button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: '#f85149', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => { setShowMobileMoreMenu(false); onLeave(); }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f85149" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+                Leave Conversation
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── Mobile emoji bottom sheet (item 6) ── */}
+      {isMobile && showMobileEmojiSheet && (
+        <>
+          <div style={{ position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9998, animation: 'frame-overlay-fade-in 0.2s ease-out' }} onClick={() => setShowMobileEmojiSheet(false)} />
+          <div style={{ position: 'fixed' as const, bottom: 0, left: 0, right: 0, backgroundColor: '#21262d', borderTop: '1px solid #30363d', borderRadius: '16px 16px 0 0', padding: '8px 12px', paddingBottom: 'env(safe-area-inset-bottom, 12px)', zIndex: 9999, animation: 'frame-bottom-sheet-slide-up 0.25s cubic-bezier(0.32, 0.72, 0, 1)', maxHeight: '45vh' }}>
+            <div style={{ width: 36, height: 4, backgroundColor: '#484f58', borderRadius: 2, margin: '4px auto 8px' }} />
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#8b949e', padding: '4px 4px 8px', textAlign: 'center' as const }}>Emoji</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4, padding: '8px 0' }}>
+              {CHAT_EMOJIS.map((em) => (
+                <button key={em} type="button" onClick={() => { insertEmojiAtCursor(em); setShowMobileEmojiSheet(false); }} style={{ background: 'none', border: 'none', fontSize: 26, cursor: 'pointer', padding: 8, borderRadius: 10, lineHeight: 1.2, minHeight: 48, minWidth: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{em}</button>
+              ))}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

@@ -452,6 +452,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                       fontFamily: 'inherit',
                       opacity: regeneratingCode ? 0.6 : 1,
                       transition: 'all 0.15s ease',
+                      ...(isMobile ? { minHeight: 44, fontSize: 13 } : {}),
                     }}
                     disabled={regeneratingCode}
                     onClick={() => {
@@ -581,6 +582,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                     backgroundColor: disappearingEnabled ? '#238636' : '#30363d',
                     opacity: updatingDisappearing ? 0.6 : 1,
                     cursor: updatingDisappearing ? 'not-allowed' : 'pointer',
+                    ...(isMobile ? { width: 52, height: 30, borderRadius: 15 } : {}),
                   }}
                   disabled={updatingDisappearing}
                   onClick={() => {
@@ -605,7 +607,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                   <div
                     style={{
                       ...styles.toggleKnob,
-                      transform: disappearingEnabled ? 'translateX(16px)' : 'translateX(0)',
+                      ...(isMobile ? { width: 24, height: 24 } : {}),
+                      transform: disappearingEnabled
+                        ? `translateX(${isMobile ? 22 : 16}px)`
+                        : 'translateX(0)',
                     }}
                   />
                 </button>
@@ -627,11 +632,13 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                     key={member.userId}
                     style={{
                       ...styles.memberItem,
+                      ...(isMobile ? { padding: '8px 0', gap: 8 } : {}),
                       animation: `frameRoomMemberFadeIn 0.3s ease-out ${index * 0.05}s both`,
                     }}
                   >
                     <div style={{
                       ...styles.memberAvatar,
+                      ...(isMobile ? { width: 28, height: 28, fontSize: 12 } : {}),
                       backgroundColor: `${avatarColor}22`,
                       color: avatarColor,
                       border: `1.5px solid ${avatarColor}44`,
@@ -639,7 +646,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                       {(member.displayName || member.userId).charAt(0).toUpperCase()}
                     </div>
                     <div style={styles.memberInfo}>
-                      <span style={styles.memberName}>
+                      <span style={{
+                        ...styles.memberName,
+                        ...(isMobile ? { fontSize: 13 } : {}),
+                      }}>
                         {DOMPurify.sanitize(member.displayName || member.userId, PURIFY_CONFIG)}
                       </span>
                       {member.userId === currentUserId && (
@@ -658,10 +668,16 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
             <div style={{ marginTop: 10 }}>
               {showInviteInput ? (
                 <div>
-                  <div style={styles.inlineEditRow}>
+                  <div style={{
+                    ...styles.inlineEditRow,
+                    ...(isMobile ? { flexDirection: 'column' as const, gap: 8 } : {}),
+                  }}>
                     <input
                       type="text"
-                      style={styles.renameInput}
+                      style={{
+                        ...styles.renameInput,
+                        ...(isMobile ? { width: '100%', minHeight: 44, fontSize: 15, padding: '10px 12px' } : {}),
+                      }}
                       placeholder="@user:server"
                       value={inviteUserId}
                       onChange={(e) => setInviteUserId(e.target.value)}
@@ -674,7 +690,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                     />
                     <button
                       type="button"
-                      style={styles.saveButton}
+                      style={{
+                        ...styles.saveButton,
+                        ...(isMobile ? { width: '100%', minHeight: 48, fontSize: 14 } : {}),
+                      }}
                       onClick={() => void handleInvite()}
                       disabled={isInviting || !inviteUserId.trim()}
                     >
@@ -688,7 +707,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
               ) : (
                 <button
                   type="button"
-                  style={styles.actionButton}
+                  style={{
+                    ...styles.actionButton,
+                    ...(isMobile ? { minHeight: 48, fontSize: 14 } : {}),
+                  }}
                   onClick={() => setShowInviteInput(true)}
                 >
                   + Invite Member
@@ -698,16 +720,26 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
           </div>
 
           {/* Leave Room */}
-          <div style={{ padding: '14px 0', borderBottom: 'none' }}>
+          <div style={{
+            padding: '14px 0',
+            borderBottom: 'none',
+            ...(isMobile ? { marginTop: 'auto', paddingBottom: 20 } : {}),
+          }}>
             {showLeaveConfirm ? (
               <div>
                 <div style={styles.confirmText}>
                   Are you sure you want to leave this room?
                 </div>
-                <div style={styles.confirmActions}>
+                <div style={{
+                  ...styles.confirmActions,
+                  ...(isMobile ? { flexDirection: 'column' as const, gap: 8 } : {}),
+                }}>
                   <button
                     type="button"
-                    style={styles.leaveConfirmButton}
+                    style={{
+                      ...styles.leaveConfirmButton,
+                      ...(isMobile ? { width: '100%', minHeight: 48, fontSize: 15, borderRadius: 8 } : {}),
+                    }}
                     onClick={() => void handleLeave()}
                     disabled={isLeaving}
                   >
@@ -715,7 +747,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                   </button>
                   <button
                     type="button"
-                    style={styles.cancelButton}
+                    style={{
+                      ...styles.cancelButton,
+                      ...(isMobile ? { width: '100%', minHeight: 48, fontSize: 15, borderRadius: 8 } : {}),
+                    }}
                     onClick={() => setShowLeaveConfirm(false)}
                     disabled={isLeaving}
                   >
@@ -726,7 +761,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
             ) : (
               <button
                 type="button"
-                style={styles.leaveButton}
+                style={{
+                  ...styles.leaveButton,
+                  ...(isMobile ? { minHeight: 48, fontSize: 15, borderRadius: 8 } : {}),
+                }}
                 onClick={() => setShowLeaveConfirm(true)}
               >
                 Leave Room

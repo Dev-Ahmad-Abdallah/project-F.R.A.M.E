@@ -482,7 +482,7 @@ input::placeholder { color: #8b949e; }
   }
 
   .frame-trust-signals > div > span {
-    font-size: 12px !important;
+    font-size: 14px !important;
     line-height: 1.3 !important;
   }
 
@@ -574,14 +574,23 @@ input::placeholder { color: #8b949e; }
     padding: 8px clamp(12px, 3vw, 20px) !important;
   }
 
-  /* ── Ensure no text is smaller than 14px ── */
-  p, span, a, button, li {
-    font-size: max(var(--_fs, 14px), 14px);
+  /* ── Ensure no body text is smaller than 14px on mobile ── */
+  .frame-landing-hero p,
+  .frame-landing-section p,
+  .frame-trust-signals span,
+  footer p,
+  footer span,
+  footer a {
+    font-size: 14px !important;
   }
 
-  /* Override specific small text */
-  footer p {
-    font-size: 14px !important;
+  /* Architecture diagram labels can be slightly smaller */
+  .frame-arch-diagram span {
+    font-size: 13px !important;
+  }
+
+  .frame-arch-arrow span {
+    font-size: 11px !important;
   }
 
   /* ── Guest CTA button: full width on mobile ── */

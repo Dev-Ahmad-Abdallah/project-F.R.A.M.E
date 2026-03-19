@@ -293,6 +293,10 @@ function App() {
           0% { opacity: 0; }
           100% { opacity: 1; }
         }
+        @keyframes frame-slide-up {
+          0% { opacity: 0; transform: translateY(100%); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
         @keyframes frame-gradient-shift {
           0% { background-position: 0% 50%; }
           50% { background-position: 100% 50%; }
@@ -783,62 +787,152 @@ function App() {
           <LandingPage onGetStarted={() => setCurrentPage('auth')} onTryAsGuest={() => void handleGuestLogin()} />
         </React.Suspense>
         {showInstallBanner && (
-          <div style={{
-            position: 'fixed',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 12,
-            padding: '12px 20px',
-            backgroundColor: '#161b22',
-            borderTop: '1px solid #30363d',
-            zIndex: 1000,
-            animation: 'frame-fade-in 0.3s ease-out',
-          }}>
-            <svg width="20" height="20" viewBox="0 0 64 64" fill="none">
-              <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="3" fill="rgba(88,166,255,0.08)" />
-              <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            </svg>
-            <span style={{ fontSize: 14, color: '#c9d1d9', fontFamily: 'system-ui, sans-serif' }}>
-              Install F.R.A.M.E. for offline access
-            </span>
-            <button
-              type="button"
-              onClick={() => void promptInstall()}
-              style={{
-                padding: '6px 16px',
-                fontSize: 13,
-                fontWeight: 600,
-                backgroundColor: '#58a6ff',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontFamily: 'system-ui, sans-serif',
-              }}
-            >
-              Install
-            </button>
-            <button
-              type="button"
+          <>
+            {/* Backdrop overlay */}
+            <div
               onClick={dismissInstall}
               style={{
-                padding: '6px 12px',
-                fontSize: 13,
-                color: '#8b949e',
-                backgroundColor: 'transparent',
-                border: '1px solid #30363d',
-                borderRadius: 6,
-                cursor: 'pointer',
-                fontFamily: 'system-ui, sans-serif',
+                position: 'fixed',
+                inset: 0,
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                zIndex: 999,
+                animation: 'frame-fade-in 0.2s ease-out',
               }}
-            >
-              Not now
-            </button>
-          </div>
+            />
+            {/* Bottom sheet */}
+            <div style={{
+              position: 'fixed',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              padding: '24px 20px max(24px, env(safe-area-inset-bottom))',
+              backgroundColor: '#161b22',
+              borderTop: '1px solid #30363d',
+              borderRadius: '16px 16px 0 0',
+              zIndex: 1000,
+              animation: 'frame-slide-up 0.3s ease-out',
+              fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            }}>
+              {/* Drag handle */}
+              <div style={{
+                width: 36,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: '#30363d',
+                marginBottom: 20,
+              }} />
+              {/* App icon */}
+              <div style={{
+                width: 56,
+                height: 56,
+                borderRadius: 12,
+                backgroundColor: 'rgba(88,166,255,0.08)',
+                border: '1px solid rgba(88,166,255,0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 16,
+              }}>
+                <svg width="32" height="32" viewBox="0 0 64 64" fill="none">
+                  <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="3" fill="rgba(88,166,255,0.08)" />
+                  <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                </svg>
+              </div>
+              {/* Title */}
+              <span style={{ fontSize: 17, fontWeight: 600, color: '#f0f6fc', marginBottom: 6 }}>
+                Add to Home Screen
+              </span>
+              <span style={{ fontSize: 14, color: '#8b949e', marginBottom: 20, textAlign: 'center', maxWidth: 280, lineHeight: 1.5 }}>
+                {isIOS
+                  ? 'Install F.R.A.M.E. for quick access and offline use'
+                  : 'Install F.R.A.M.E. for offline access and push notifications'}
+              </span>
+              {/* iOS instructions or Android install button */}
+              {isIOS ? (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 12,
+                  width: '100%',
+                  maxWidth: 300,
+                  marginBottom: 16,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: 8,
+                      backgroundColor: 'rgba(88,166,255,0.1)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <path d="M12 5v10M8 9l4-4 4 4" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                        <rect x="4" y="14" width="16" height="6" rx="1" stroke="#58a6ff" strokeWidth="2" fill="none" />
+                      </svg>
+                    </div>
+                    <span style={{ fontSize: 14, color: '#c9d1d9' }}>
+                      Tap the <strong style={{ color: '#58a6ff' }}>Share</strong> button in Safari
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0' }}>
+                    <div style={{
+                      width: 32, height: 32, borderRadius: 8,
+                      backgroundColor: 'rgba(88,166,255,0.1)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <rect x="3" y="3" width="18" height="18" rx="4" stroke="#58a6ff" strokeWidth="2" fill="none" />
+                        <path d="M12 8v8M8 12h8" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    </div>
+                    <span style={{ fontSize: 14, color: '#c9d1d9' }}>
+                      Scroll down and tap <strong style={{ color: '#58a6ff' }}>Add to Home Screen</strong>
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void promptInstall()}
+                  style={{
+                    width: '100%',
+                    maxWidth: 300,
+                    padding: '14px 24px',
+                    fontSize: 15,
+                    fontWeight: 600,
+                    backgroundColor: '#58a6ff',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 10,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                    marginBottom: 8,
+                  }}
+                >
+                  Install App
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={dismissInstall}
+                style={{
+                  width: '100%',
+                  maxWidth: 300,
+                  padding: '12px 24px',
+                  fontSize: 14,
+                  color: '#8b949e',
+                  backgroundColor: 'transparent',
+                  border: '1px solid #30363d',
+                  borderRadius: 10,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                Not now
+              </button>
+            </div>
+          </>
         )}
       </div>
     );
