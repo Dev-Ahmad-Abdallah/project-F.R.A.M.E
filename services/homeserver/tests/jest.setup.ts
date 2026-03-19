@@ -5,3 +5,4 @@ process.env.JWT_SECRET = 'test-secret-minimum-32-characters-long-for-validation'
 process.env.HOMESERVER_DOMAIN = 'test.local';
 process.env.FEDERATION_SIGNING_KEY = 'test-signing-key';
 process.env.NODE_ENV = 'test';
+process.env.BCRYPT_SALT_ROUNDS = '10';

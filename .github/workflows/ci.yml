@@ -121,7 +121,7 @@ jobs:
       JWT_SECRET: ci-test-secret-not-for-production-use-only-64chars-minimum-length
       HOMESERVER_DOMAIN: localhost:3000
       FEDERATION_SIGNING_KEY: ci-test-signing-key-not-real
-      BCRYPT_SALT_ROUNDS: "4"
+      BCRYPT_SALT_ROUNDS: "10"
       PORT: "3001"
 
     steps:
