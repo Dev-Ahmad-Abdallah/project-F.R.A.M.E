@@ -18,6 +18,7 @@ RUN npm ci --workspace=@frame/shared --workspace=@frame/homeserver
 COPY shared/ shared/
 COPY services/homeserver/src/ services/homeserver/src/
 COPY services/homeserver/migrations/ services/homeserver/migrations/
+COPY services/homeserver/migrate.sh services/homeserver/migrate.sh
 
 # Build
 RUN npm run build --workspace=@frame/shared
@@ -55,5 +56,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider \
         http://localhost:${PORT:-3000}/health || exit 1
 
-# Run migrations then start server
-CMD ["sh", "-c", "cd services/homeserver && npx node-pg-migrate up && node dist/server.js"]
+# Run idempotent SQL migrations then start server
+CMD ["sh", "-c", "cd services/homeserver && sh migrate.sh && node dist/server.js"]

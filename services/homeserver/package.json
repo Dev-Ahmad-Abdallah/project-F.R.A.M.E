@@ -9,9 +9,7 @@
     "dev": "tsx watch src/server.ts",
     "test": "jest --passWithNoTests",
     "lint": "eslint src/",
-    "migrate": "node-pg-migrate up",
-    "migrate:down": "node-pg-migrate down",
-    "migrate:create": "node-pg-migrate create"
+    "migrate": "sh migrate.sh"
   },
   "dependencies": {
     "@frame/shared": "1.0.0",
@@ -22,7 +20,6 @@
     "helmet": "^8.1.0",
     "ioredis": "^5.10.0",
     "jsonwebtoken": "^9.0.3",
-    "node-pg-migrate": "^7.9.0",
     "pg": "^8.20.0",
     "zod": "^3.23.0"
   },
