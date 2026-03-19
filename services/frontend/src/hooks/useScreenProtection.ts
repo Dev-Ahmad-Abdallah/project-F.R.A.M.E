@@ -292,7 +292,7 @@ export function useScreenProtection(): ScreenProtectionState {
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         for (let i = 0; i < mutation.addedNodes.length; i++) {
-          const node = mutation.addedNodes[i] as HTMLElement;
+          const node = mutation.addedNodes.item(i) as HTMLElement;
           if (node.nodeType === Node.ELEMENT_NODE) {
             // Detect suspicious injected iframes or scripts (extension overlays)
             const tag = node.tagName?.toLowerCase();

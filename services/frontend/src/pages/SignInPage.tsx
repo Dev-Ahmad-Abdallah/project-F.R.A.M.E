@@ -98,9 +98,11 @@ const styles: Record<string, React.CSSProperties> = {
     minWidth: 80,
   },
   logo: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 700,
-    color: '#f0f6fc',
-    letterSpacing: 2,
+    color: '#3fb950',
+    letterSpacing: 4,
+    fontFamily: '"SF Mono", "Fira Code", monospace',
+    filter: 'drop-shadow(0 0 6px rgba(63,185,80,0.3))',
   },
 };
