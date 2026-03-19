@@ -18,6 +18,8 @@ import { FONT_BODY } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { SkeletonMessageBubble, SyncIndicator } from './Skeleton';
 import { playMessageSound, playSendSound, playErrorSound } from '../sounds';
+import VoiceRecorder from './VoiceRecorder';
+import AudioPlayer from './AudioPlayer';
 
 // ── Reaction Picker ──
 
@@ -1500,10 +1502,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                       </span>
                     </span>
                   ) : (
-                    decrypted.plaintext && typeof decrypted.plaintext === 'object' && isAudioMessage(decrypted.plaintext as Record<string, unknown>)
+                    decrypted.plaintext && isAudioMessage(decrypted.plaintext)
                     ? <AudioPlayer
-                        audioBase64={(decrypted.plaintext as Record<string, unknown>).audioData as string}
-                        durationMs={((decrypted.plaintext as Record<string, unknown>).duration as number) || 0}
+                        audioBase64={String(decrypted.plaintext.audioData)}
+                        durationMs={Number(decrypted.plaintext.duration) || 0}
                         isSent={isOwn}
                       />
                     : <span>{(() => {
@@ -1974,6 +1976,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       )}
 
       {/* Input area — unified bar with all controls inside */}
+      {isRecordingVoice ? (
+        <div style={{ padding: 8, borderTop: '1px solid #f85149', backgroundColor: 'rgba(248,81,73,0.05)' }}>
+          <VoiceRecorder
+            onSend={(audio, dur) => { void handleVoiceSend(audio, dur); }}
+            onCancel={() => setIsRecordingVoice(false)}
+          />
+        </div>
+      ) : (
       <div className="frame-chat-input-area" style={{ borderTop: replyTo ? 'none' : undefined }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', flex: 1, backgroundColor: '#0d1117', borderRadius: 24, border: isTextareaFocused ? '1px solid #58a6ff' : '1px solid #30363d', transition: 'border-color 0.2s', padding: '4px 4px 4px 8px', gap: 2, position: 'relative' as const, ...(isTextareaFocused ? { animation: 'frame-textarea-glow 2s ease-in-out infinite' } : {}) }}>
           {/* Attachment placeholder */}
@@ -2005,6 +2015,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               </div>
             )}
           </div>
+          {/* Mic button — show when no text typed */}
+          {!inputValue.trim() && (
+            <button type="button" onClick={() => setIsRecordingVoice(true)} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2, borderRadius: 8, transition: 'color 0.15s, background-color 0.15s', minWidth: 44, minHeight: 44 }} title="Record voice message" aria-label="Record voice message" onMouseEnter={(e) => { e.currentTarget.style.color = '#3fb950'; e.currentTarget.style.backgroundColor = 'rgba(63,185,80,0.1)'; }} onMouseLeave={(e) => { e.currentTarget.style.color = '#8b949e'; e.currentTarget.style.backgroundColor = 'transparent'; }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
+            </button>
+          )}
           {/* Send button — only when text exists. 44px min touch target on mobile */}
           {inputValue.trim() && (
             <button style={{ padding: isMobile ? '10px 12px' : '6px 14px', borderRadius: 18, border: 'none', backgroundColor: '#58a6ff', color: '#fff', fontSize: 13, fontWeight: 600, cursor: isSending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background-color 0.15s, opacity 0.15s', alignSelf: 'flex-end', flexShrink: 0, marginBottom: 2, opacity: isSending ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, minWidth: isMobile ? 44 : undefined, minHeight: isMobile ? 44 : undefined, ...(sendButtonAnimating ? { animation: 'frame-send-launch 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)' } : {}) }} onClick={() => void handleSend()} disabled={isSending} aria-label="Send message">
@@ -2013,6 +2029,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           )}
         </div>
       </div>
+      )}
 
       {/* Context menu: bottom sheet on mobile, fixed dropdown on desktop */}
       {contextMenuEventId && contextMenuPos && (
