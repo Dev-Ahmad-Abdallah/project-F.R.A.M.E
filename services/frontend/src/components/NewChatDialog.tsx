@@ -114,7 +114,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleCreate();
+      void handleCreate();
     }
     if (e.key === 'Escape') {
       onClose();
@@ -323,7 +323,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
               ...styles.createButton,
               ...(loading || !username.trim() ? styles.buttonDisabled : {}),
             }}
-            onClick={handleCreate}
+            onClick={() => void handleCreate()}
             disabled={loading || !username.trim()}
           >
             {loading ? 'Creating...' : 'Create'}

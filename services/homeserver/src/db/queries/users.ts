@@ -15,7 +15,7 @@ export async function createUser(
   passwordHash: string,
   homeserver: string
 ): Promise<UserRow> {
-  const result = await pool.query(
+  const result = await pool.query<UserRow>(
     `INSERT INTO users (user_id, username, password_hash, homeserver)
      VALUES ($1, $2, $3, $4)
      RETURNING *`,
@@ -25,7 +25,7 @@ export async function createUser(
 }
 
 export async function findUserByUsername(username: string): Promise<UserRow | null> {
-  const result = await pool.query(
+  const result = await pool.query<UserRow>(
     'SELECT * FROM users WHERE username = $1',
     [username]
   );
@@ -33,7 +33,7 @@ export async function findUserByUsername(username: string): Promise<UserRow | nu
 }
 
 export async function findUserById(userId: string): Promise<UserRow | null> {
-  const result = await pool.query(
+  const result = await pool.query<UserRow>(
     'SELECT * FROM users WHERE user_id = $1',
     [userId]
   );

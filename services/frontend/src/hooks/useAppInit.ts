@@ -49,6 +49,10 @@ export function useAppInit(
     if (!userId || !deviceId || hasRun.current) return;
     hasRun.current = true;
 
+    // Capture narrowed values for the async closure
+    const uid: string = userId;
+    const did: string = deviceId;
+
     let cancelled = false;
 
     async function bootstrap() {
@@ -58,13 +62,13 @@ export function useAppInit(
         await initStorage('frame-demo-passphrase');
 
         // 2. Initialise the crypto engine (vodozemac WASM + OlmMachine)
-        await initCrypto(userId!, deviceId!);
+        await initCrypto(uid, did);
 
         // 3. Generate real keys and upload to homeserver
-        await generateAndUploadKeys(userId!, deviceId!);
+        await generateAndUploadKeys(uid, did);
 
         // 4. Register this device with the backend
-        await registerCurrentDevice(userId!);
+        await registerCurrentDevice(uid);
 
         // 5. Service worker + notifications (non-critical — failures are tolerated)
         try {
@@ -90,7 +94,7 @@ export function useAppInit(
       }
     }
 
-    bootstrap();
+    void bootstrap();
 
     return () => {
       cancelled = true;

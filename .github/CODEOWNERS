@@ -1,0 +1,44 @@
+# Project F.R.A.M.E. — CODEOWNERS
+#
+# Role mapping:
+#   Backend  → Ahmed Ali Abdallah   @Dev-Ahmad-Abdallah
+#   Frontend → Mohamed Hussein      @devmohamedhussien-cmd
+#   DevOps   → Hossam Elsayed       @Dev-Hossam
+
+# Global fallback
+*                                   @Dev-Ahmad-Abdallah @Dev-Hossam @devmohamedhussien-cmd
+
+# DevOps owns all CI/CD and infrastructure
+/.github/                           @Dev-Hossam
+/.github/workflows/                 @Dev-Ahmad-Abdallah @Dev-Hossam @devmohamedhussien-cmd
+/.codeql/                           @Dev-Hossam
+/.gitleaks.toml                     @Dev-Hossam
+/docker-compose.yml                 @Dev-Hossam
+/services/homeserver/Dockerfile     @Dev-Hossam
+/services/frontend/Dockerfile       @Dev-Hossam
+/services/frontend/nginx.conf       @Dev-Hossam
+/services/homeserver/jest.config.js @Dev-Hossam
+/services/frontend/jest.config.js   @Dev-Hossam
+/services/homeserver/.eslintrc.json @Dev-Hossam
+/services/frontend/.eslintrc.json   @Dev-Hossam
+/services/homeserver/tests/security/    @Dev-Hossam
+/services/homeserver/tests/integration/ @Dev-Hossam @Dev-Ahmad-Abdallah
+
+# Backend owned by Ahmed
+/services/homeserver/src/           @Dev-Ahmad-Abdallah
+/services/homeserver/migrations/    @Dev-Ahmad-Abdallah
+/shared/                            @Dev-Ahmad-Abdallah
+
+# Frontend owned by Mohamed
+/services/frontend/src/             @devmohamedhussien-cmd
+/services/frontend/public/          @devmohamedhussien-cmd
+
+# Security-critical paths — ALL THREE must approve
+/services/homeserver/src/services/keyService.ts             @Dev-Ahmad-Abdallah @Dev-Hossam @devmohamedhussien-cmd
+/services/homeserver/src/services/authService.ts            @Dev-Ahmad-Abdallah @Dev-Hossam @devmohamedhussien-cmd
+/services/homeserver/src/services/federationService.ts      @Dev-Ahmad-Abdallah @Dev-Hossam @devmohamedhussien-cmd
+/services/homeserver/src/services/merkleTree.ts             @Dev-Ahmad-Abdallah @Dev-Hossam @devmohamedhussien-cmd
+/services/homeserver/src/middleware/auth.ts                 @Dev-Ahmad-Abdallah @Dev-Hossam @devmohamedhussien-cmd
+/services/frontend/src/crypto/                              @Dev-Ahmad-Abdallah @Dev-Hossam @devmohamedhussien-cmd
+/services/frontend/src/storage/secureStorage.ts             @Dev-Ahmad-Abdallah @Dev-Hossam @devmohamedhussien-cmd
+/services/frontend/src/verification/                        @Dev-Ahmad-Abdallah @Dev-Hossam @devmohamedhussien-cmd

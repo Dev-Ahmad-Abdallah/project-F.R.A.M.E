@@ -17,6 +17,8 @@ import * as sdk from '@matrix-org/matrix-sdk-crypto-wasm';
 import { getOlmMachine, processOutgoingRequests } from './olmMachine';
 import { apiRequest } from '../api/client';
 import type { SyncEvent, SyncResponse } from '../api/messagesAPI';
+import { ackToDeviceMessages } from '../api/messagesAPI';
+import { fetchAndVerifyKey } from '../verification/keyTransparency';
 
 // ── Mutex ──
 
@@ -100,13 +102,34 @@ export async function ensureSessionsForRoom(
   // Step 2: Process outgoing requests (KeysQuery) to discover all devices
   await processOutgoingRequests();
 
+  // Step 2.5: Verify each remote member's key against the transparency log
+  // before proceeding with key claiming. This is defense-in-depth: if
+  // verification fails we log a warning but still proceed so messaging is
+  // not broken (the server-side enforcement in queryDeviceKeys is the
+  // primary gate).
+  for (const memberId of memberUserIds) {
+    try {
+      const result = await fetchAndVerifyKey(memberId);
+      if (!result.verified && result.proof !== null) {
+        console.warn(
+          `[F.R.A.M.E.] Key transparency verification failed for ${memberId} — proceeding anyway (defense in depth).`,
+        );
+      }
+    } catch (err) {
+      console.warn(
+        `[F.R.A.M.E.] Could not verify key transparency for ${memberId}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
   await sessionMutex.acquire();
   try {
     // Step 3: Claim one-time keys for devices without Olm sessions
     const claimUserIds = memberUserIds.map((id) => new sdk.UserId(id));
     const claimRequest = await machine.getMissingSessions(claimUserIds);
     if (claimRequest) {
-      const claimBody = JSON.parse(claimRequest.body);
+      const claimBody = JSON.parse(claimRequest.body) as Record<string, unknown>;
       const claimResponse = await apiRequest<Record<string, unknown>>(
         '/keys/claim',
         { method: 'POST', body: claimBody },
@@ -130,9 +153,9 @@ export async function ensureSessionsForRoom(
     let shareFailureCount = 0;
     for (const request of shareRequests) {
       try {
-        const reqBody = JSON.parse(request.body);
+        const reqBody = JSON.parse(request.body) as Record<string, unknown>;
         const response = await apiRequest<Record<string, unknown>>(
-          '/sendToDevice/' + encodeURIComponent(request.type) + '/' + Date.now().toString(36) + Math.random().toString(36).slice(2),
+          '/sendToDevice/' + encodeURIComponent(request.type) + '/' + Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join(''),
           { method: 'PUT', body: reqBody },
         );
         await machine.markRequestAsSent(
@@ -193,7 +216,7 @@ export async function encryptForRoom(
     JSON.stringify(plaintext),
   );
 
-  return JSON.parse(encrypted);
+  return JSON.parse(encrypted) as Record<string, unknown>;
 }
 
 // ── Decryption ──
@@ -239,11 +262,11 @@ export async function decryptEvent(event: SyncEvent): Promise<DecryptedEvent> {
       roomIdObj,
       new sdk.DecryptionSettings(sdk.TrustRequirement.Untrusted),
     );
-    const parsed = JSON.parse(decrypted.event);
+    const parsed = JSON.parse(decrypted.event) as Record<string, unknown>;
 
     return {
       event,
-      plaintext: parsed.content ?? parsed,
+      plaintext: (parsed.content as Record<string, unknown> | undefined) ?? parsed,
       isEncrypted: true,
       decryptionError: null,
     };
@@ -255,7 +278,7 @@ export async function decryptEvent(event: SyncEvent): Promise<DecryptedEvent> {
       `[F.R.A.M.E.] Decryption failed for event ${event.eventId}:`,
       errorMessage,
       'eventType:', event.eventType,
-      'algorithm:', (event.content as Record<string, unknown>)?.algorithm,
+      'algorithm:', event.content?.algorithm,
     );
 
     // Store in window for debugging
@@ -265,7 +288,7 @@ export async function decryptEvent(event: SyncEvent): Promise<DecryptedEvent> {
       (window as unknown as Record<string, unknown[]>).__decryptDebug.push({
         eventId: event.eventId,
         error: errorMessage,
-        algorithm: (event.content as Record<string, unknown>)?.algorithm,
+        algorithm: event.content?.algorithm,
       });
     }
 
@@ -276,6 +299,24 @@ export async function decryptEvent(event: SyncEvent): Promise<DecryptedEvent> {
       decryptionError: errorMessage,
     };
   }
+}
+
+// ── Session Invalidation (Forward Secrecy) ──
+
+/**
+ * Invalidate the current Megolm group session for a room.
+ *
+ * This MUST be called whenever a member leaves or is removed from a room.
+ * It forces the OlmMachine to create a new Megolm session on the next
+ * message, ensuring the departed user cannot decrypt future messages
+ * (forward secrecy).
+ *
+ * @param roomId The room whose Megolm session should be invalidated
+ */
+export async function invalidateRoomSession(roomId: string): Promise<void> {
+  const machine = getOlmMachine();
+  const roomIdObj = new sdk.RoomId(roomId);
+  await machine.invalidateGroupSession(roomIdObj);
 }
 
 // ── Sync Processing ──
@@ -318,6 +359,20 @@ export async function processSyncResponse(
 
     // Process any outgoing requests generated by sync (e.g., key re-uploads)
     await processOutgoingRequests();
+
+    // Acknowledge processed to-device messages so the server can clean them up
+    const toDeviceIds = (syncData.to_device ?? [])
+      .map((evt) => evt.id)
+      .filter((id): id is number => typeof id === 'number');
+
+    if (toDeviceIds.length > 0) {
+      ackToDeviceMessages(toDeviceIds).catch((ackErr) => {
+        console.warn(
+          '[F.R.A.M.E.] Failed to ACK to-device messages:',
+          ackErr,
+        );
+      });
+    }
   } catch (err) {
     console.error(
       '[F.R.A.M.E.] Failed to process sync response for crypto:',

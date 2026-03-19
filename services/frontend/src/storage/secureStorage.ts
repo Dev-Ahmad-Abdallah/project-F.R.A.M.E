@@ -106,7 +106,7 @@ export async function initStorage(passphrase: string): Promise<void> {
 
   // Retrieve or generate PBKDF2 salt
   let salt: Uint8Array;
-  const existingSalt: Uint8Array | undefined = await db.get('_meta', 'salt');
+  const existingSalt = (await db.get('_meta', 'salt')) as Uint8Array | undefined;
 
   if (existingSalt) {
     salt = existingSalt;
@@ -130,8 +130,8 @@ export async function getEncrypted<T = unknown>(
 ): Promise<T | undefined> {
   const { db: database, key: cryptoKey } = ensureReady();
 
-  const record: { iv: Uint8Array; ciphertext: Uint8Array } | undefined =
-    await database.get(store, key);
+  const record = (await database.get(store, key)) as
+    { iv: Uint8Array; ciphertext: Uint8Array } | undefined;
 
   if (!record) return undefined;
 

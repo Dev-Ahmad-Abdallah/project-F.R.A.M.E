@@ -12,7 +12,7 @@ export function validateBody(schema: ZodSchema) {
         .join('; ');
       throw new ApiError(400, 'M_BAD_JSON', message);
     }
-    req.body = result.data;
+    req.body = result.data as unknown;
     next();
   };
 }
@@ -27,7 +27,7 @@ export function validateQuery(schema: ZodSchema) {
         .join('; ');
       throw new ApiError(400, 'M_BAD_JSON', message);
     }
-    req.query = result.data;
+    req.query = result.data as typeof req.query;
     next();
   };
 }

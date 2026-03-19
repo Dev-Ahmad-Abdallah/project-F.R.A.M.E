@@ -16,12 +16,21 @@ devicesRouter.post(
   apiLimiter,
   validateBody(deviceRegisterSchema),
   asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const body = req.body as {
+      deviceId: string;
+      devicePublicKey: string;
+      deviceSigningKey: string;
+      deviceDisplayName?: string;
+    };
     const result = await registerDevice(
-      req.auth!.sub,
-      req.body.deviceId,
-      req.body.devicePublicKey,
-      req.body.deviceSigningKey,
-      req.body.deviceDisplayName
+      req.auth.sub,
+      body.deviceId,
+      body.devicePublicKey,
+      body.deviceSigningKey,
+      body.deviceDisplayName
     );
     res.status(201).json(result);
   })
@@ -33,7 +42,10 @@ devicesRouter.get(
   requireAuth,
   apiLimiter,
   asyncHandler(async (req, res) => {
-    const requestingUserId = req.auth!.sub;
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const requestingUserId = req.auth.sub;
     const targetUserId = req.params.userId;
 
     // Users can only list their own devices or devices of users they share a room with
@@ -55,7 +67,10 @@ devicesRouter.delete(
   requireAuth,
   apiLimiter,
   asyncHandler(async (req, res) => {
-    const result = await removeDevice(req.params.deviceId, req.auth!.sub);
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const result = await removeDevice(req.params.deviceId, req.auth.sub);
     res.json(result);
   })
 );
@@ -65,7 +80,10 @@ devicesRouter.post(
   '/heartbeat',
   requireAuth,
   asyncHandler(async (req, res) => {
-    await heartbeat(req.auth!.deviceId);
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    await heartbeat(req.auth.deviceId);
     res.json({ ok: true });
   })
 );

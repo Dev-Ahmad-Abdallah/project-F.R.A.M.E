@@ -50,7 +50,9 @@ export function buildMerkleTree(leaves: string[]): string[][] {
     const nextLevel: string[] = [];
 
     for (let i = 0; i < currentLevel.length; i += 2) {
+      // eslint-disable-next-line security/detect-object-injection -- i is a validated numeric loop index
       const left = currentLevel[i];
+      // eslint-disable-next-line security/detect-object-injection -- i+1 is a validated numeric loop index
       const right = currentLevel[i + 1] ?? currentLevel[i]; // duplicate if odd
       nextLevel.push(hashPair(left, right));
     }
@@ -88,13 +90,16 @@ export function generateMerkleProof(
   let idx = leafIndex;
 
   for (let level = 0; level < tree.length - 1; level++) {
+    // eslint-disable-next-line security/detect-object-injection
     const layer = tree[level];
     const isLeft = idx % 2 === 0;
     const siblingIdx = isLeft ? idx + 1 : idx - 1;
 
     // If sibling doesn't exist (odd layer), it's a duplicate of this node
-    const siblingHash =
-      siblingIdx < layer.length ? layer[siblingIdx] : layer[idx];
+    // eslint-disable-next-line security/detect-object-injection -- siblingIdx and idx are validated numeric indices
+    const siblingHash = siblingIdx < layer.length
+      // eslint-disable-next-line security/detect-object-injection -- validated numeric indices
+      ? layer[siblingIdx] : layer[idx];
 
     proof.push({
       position: isLeft ? 'right' : 'left',
@@ -114,10 +119,10 @@ export function generateMerkleProof(
  * by insertion time. This is the canonical leaf ordering for the tree.
  */
 async function getAllLeaves(): Promise<string[]> {
-  const result = await pool.query(
+  const result = await pool.query<{ key_hash: string }>(
     'SELECT key_hash FROM key_transparency_log ORDER BY log_id ASC',
   );
-  return result.rows.map((row: { key_hash: string }) => row.key_hash);
+  return result.rows.map((row) => row.key_hash);
 }
 
 /**
@@ -146,7 +151,7 @@ export async function addKeyToLog(
   const proofPath = generateMerkleProof(allLeaves, leafIndex);
 
   // Persist to database
-  const result = await pool.query(
+  const result = await pool.query<{ created_at: Date }>(
     `INSERT INTO key_transparency_log (user_id, key_hash, merkle_root, merkle_proof, created_at)
      VALUES ($1, $2, $3, $4, NOW())
      RETURNING created_at`,
@@ -162,6 +167,14 @@ export async function addKeyToLog(
   };
 }
 
+interface TransparencyLogRow {
+  user_id: string;
+  key_hash: string;
+  merkle_root: string;
+  merkle_proof: MerkleProofNode[];
+  created_at: Date;
+}
+
 /**
  * Fetch the latest Merkle proof for a user from the transparency log.
  *
@@ -170,7 +183,7 @@ export async function addKeyToLog(
 export async function getProofForUser(
   userId: string,
 ): Promise<MerkleProof | null> {
-  const result = await pool.query(
+  const result = await pool.query<TransparencyLogRow>(
     `SELECT user_id, key_hash, merkle_root, merkle_proof, created_at
      FROM key_transparency_log
      WHERE user_id = $1
@@ -185,7 +198,7 @@ export async function getProofForUser(
   return {
     userId: row.user_id,
     keyHash: row.key_hash,
-    proofPath: row.merkle_proof as MerkleProofNode[],
+    proofPath: row.merkle_proof,
     root: row.merkle_root,
     timestamp: row.created_at.toISOString(),
   };

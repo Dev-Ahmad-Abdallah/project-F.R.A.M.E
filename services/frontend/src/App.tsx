@@ -22,7 +22,6 @@ import React, { useState, useCallback, useEffect } from 'react';
 import type { AuthResponse } from '@frame/shared';
 import LandingPage from './pages/LandingPage';
 import SignInPage from './pages/SignInPage';
-import AuthFlow from './components/AuthFlow';
 import ChatWindow from './components/ChatWindow';
 import DeviceList from './components/DeviceList';
 import RoomList from './components/RoomList';
@@ -40,7 +39,8 @@ import { listRooms, leaveRoom } from './api/roomsAPI';
 import { getKnownDevices, verifyDevice } from './devices/deviceManager';
 import type { RoomSummary } from './api/roomsAPI';
 import { generateAndUploadKeys } from './crypto/keyManager';
-import { initCrypto, getIdentityKeys } from './crypto/olmMachine';
+import { getIdentityKeys } from './crypto/olmMachine';
+import { invalidateRoomSession } from './crypto/sessionManager';
 import { registerServiceWorker } from './notifications';
 import { initStorage } from './storage/secureStorage';
 import { useNotifications } from './hooks/useNotifications';
@@ -85,13 +85,10 @@ function App() {
 
   // Notification state
   const {
-    isEnabled: notificationsEnabled,
     requestPermission: requestNotifPermission,
     unreadCount,
     unreadByRoom,
-    incrementUnread,
     clearUnread,
-    notifyIfHidden,
     setInitialUnread,
   } = useNotifications();
 
@@ -124,7 +121,7 @@ function App() {
 
   const { timeRemaining, isWarning, resetTimer } = useSessionTimeout(handleSessionTimeout);
 
-  const handleUnlock = useCallback(async () => {
+  const handleUnlock = useCallback(() => {
     if (!auth) return;
     if (lockPassphrase === auth.userId) {
       setIsLocked(false);
@@ -189,6 +186,7 @@ function App() {
 
   useEffect(() => {
     if (!auth) return;
+    const currentAuth = auth; // Capture for closure narrowing
 
     let cancelled = false;
 
@@ -196,7 +194,7 @@ function App() {
       try {
         // 1. Generate and upload device keys (handles initCrypto internally)
         if (!cancelled) setInitPhase('keys');
-        await generateAndUploadKeys(auth!.userId, auth!.deviceId);
+        await generateAndUploadKeys(currentAuth.userId, currentAuth.deviceId);
 
         // 2. Register service worker for push notifications
         await registerServiceWorker();
@@ -206,7 +204,7 @@ function App() {
         //    deterministic, per-user passphrase (never store the raw password).
         if (!cancelled) setInitPhase('storage');
         const passphraseData = new TextEncoder().encode(
-          auth!.userId + ':frame-storage',
+          currentAuth.userId + ':frame-storage',
         );
         const hashBuffer = await crypto.subtle.digest('SHA-256', passphraseData);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -231,7 +229,7 @@ function App() {
             setInitialUnread(initialUnread);
 
             // Request notification permission after successful init
-            requestNotifPermission();
+            void requestNotifPermission();
           } catch {
             console.warn('Failed to fetch rooms — API may not be ready.');
             setRoomFetchError('Failed to load conversations. Check your connection.');
@@ -249,7 +247,7 @@ function App() {
       }
     }
 
-    initialize();
+    void initialize();
     return () => {
       cancelled = true;
     };
@@ -295,16 +293,16 @@ function App() {
     [isMobile],
   );
 
-  const handleDeviceAlertVerify = useCallback((_deviceId: string) => {
+  const handleDeviceAlertVerify = useCallback(() => {
     setDeviceAlertInfo(null);
     setActiveView('link-device');
   }, []);
 
-  const handleDeviceAlertRemove = useCallback((_deviceId: string) => {
+  const handleDeviceAlertRemove = useCallback(() => {
     setDeviceAlertInfo(null);
   }, []);
 
-  const handleDeviceAlertIgnore = useCallback((_deviceId: string) => {
+  const handleDeviceAlertIgnore = useCallback(() => {
     setDeviceAlertInfo(null);
   }, []);
 
@@ -335,6 +333,10 @@ function App() {
   }, []);
 
   const handleLeaveRoomFromSettings = useCallback((roomId: string) => {
+    // Invalidate Megolm session for forward secrecy on leave
+    void invalidateRoomSession(roomId).catch((err) =>
+      console.warn('[F.R.A.M.E.] Failed to invalidate room session on leave:', err),
+    );
     setRooms((prev) => prev.filter((r) => r.roomId !== roomId));
     setShowRoomSettings(false);
     if (selectedRoomId === roomId) {
@@ -362,6 +364,11 @@ function App() {
     if (!selectedRoomId) return;
     try {
       await leaveRoom(selectedRoomId);
+      // Invalidate the Megolm session so the departed user (us) cannot
+      // decrypt future messages — and remaining members will rotate keys.
+      await invalidateRoomSession(selectedRoomId).catch((err) =>
+        console.warn('[F.R.A.M.E.] Failed to invalidate room session on leave:', err),
+      );
       setRooms((prev) => prev.filter((r) => r.roomId !== selectedRoomId));
       setSelectedRoomId(null);
       setActiveView('empty');
@@ -424,15 +431,15 @@ function App() {
 
   // ── Initialization overlay ──
   if (initPhase !== 'done' && !initError) {
-    const phaseLabels: Record<string, string> = {
-      keys: 'Generating encryption keys...',
-      storage: 'Initializing secure storage...',
-      rooms: 'Loading conversations...',
-    };
+    const phaseLabels = new Map<string, string>([
+      ['keys', 'Generating encryption keys...'],
+      ['storage', 'Initializing secure storage...'],
+      ['rooms', 'Loading conversations...'],
+    ]);
     return (
       <div style={styles.initOverlay}>
         <div style={styles.initSpinner} />
-        <p style={styles.initPhaseText}>{phaseLabels[initPhase] || 'Initializing...'}</p>
+        <p style={styles.initPhaseText}>{phaseLabels.get(initPhase) ?? 'Initializing...'}</p>
       </div>
     );
   }
@@ -547,20 +554,22 @@ function App() {
           <div style={styles.centeredContainer}>
             <DeviceLinking
               devicePublicKey={ownPublicKey}
-              onApprove={async (fingerprint) => {
+              onApprove={(fingerprint) => {
                 // Find and verify the device matching this fingerprint
-                try {
-                  const knownDevices = await getKnownDevices(auth.userId);
-                  const matched = knownDevices.find(
-                    (d) => d.fingerprint === fingerprint,
-                  );
-                  if (matched) {
-                    await verifyDevice(auth.userId, matched.deviceId);
+                void (async () => {
+                  try {
+                    const knownDevices = await getKnownDevices(auth.userId);
+                    const matched = knownDevices.find(
+                      (d) => d.fingerprint === fingerprint,
+                    );
+                    if (matched) {
+                      await verifyDevice(auth.userId, matched.deviceId);
+                    }
+                  } catch (err) {
+                    console.error('Failed to verify linked device:', err);
                   }
-                } catch (err) {
-                  console.error('Failed to verify linked device:', err);
-                }
-                setActiveView('settings');
+                  setActiveView('settings');
+                })();
               }}
               onReject={() => {
                 setActiveView('settings');
@@ -663,7 +672,7 @@ function App() {
               <button
                 type="button"
                 style={styles.roomRetryButton}
-                onClick={handleRetryRoomFetch}
+                onClick={() => void handleRetryRoomFetch()}
               >
                 Retry
               </button>
@@ -777,7 +786,7 @@ function App() {
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
               <button type="button" style={styles.leaveCancelBtn} onClick={() => setShowLeaveConfirm(false)}>Cancel</button>
-              <button type="button" style={styles.leaveConfirmBtn} onClick={handleLeaveRoom}>Leave</button>
+              <button type="button" style={styles.leaveConfirmBtn} onClick={() => void handleLeaveRoom()}>Leave</button>
             </div>
           </div>
         </div>
@@ -791,7 +800,7 @@ function App() {
           onClose={() => setShowRoomSettings(false)}
           onLeaveRoom={handleLeaveRoomFromSettings}
           onRoomRenamed={handleRoomRenamed}
-          onMemberInvited={() => handleRetryRoomFetch()}
+          onMemberInvited={() => void handleRetryRoomFetch()}
         />
       )}
       </div>

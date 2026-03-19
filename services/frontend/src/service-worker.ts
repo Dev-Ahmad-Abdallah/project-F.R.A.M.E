@@ -13,8 +13,9 @@
 declare const self: ServiceWorkerGlobalScope;
 
 // Workbox precache manifest (required by CRA's build toolchain)
+// Workbox precache manifest — accessed to satisfy CRA's build toolchain
 // eslint-disable-next-line no-restricted-globals
-const _manifest = (self as unknown as { __WB_MANIFEST: unknown[] }).__WB_MANIFEST;
+void (self as unknown as { __WB_MANIFEST: unknown[] }).__WB_MANIFEST;
 
 // ── Install ──
 
@@ -49,11 +50,12 @@ self.addEventListener('push', (event: PushEvent) => {
 // ── Message Handler (communication with main app) ──
 
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
-  const { type, payload } = event.data || {};
+  const data = (event.data ?? {}) as Record<string, unknown>;
+  const type = data.type as string | undefined;
 
   switch (type) {
     case 'SKIP_WAITING':
-      self.skipWaiting();
+      void self.skipWaiting();
       break;
 
     case 'SHOW_NOTIFICATION':

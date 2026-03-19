@@ -10,7 +10,7 @@ export const loginLimiter = rateLimit({
   keyGenerator: (req: Request) => {
     const username = (req.body as Record<string, unknown>)?.username;
     const usernameKey = typeof username === 'string' ? username.toLowerCase() : 'unknown';
-    return `${req.ip}:${usernameKey}`;
+    return `${String(req.ip)}:${usernameKey}`;
   },
   message: {
     error: { code: 'M_RATE_LIMITED', message: 'Too many login attempts. Try again later.' },

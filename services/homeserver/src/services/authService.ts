@@ -39,10 +39,6 @@ function generateDeviceId(): string {
   return crypto.randomBytes(8).toString('hex').toUpperCase();
 }
 
-function generateEventId(): string {
-  return `$${crypto.randomBytes(16).toString('hex')}`;
-}
-
 function signAccessToken(userId: string, deviceId: string): string {
   const payload: Omit<AuthPayload, 'iat' | 'exp'> = {
     sub: userId,

@@ -97,7 +97,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
   const handleRenameKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      handleConfirmRename();
+      void handleConfirmRename();
     } else if (e.key === 'Escape') {
       handleCancelRename();
     }
@@ -113,8 +113,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
       setInviteUserId('');
       setShowInviteInput(false);
       onMemberInvited?.(room.roomId);
-    } catch (err: any) {
-      setInviteError(err?.message || 'Failed to invite user');
+    } catch (err: unknown) {
+      setInviteError(err instanceof Error ? err.message : 'Failed to invite user');
     } finally {
       setIsInviting(false);
     }
@@ -176,7 +176,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                 <button
                   type="button"
                   style={styles.saveButton}
-                  onClick={handleConfirmRename}
+                  onClick={() => void handleConfirmRename()}
                   disabled={isRenaming}
                 >
                   {isRenaming ? '...' : 'Save'}
@@ -255,7 +255,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                     value={inviteUserId}
                     onChange={(e) => setInviteUserId(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleInvite();
+                      if (e.key === 'Enter') void handleInvite();
                       if (e.key === 'Escape') setShowInviteInput(false);
                     }}
                     disabled={isInviting}
@@ -264,7 +264,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                   <button
                     type="button"
                     style={styles.saveButton}
-                    onClick={handleInvite}
+                    onClick={() => void handleInvite()}
                     disabled={isInviting || !inviteUserId.trim()}
                   >
                     {isInviting ? '...' : 'Invite'}
@@ -325,7 +325,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                   <button
                     type="button"
                     style={styles.leaveConfirmButton}
-                    onClick={handleLeave}
+                    onClick={() => void handleLeave()}
                     disabled={isLeaving}
                   >
                     {isLeaving ? 'Leaving...' : 'Leave Room'}

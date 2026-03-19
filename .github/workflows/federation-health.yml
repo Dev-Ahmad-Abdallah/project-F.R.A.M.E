@@ -1,0 +1,83 @@
+name: Federation Health Monitor
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  health-check:
+    name: Check ${{ matrix.service.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: homeserver
+            health: https://project-frame-production.up.railway.app/health
+          - name: frontend
+            health: https://frontend-production-29a3.up.railway.app
+
+    steps:
+      - name: Health check
+        id: health
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 10 "${{ matrix.service.health }}")
+          echo "http_code=$STATUS" >> $GITHUB_OUTPUT
+          if [ "$STATUS" != "200" ]; then
+            echo "FAIL: ${{ matrix.service.name }} returned HTTP $STATUS"
+            exit 1
+          fi
+          echo "${{ matrix.service.name }} healthy (HTTP $STATUS)"
+
+      - name: TLS certificate check
+        run: |
+          DOMAIN=$(echo "${{ matrix.service.health }}" | sed 's|https://||' | cut -d/ -f1)
+          EXPIRY=$(echo | openssl s_client -connect ${DOMAIN}:443 -servername ${DOMAIN} 2>/dev/null \
+            | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2) || true
+          if [ -n "$EXPIRY" ]; then
+            echo "TLS cert expiry: $EXPIRY"
+          fi
+
+      - name: Create issue on failure
+        if: failure()
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea  # v7.0.1
+        with:
+          script: |
+            const title = `Health Check Failure: ${{ matrix.service.name }}`;
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: ['health-check-failure']
+            });
+            if (!issues.data.find(i => i.title === title)) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body: `## Service Down: \`${{ matrix.service.name }}\`\n\n**Time:** ${new Date().toISOString()}\n**URL:** ${{ matrix.service.health }}\n\n### Next steps\n1. Check Railway dashboard\n2. Check recent deploy logs\n3. Verify env vars`,
+                labels: ['health-check-failure', 'incident', 'devops']
+              });
+            }
+
+  federation-check:
+    name: Cross-Server Federation
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: health-check
+
+    steps:
+      - name: Homeserver discovery endpoint
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+            "https://project-frame-production.up.railway.app/.well-known/frame/server")
+          echo "Homeserver discovery: HTTP $STATUS"
+          [ "$STATUS" = "200" ] || exit 1

@@ -100,10 +100,12 @@ function touchActivity(): void {
  * Skipped when a token refresh is in progress to avoid clearing
  * tokens mid-rotation (the root cause of the 401 refresh bug).
  */
-function checkSessionTimeout(): void {
+async function checkSessionTimeout(): Promise<void> {
   if (isRefreshing) return;
   if (sessionTimeoutMs === Infinity) return;
   if (accessToken && Date.now() - lastActivityTimestamp > sessionTimeoutMs) {
+    // Revoke server-side session before clearing local tokens
+    try { await fetch(getBaseUrl() + '/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + accessToken } }); } catch { /* logout best-effort */ }
     clearTokens();
     throw new FrameApiError(401, {
       error: { code: 'M_SESSION_EXPIRED', message: 'Session timed out due to inactivity' },
@@ -149,7 +151,7 @@ async function performRefresh(): Promise<void> {
 
   let data: RefreshResponse;
   try {
-    data = await res.json();
+    data = (await res.json()) as RefreshResponse;
   } catch {
     // Response parse failed — the server already rotated the token,
     // so the old one is invalid. Clear everything.
@@ -210,7 +212,7 @@ export async function apiRequest<T>(
 
   // Check for session timeout before making the request
   if (!noAuth) {
-    checkSessionTimeout();
+    await checkSessionTimeout();
     touchActivity();
   }
 
@@ -251,7 +253,7 @@ export async function apiRequest<T>(
   if (!res.ok) {
     let errorBody: ApiError;
     try {
-      errorBody = await res.json();
+      errorBody = (await res.json()) as ApiError;
     } catch {
       errorBody = {
         error: { code: 'M_UNKNOWN', message: res.statusText },

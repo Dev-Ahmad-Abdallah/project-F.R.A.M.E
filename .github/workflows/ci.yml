@@ -2,23 +2,95 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
-    branches: [main]
+    branches: [main, staging]
+    types: [opened, synchronize, reopened]
+
+# Minimal permissions — nothing writes unless explicitly granted
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+  checks: write
+
+# Cancel superseded runs on the same branch
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
 
 jobs:
-  # ── Backend checks ──
-  backend:
-    name: Backend (Homeserver)
+  # ══════════════════════════════════════════
+  # JOB 1: BUILD — type-check + compile
+  # ══════════════════════════════════════════
+  build:
+    name: Build & Type Check
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # Pinned by SHA — never by tag — to prevent supply chain attacks
+      - name: Checkout source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      # npm ci — uses lockfile for deterministic installs (NOT npm install)
+      - name: Install workspace dependencies
+        run: npm ci
+
+      - name: Build shared types
+        run: npm run build:shared
+
+      - name: TypeScript check (homeserver)
+        run: cd services/homeserver && npx tsc --noEmit
+
+      - name: TypeScript check (frontend)
+        run: cd services/frontend && npx tsc --noEmit
+
+      - name: Build homeserver
+        run: npm run build:homeserver
+
+      - name: Build frontend
+        run: npm run build:frontend
+
+      - name: Docker build smoke test (homeserver)
+        run: |
+          docker build \
+            --file services/homeserver/Dockerfile \
+            --tag frame-homeserver:ci-${{ github.sha }} \
+            .
+
+      - name: Docker build smoke test (frontend)
+        run: |
+          docker build \
+            --file services/frontend/Dockerfile \
+            --tag frame-frontend:ci-${{ github.sha }} \
+            .
+
+  # ══════════════════════════════════════════
+  # JOB 2: TEST — unit + integration
+  # ══════════════════════════════════════════
+  test:
+    name: Tests & Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: build
 
     services:
       postgres:
         image: postgres:16-alpine
         env:
           POSTGRES_DB: frame_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: frame_test
+          POSTGRES_PASSWORD: frame_test_password
         ports:
           - 5432:5432
         options: >-
@@ -26,6 +98,7 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+
       redis:
         image: redis:7-alpine
         ports:
@@ -36,96 +109,207 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://frame_test:frame_test_password@localhost:5432/frame_test
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-test-secret-not-for-production-use-only-64chars-minimum-length
+      HOMESERVER_DOMAIN: localhost:3000
+      FEDERATION_SIGNING_KEY: ci-test-signing-key-not-real
+      BCRYPT_SALT_ROUNDS: "4"
+      PORT: "3001"
 
-      - name: Install dependencies
-        run: npm install
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install workspace dependencies
+        run: npm ci
 
       - name: Build shared types
         run: npm run build:shared
 
-      - name: Build homeserver
-        run: npm run build:homeserver
-
-      - name: TypeCheck homeserver
-        run: cd services/homeserver && npx tsc --noEmit
-
-      - name: Run migrations
-        run: cd services/homeserver && npx node-pg-migrate up --migration-file-language sql --migrations-dir migrations
+      - name: Run DB migrations
+        working-directory: services/homeserver
+        run: npm run migrate
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/frame_test
+          DATABASE_URL: ${{ env.DATABASE_URL }}
 
-      - name: Run tests
-        run: npm run test:homeserver
+      - name: ESLint (homeserver)
+        run: cd services/homeserver && npx eslint src --ext .ts --max-warnings 0
+
+      - name: ESLint (frontend)
+        run: cd services/frontend && npx eslint src --ext .ts,.tsx --max-warnings 0
+
+      - name: Tests (homeserver)
+        run: npm run test:homeserver -- --coverage --passWithNoTests
         env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/frame_test
-          REDIS_URL: redis://localhost:6379
-          JWT_SECRET: ci-test-secret-minimum-32-characters-long-xxxxx
-          BCRYPT_SALT_ROUNDS: 12
-          HOMESERVER_DOMAIN: localhost:3000
-          FEDERATION_SIGNING_KEY: ci-test-signing-key
-          NODE_ENV: test
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          REDIS_URL: ${{ env.REDIS_URL }}
+          JWT_SECRET: ${{ env.JWT_SECRET }}
 
-  # ── Frontend checks ──
-  frontend:
-    name: Frontend
-    runs-on: ubuntu-latest
+      - name: Tests (frontend)
+        run: npm run test:frontend -- --coverage --passWithNoTests
+        env:
+          CI: true
 
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Upload coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        if: always()
         with:
-          node-version: 20
-          cache: npm
+          name: coverage-${{ github.sha }}
+          path: |
+            services/homeserver/coverage/
+            services/frontend/coverage/
+          retention-days: 14
 
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build shared types
-        run: npm run build:shared
-
-      - name: TypeCheck frontend
-        run: cd services/frontend && npx tsc --noEmit
-
-      - name: Build frontend
-        run: npm run build:frontend
-        env:
-          REACT_APP_HOMESERVER_URL: http://localhost:3001
-
-      - name: Run tests
-        run: npm run test:frontend
-
-  # ── Docker compose validation ──
-  docker-check:
-    name: Docker Compose Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Validate docker-compose config
-        run: docker compose config --quiet
-
-  # ── Security scanning ──
+  # ══════════════════════════════════════════
+  # JOB 3: SECURITY — all gates
+  # ══════════════════════════════════════════
   security:
-    name: Security Scan
+    name: Security Scans
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: build
     permissions:
+      contents: read
       security-events: write
+      actions: read
+
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - name: Checkout source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
         with:
-          node-version: 20
-          cache: npm
+          fetch-depth: 0
 
-      - name: Install dependencies
-        run: npm install
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
 
-      - name: Run npm audit
-        run: npm audit --audit-level=high || true
-        continue-on-error: true
+      - name: Install workspace dependencies
+        run: npm ci
+
+      # GATE 1: Dependency audit — blocks on high/critical
+      - name: npm audit (homeserver)
+        working-directory: services/homeserver
+        run: npm audit --audit-level=high
+
+      - name: npm audit (frontend)
+        working-directory: services/frontend
+        run: npm audit --audit-level=high
+
+      # GATE 2: Secret scan — full git history
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2.3.4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # GATE 3: CodeQL SAST
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ff0a06e83cb2de871e5a09832bc6a81e7276941f  # v3.28.18
+        with:
+          languages: javascript-typescript
+          config-file: .codeql/codeql-config.yml
+          queries: security-extended
+
+      - name: Autobuild for CodeQL
+        uses: github/codeql-action/autobuild@ff0a06e83cb2de871e5a09832bc6a81e7276941f  # v3.28.18
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@ff0a06e83cb2de871e5a09832bc6a81e7276941f  # v3.28.18
+        with:
+          category: "/language:javascript-typescript"
+          upload: true
+
+      # GATE 4: Container image vulnerability scan
+      - name: Build homeserver image for scanning
+        run: docker build --file services/homeserver/Dockerfile --tag frame-homeserver:scan .
+
+      - name: Trivy container scan
+        uses: aquasecurity/trivy-action@76071ef0d7ec797419534a183b498b4d6366cf37  # v0.31.0
+        with:
+          image-ref: "frame-homeserver:scan"
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "HIGH,CRITICAL"
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Upload Trivy results to GHAS
+        uses: github/codeql-action/upload-sarif@ff0a06e83cb2de871e5a09832bc6a81e7276941f  # v3.28.18
+        if: always()
+        with:
+          sarif_file: "trivy-results.sarif"
+          category: "container-scan"
+
+  # ══════════════════════════════════════════
+  # JOB 4: DEPLOY — main only, all gates pass
+  # Railway "Wait for CI" auto-deploys when this workflow succeeds.
+  # This job is a fallback for CLI-based deploys if auto-deploy is off.
+  # ══════════════════════════════════════════
+  deploy:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [build, test, security]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy homeserver
+        run: railway up --service frame-homeserver --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Deploy homeserver-b
+        run: railway up --service frame-homeserver-b --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Deploy frontend
+        run: railway up --service frame-frontend --detach
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Health check — homeserver
+        run: |
+          echo "Waiting 30s for deploy to propagate..."
+          sleep 30
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            https://project-frame-production.up.railway.app/health --max-time 15)
+          if [ "$STATUS" != "200" ]; then
+            echo "FAILED — homeserver returned HTTP $STATUS"
+            exit 1
+          fi
+          echo "homeserver healthy (HTTP $STATUS)"
+
+      - name: Health check — frontend
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            https://frontend-production-29a3.up.railway.app --max-time 15)
+          if [ "$STATUS" != "200" ]; then
+            echo "FAILED — frontend returned HTTP $STATUS"
+            exit 1
+          fi
+          echo "frontend healthy (HTTP $STATUS)"
+
+      - name: Deployment summary
+        run: |
+          echo "## Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time:** $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY

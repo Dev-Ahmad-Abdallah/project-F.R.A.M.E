@@ -1,3 +1,4 @@
+import { EventEmitter } from 'events';
 import { getConfig } from '../config';
 import {
   createRoom as dbCreateRoom,
@@ -14,6 +15,21 @@ import {
 } from '../db/queries/rooms';
 import { findUserById } from '../db/queries/users';
 import { ApiError } from '../middleware/errorHandler';
+
+/**
+ * Room membership event emitter.
+ *
+ * Emits 'membershipChange' events when users join or leave rooms.
+ * Consumers (e.g. the sync layer) can listen for these events to
+ * trigger Megolm session invalidation for forward secrecy.
+ */
+export const roomEvents = new EventEmitter();
+
+export interface MembershipChangeEvent {
+  roomId: string;
+  userId: string;
+  action: 'join' | 'leave' | 'invite';
+}
 
 const USER_ID_REGEX = /^@[a-zA-Z0-9_-]+:.+$/;
 
@@ -138,6 +154,10 @@ export async function renameRoom(
   return { success: true, name: updated.name || trimmed };
 }
 
+interface RoomSettingsRow {
+  settings: Record<string, unknown>;
+}
+
 /**
  * Get room settings. The requesting user must be a member.
  */
@@ -150,8 +170,8 @@ export async function getRoomSettings(
     throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
   }
 
-  const { pool } = await import('../db/pool');
-  const result = await pool.query(
+  const { pool } = await import('../db/pool') as { pool: import('pg').Pool };
+  const result = await pool.query<RoomSettingsRow>(
     'SELECT settings FROM rooms WHERE room_id = $1',
     [roomId],
   );
@@ -171,8 +191,8 @@ export async function joinRoomWithPassword(
   userId: string,
   password?: string,
 ): Promise<{ joined: boolean }> {
-  const { pool } = await import('../db/pool');
-  const roomResult = await pool.query(
+  const { pool } = await import('../db/pool') as { pool: import('pg').Pool };
+  const roomResult = await pool.query<RoomSettingsRow>(
     'SELECT settings FROM rooms WHERE room_id = $1',
     [roomId],
   );
@@ -186,7 +206,7 @@ export async function joinRoomWithPassword(
     return { joined: true };
   }
 
-  const settings = roomResult.rows[0].settings || {};
+  const settings = roomResult.rows[0].settings || {} as Record<string, unknown>;
 
   // Check if room is private (invite-only) with no password provided
   if (settings.isPrivate && !settings.passwordHash && !password) {
@@ -199,7 +219,7 @@ export async function joinRoomWithPassword(
       throw new ApiError(403, 'M_FORBIDDEN', 'This room requires a password to join');
     }
     const bcrypt = await import('bcrypt');
-    const valid = await bcrypt.compare(password, settings.passwordHash);
+    const valid = await bcrypt.compare(password, settings.passwordHash as string);
     if (!valid) {
       throw new ApiError(403, 'M_FORBIDDEN', 'Incorrect room password');
     }
@@ -248,8 +268,8 @@ export async function updateSettings(
   }
 
   // Merge with existing settings
-  const { pool } = await import('../db/pool');
-  const existing = await pool.query('SELECT settings FROM rooms WHERE room_id = $1', [roomId]);
+  const { pool } = await import('../db/pool') as { pool: import('pg').Pool };
+  const existing = await pool.query<RoomSettingsRow>('SELECT settings FROM rooms WHERE room_id = $1', [roomId]);
   const currentSettings = existing.rows[0]?.settings || {};
   const merged = { ...currentSettings, ...settingsToStore };
 
@@ -273,6 +293,14 @@ export async function leaveRoom(
   if (!removed) {
     throw new ApiError(404, 'M_NOT_FOUND', 'Membership not found');
   }
+
+  // Emit membership change so remaining clients can invalidate the
+  // Megolm session, ensuring the departed user cannot decrypt future messages.
+  roomEvents.emit('membershipChange', {
+    roomId,
+    userId,
+    action: 'leave',
+  } as MembershipChangeEvent);
 
   return { success: true };
 }

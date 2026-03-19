@@ -115,7 +115,7 @@ export async function subscribeToPush(
     try {
       const resp = await fetch(`${homeserverUrl}/push/vapid-key`);
       if (resp.ok) {
-        const data = await resp.json();
+        const data = (await resp.json()) as { publicKey?: string };
         vapidPublicKey = data.publicKey;
       }
     } catch {
@@ -170,7 +170,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const raw = atob(base64);
   const output = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) {
-    output[i] = raw.charCodeAt(i);
+    output[i] = raw.charCodeAt(i); // eslint-disable-line security/detect-object-injection
   }
   return output;
 }
@@ -183,7 +183,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer | null): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
+    binary += String.fromCharCode(bytes[i]); // eslint-disable-line security/detect-object-injection
   }
   return btoa(binary);
 }
@@ -210,8 +210,8 @@ export function isNotificationPermissionGranted(): boolean {
  * identity. Use only generic labels.
  */
 export async function sendLocalNotification(
-  title: string = 'F.R.A.M.E.',
-  body: string = 'New message',
+  title = 'F.R.A.M.E.',
+  body = 'New message',
 ): Promise<void> {
   if (!isNotificationPermissionGranted()) return;
 

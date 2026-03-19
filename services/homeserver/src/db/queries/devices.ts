@@ -18,7 +18,7 @@ export async function createDevice(
   signingKey: string,
   displayName?: string
 ): Promise<DeviceRow> {
-  const result = await pool.query(
+  const result = await pool.query<DeviceRow>(
     `INSERT INTO devices (device_id, user_id, device_public_key, device_signing_key, display_name)
      VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (device_id) DO NOTHING
@@ -28,13 +28,16 @@ export async function createDevice(
   // If conflict occurred, fetch the existing device
   if (!result.rows[0]) {
     const existing = await findDevice(deviceId);
-    return existing!;
+    if (!existing) {
+      throw new Error(`Device ${deviceId} not found after conflict`);
+    }
+    return existing;
   }
   return result.rows[0];
 }
 
 export async function findDevicesByUser(userId: string): Promise<DeviceRow[]> {
-  const result = await pool.query(
+  const result = await pool.query<DeviceRow>(
     'SELECT * FROM devices WHERE user_id = $1 ORDER BY created_at',
     [userId]
   );
@@ -42,7 +45,7 @@ export async function findDevicesByUser(userId: string): Promise<DeviceRow[]> {
 }
 
 export async function findDevice(deviceId: string): Promise<DeviceRow | null> {
-  const result = await pool.query(
+  const result = await pool.query<DeviceRow>(
     'SELECT * FROM devices WHERE device_id = $1',
     [deviceId]
   );

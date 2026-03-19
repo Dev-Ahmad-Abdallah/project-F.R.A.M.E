@@ -64,14 +64,9 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
             ...keys,
           });
 
-          try {
-            await generateAndUploadKeys(auth.userId, auth.deviceId);
-          } catch (keyErr) {
-            console.warn(
-              '[F.R.A.M.E.] vodozemac key generation failed; continuing with placeholder keys:',
-              keyErr,
-            );
-          }
+          // SECURITY: vodozemac key generation MUST succeed for E2EE to work.
+          // If it fails, abort registration — never continue with placeholder keys.
+          await generateAndUploadKeys(auth.userId, auth.deviceId);
         } else {
           // Reuse device ID from previous login if available
           const storedDeviceId = localStorage.getItem(`frame-device-id:${username}`) ?? undefined;
@@ -136,7 +131,7 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={(e) => void handleSubmit(e)}>
           <label style={styles.label} htmlFor="frame-username">
             Username
           </label>

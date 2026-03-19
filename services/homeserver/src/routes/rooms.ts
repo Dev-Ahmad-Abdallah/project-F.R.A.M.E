@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { apiLimiter } from '../middleware/rateLimit';
-import { asyncHandler } from '../middleware/errorHandler';
+import { asyncHandler, ApiError } from '../middleware/errorHandler';
 import { validateBody, createRoomSchema, roomRenameSchema, roomSettingsSchema, roomInviteSchema, joinWithPasswordSchema } from '../middleware/validation';
 import {
   createRoom,
@@ -18,6 +18,26 @@ import {
 
 export const roomsRouter = Router();
 
+interface CreateRoomBody {
+  roomType: 'direct' | 'group';
+  inviteUserIds: string[];
+  name?: string;
+  isPrivate?: boolean;
+  password?: string;
+}
+
+interface RoomRenameBody {
+  name: string;
+}
+
+interface RoomInviteBody {
+  userId: string;
+}
+
+interface JoinWithPasswordBody {
+  password: string;
+}
+
 // POST /rooms/create — Create a new room (direct or group)
 roomsRouter.post(
   '/create',
@@ -25,15 +45,19 @@ roomsRouter.post(
   apiLimiter,
   validateBody(createRoomSchema),
   asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const body = req.body as CreateRoomBody;
     const result = await createRoom(
-      req.auth!.sub,
-      req.body.roomType,
-      req.body.inviteUserIds,
+      req.auth.sub,
+      body.roomType,
+      body.inviteUserIds,
       undefined,
       {
-        name: req.body.name,
-        isPrivate: req.body.isPrivate,
-        password: req.body.password,
+        name: body.name,
+        isPrivate: body.isPrivate,
+        password: body.password,
       },
     );
     res.status(201).json(result);
@@ -46,7 +70,10 @@ roomsRouter.get(
   requireAuth,
   apiLimiter,
   asyncHandler(async (req, res) => {
-    const rooms = await getUserRooms(req.auth!.sub);
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const rooms = await getUserRooms(req.auth.sub);
     res.json({ rooms });
   }),
 );
@@ -58,10 +85,14 @@ roomsRouter.post(
   apiLimiter,
   validateBody(roomInviteSchema),
   asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const body = req.body as RoomInviteBody;
     const result = await inviteToRoom(
       req.params.roomId,
-      req.auth!.sub,
-      req.body.userId,
+      req.auth.sub,
+      body.userId,
     );
     res.json(result);
   }),
@@ -73,7 +104,10 @@ roomsRouter.post(
   requireAuth,
   apiLimiter,
   asyncHandler(async (req, res) => {
-    const result = await joinRoom(req.params.roomId, req.auth!.sub);
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const result = await joinRoom(req.params.roomId, req.auth.sub);
     res.json(result);
   }),
 );
@@ -85,10 +119,14 @@ roomsRouter.put(
   apiLimiter,
   validateBody(roomRenameSchema),
   asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const body = req.body as RoomRenameBody;
     const result = await renameRoom(
       req.params.roomId,
-      req.auth!.sub,
-      req.body.name,
+      req.auth.sub,
+      body.name,
     );
     res.json(result);
   }),
@@ -101,10 +139,13 @@ roomsRouter.put(
   apiLimiter,
   validateBody(roomSettingsSchema),
   asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
     const result = await updateSettings(
       req.params.roomId,
-      req.auth!.sub,
-      req.body,
+      req.auth.sub,
+      req.body as Record<string, unknown>,
     );
     res.json(result);
   }),
@@ -116,7 +157,10 @@ roomsRouter.get(
   requireAuth,
   apiLimiter,
   asyncHandler(async (req, res) => {
-    const settings = await getRoomSettings(req.params.roomId, req.auth!.sub);
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const settings = await getRoomSettings(req.params.roomId, req.auth.sub);
     res.json({ settings });
   }),
 );
@@ -128,10 +172,14 @@ roomsRouter.post(
   apiLimiter,
   validateBody(joinWithPasswordSchema),
   asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const body = req.body as JoinWithPasswordBody;
     const result = await joinRoomWithPassword(
       req.params.roomId,
-      req.auth!.sub,
-      req.body.password,
+      req.auth.sub,
+      body.password,
     );
     res.json(result);
   }),
@@ -143,7 +191,10 @@ roomsRouter.delete(
   requireAuth,
   apiLimiter,
   asyncHandler(async (req, res) => {
-    const result = await leaveRoom(req.params.roomId, req.auth!.sub);
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const result = await leaveRoom(req.params.roomId, req.auth.sub);
     res.json(result);
   }),
 );
@@ -154,7 +205,10 @@ roomsRouter.get(
   requireAuth,
   apiLimiter,
   asyncHandler(async (req, res) => {
-    const members = await getRoomMemberList(req.params.roomId, req.auth!.sub);
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const members = await getRoomMemberList(req.params.roomId, req.auth.sub);
     res.json({ members });
   }),
 );

@@ -102,10 +102,14 @@ export async function fetchAndVerifyKey(
     return { verified: false, proof: null, rootChanged: false };
   }
 
-  // Fetch the stored root for comparison
+  // Fetch the last-known root and key hash for this user from IndexedDB
   const storedRoot = await getEncrypted<string>(
     'verification',
     `merkle-root:${userId}`,
+  );
+  const storedKeyHash = await getEncrypted<string>(
+    'verification',
+    `merkle-keyhash:${userId}`,
   );
 
   const rootChanged = storedRoot != null && storedRoot !== proof.root;
@@ -119,9 +123,25 @@ export async function fetchAndVerifyKey(
 
   const verified = await verifyMerkleProof(proof, bundle.identityKey);
 
+  // Detect suspicious root changes: if the Merkle root changed AND the key
+  // changed, this could indicate a log manipulation or unauthorized key
+  // substitution. A root change with the same key is normal (other users'
+  // keys were appended to the log). We throw hard here instead of merely
+  // warning so callers cannot silently ignore a potential MITM key swap.
+  const keyChanged = storedKeyHash != null && storedKeyHash !== proof.keyHash;
+  if (rootChanged && keyChanged) {
+    throw new Error(
+      `[F.R.A.M.E.] Key transparency violation for ${userId}: ` +
+      'both the Merkle root and the identity key changed simultaneously. ' +
+      'This may indicate log tampering or an unauthorized key replacement.',
+    );
+  }
+
   if (verified) {
-    // Cache the verified root and proof in secure storage
+    // Persist the verified root and key hash in IndexedDB so future
+    // verifications can detect unexpected changes.
     await setEncrypted('verification', `merkle-root:${userId}`, proof.root);
+    await setEncrypted('verification', `merkle-keyhash:${userId}`, proof.keyHash);
     await setEncrypted('verification', `merkle-proof:${userId}`, proof);
   }
 

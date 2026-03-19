@@ -18,7 +18,7 @@ export async function upsertKeyBundle(
   signedPrekeySig: string,
   oneTimePrekeys: string[]
 ): Promise<KeyBundleRow> {
-  const result = await pool.query(
+  const result = await pool.query<KeyBundleRow>(
     `INSERT INTO key_bundles (user_id, device_id, identity_key, signed_prekey, signed_prekey_signature, one_time_prekeys)
      VALUES ($1, $2, $3, $4, $5, $6::jsonb)
      ON CONFLICT (user_id, device_id)
@@ -34,7 +34,7 @@ export async function upsertKeyBundle(
 }
 
 export async function getKeyBundle(userId: string): Promise<KeyBundleRow | null> {
-  const result = await pool.query(
+  const result = await pool.query<KeyBundleRow>(
     'SELECT * FROM key_bundles WHERE user_id = $1 LIMIT 1',
     [userId]
   );
@@ -46,7 +46,7 @@ export async function claimOneTimePrekey(
   deviceId: string
 ): Promise<string | null> {
   // Atomically pop one key using CTE with FOR UPDATE SKIP LOCKED to prevent race conditions
-  const result = await pool.query(
+  const result = await pool.query<{ claimed_key: string }>(
     `WITH claimed AS (
        SELECT ctid, one_time_prekeys->0 AS claimed_key
        FROM key_bundles
@@ -76,14 +76,14 @@ export async function addOneTimePrekeys(
   const MAX_OTK_COUNT = 200;
 
   // First get current count to determine how many we can add
-  const countResult = await pool.query(
+  const countResult = await pool.query<{ count: number }>(
     `SELECT jsonb_array_length(one_time_prekeys) AS count
      FROM key_bundles
      WHERE user_id = $1 AND device_id = $2`,
     [userId, deviceId]
   );
 
-  const currentCount = countResult.rows[0]?.count || 0;
+  const currentCount: number = countResult.rows[0]?.count || 0;
   const remaining = MAX_OTK_COUNT - currentCount;
 
   if (remaining <= 0) {
@@ -93,7 +93,7 @@ export async function addOneTimePrekeys(
   // Only add keys up to the limit
   const keysToAdd = newKeys.slice(0, remaining);
 
-  const result = await pool.query(
+  const result = await pool.query<{ total: number }>(
     `UPDATE key_bundles
      SET one_time_prekeys = one_time_prekeys || $3::jsonb,
          updated_at = NOW()
@@ -104,8 +104,21 @@ export async function addOneTimePrekeys(
   return result.rows[0]?.total || 0;
 }
 
-export async function getOtkCount(userId: string, deviceId: string): Promise<number> {
+/**
+ * Delete the key bundle for a specific device.
+ * Used during key revocation to ensure a revoked device's keys
+ * can no longer be claimed by other users.
+ */
+export async function deleteKeyBundle(userId: string, deviceId: string): Promise<boolean> {
   const result = await pool.query(
+    'DELETE FROM key_bundles WHERE user_id = $1 AND device_id = $2',
+    [userId, deviceId]
+  );
+  return result.rowCount !== null && result.rowCount > 0;
+}
+
+export async function getOtkCount(userId: string, deviceId: string): Promise<number> {
+  const result = await pool.query<{ count: number }>(
     `SELECT jsonb_array_length(one_time_prekeys) AS count
      FROM key_bundles
      WHERE user_id = $1 AND device_id = $2`,

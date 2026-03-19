@@ -1,7 +1,16 @@
-version: '3.8'
+networks:
+  frame-network:
+    driver: bridge
+
+volumes:
+  pg_a_data:
+  pg_b_data:
+  redis_a_data:
+  redis_b_data:
 
 services:
-  # ── Homeserver A ──
+
+  # ── Homeserver A ──────────────────────────────────────────────
   homeserver-a:
     build:
       context: .
@@ -13,20 +22,28 @@ services:
       REDIS_URL: redis://redis-a:6379
       PORT: 3000
       NODE_ENV: development
-      # SECURITY: Change all secrets below before deploying to production
+      # DEV ONLY — change before any real deployment
       JWT_SECRET: dev-secret-homeserver-a-change-in-production-xxxxxxxxxxxxxxxxx
-      BCRYPT_SALT_ROUNDS: 12
+      BCRYPT_SALT_ROUNDS: 4      # Fast for local dev; production uses 12 via Railway
       HOMESERVER_DOMAIN: localhost:3000
       FEDERATION_SIGNING_KEY: dev-signing-key-a
       FEDERATION_PEERS: localhost:3001
-      CORS_ORIGINS: http://localhost:3000
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3002
     depends_on:
       postgres-a:
         condition: service_healthy
       redis-a:
         condition: service_healthy
+    networks:
+      - frame-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
 
-  # ── Homeserver B (Federation peer) ──
+  # ── Homeserver B (federation peer) ───────────────────────────
   homeserver-b:
     build:
       context: .
@@ -38,31 +55,55 @@ services:
       REDIS_URL: redis://redis-b:6379
       PORT: 3000
       NODE_ENV: development
-      # SECURITY: Change all secrets below before deploying to production
       JWT_SECRET: dev-secret-homeserver-b-change-in-production-xxxxxxxxxxxxxxxxx
-      BCRYPT_SALT_ROUNDS: 12
+      BCRYPT_SALT_ROUNDS: 4
       HOMESERVER_DOMAIN: localhost:3001
       FEDERATION_SIGNING_KEY: dev-signing-key-b
       FEDERATION_PEERS: localhost:3000
-      CORS_ORIGINS: http://localhost:3000
+      CORS_ORIGINS: http://localhost:5173
     depends_on:
       postgres-b:
         condition: service_healthy
       redis-b:
         condition: service_healthy
+    networks:
+      - frame-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
 
-  # ── PostgreSQL A ──
+  # ── Frontend ──────────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: services/frontend/Dockerfile
+      args:
+        REACT_APP_HOMESERVER_URL: http://localhost:3000
+    ports:
+      - "127.0.0.1:3002:80"
+    depends_on:
+      - homeserver-a
+    networks:
+      - frame-network
+    restart: unless-stopped
+
+  # ── PostgreSQL A ──────────────────────────────────────────────
   postgres-a:
-    image: postgres:16-alpine
+    image: postgres:16.3-alpine
     environment:
       POSTGRES_DB: frame_a
-      # SECURITY: Change credentials before deploying to production
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
       - pg_a_data:/var/lib/postgresql/data
+    networks:
+      - frame-network
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d frame_a"]
       interval: 10s
@@ -70,18 +111,20 @@ services:
       retries: 5
       start_period: 10s
 
-  # ── PostgreSQL B ──
+  # ── PostgreSQL B ──────────────────────────────────────────────
   postgres-b:
-    image: postgres:16-alpine
+    image: postgres:16.3-alpine
     environment:
       POSTGRES_DB: frame_b
-      # SECURITY: Change credentials before deploying to production
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
       - "127.0.0.1:5433:5432"
     volumes:
       - pg_b_data:/var/lib/postgresql/data
+    networks:
+      - frame-network
+    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d frame_b"]
       interval: 10s
@@ -89,30 +132,45 @@ services:
       retries: 5
       start_period: 10s
 
-  # ── Redis A ──
+  # ── Redis A ───────────────────────────────────────────────────
   redis-a:
-    image: redis:7-alpine
+    image: redis:7.2.5-alpine
     ports:
       - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_a_data:/data
+    networks:
+      - frame-network
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 5s
+    # LRU eviction + no persistence in dev (faster)
+    command: >
+      redis-server
+        --maxmemory 128mb
+        --maxmemory-policy allkeys-lru
+        --save ""
 
-  # ── Redis B ──
+  # ── Redis B ───────────────────────────────────────────────────
   redis-b:
-    image: redis:7-alpine
+    image: redis:7.2.5-alpine
     ports:
       - "127.0.0.1:6380:6379"
+    volumes:
+      - redis_b_data:/data
+    networks:
+      - frame-network
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 5s
-
-volumes:
-  pg_a_data:
-  pg_b_data:
+    command: >
+      redis-server
+        --maxmemory 128mb
+        --maxmemory-policy allkeys-lru
+        --save ""

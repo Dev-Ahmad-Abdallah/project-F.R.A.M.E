@@ -70,7 +70,7 @@ function getKeyId(): string {
  * Produce a canonical JSON encoding for signature verification.
  * Keys are sorted lexicographically at every nesting level.
  */
-function canonicalJson(obj: unknown): string {
+export function canonicalJson(obj: unknown): string {
   if (obj === null || obj === undefined) return 'null';
   if (typeof obj === 'string') return JSON.stringify(obj);
   if (typeof obj === 'number') {
@@ -88,7 +88,9 @@ function canonicalJson(obj: unknown): string {
     const keys = Object.keys(record).sort();
     // Omit keys whose value is undefined (matching JSON.stringify behaviour)
     const pairs = keys
+      // eslint-disable-next-line security/detect-object-injection -- k comes from Object.keys(record)
       .filter((k) => record[k] !== undefined)
+      // eslint-disable-next-line security/detect-object-injection -- k comes from Object.keys(record)
       .map((k) => `${JSON.stringify(k)}:${canonicalJson(record[k])}`);
     return '{' + pairs.join(',') + '}';
   }
@@ -137,7 +139,8 @@ export async function verifyEventSignature(
   event: FederationEvent,
   peerDomain: string
 ): Promise<boolean> {
-  const peerSigs = event.signatures[peerDomain];
+  const sigMap = new Map(Object.entries(event.signatures));
+  const peerSigs = sigMap.get(peerDomain);
   if (!peerSigs) {
     return false;
   }
@@ -225,7 +228,7 @@ export async function discoverPeer(domain: string): Promise<ServerDiscovery | nu
     });
 
     if (!response.ok) {
-      console.error(`[Federation] Discovery failed for ${domain}: HTTP ${response.status}`);
+      console.error(`[Federation] Discovery failed for ${domain}: HTTP ${String(response.status)}`);
       return null;
     }
 
@@ -271,7 +274,7 @@ export async function relayEventToPeer(
     }
 
     const { host, port } = discovery['frame.server'];
-    const url = `https://${host}:${port}/federation/send`;
+    const url = `https://${host}:${String(port)}/federation/send`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -281,8 +284,8 @@ export async function relayEventToPeer(
     });
 
     if (!response.ok) {
-      const body = await response.text();
-      console.error(`[Federation] Relay to ${peerDomain} failed: ${response.status} ${body}`);
+      const respBody = await response.text();
+      console.error(`[Federation] Relay to ${peerDomain} failed: ${String(response.status)} ${respBody}`);
       return false;
     }
 
@@ -309,26 +312,27 @@ export async function relayEventToAllPeers(event: FederationEvent): Promise<void
 
   const failedPeers: string[] = [];
 
-  for (let i = 0; i < results.length; i++) {
-    const result = results[i];
+  results.forEach((result, i) => {
+    // eslint-disable-next-line security/detect-object-injection -- i is a safe numeric index from forEach
+    const peerName = peers[i];
     if (result.status === 'rejected') {
       console.error(
-        `[Federation] Relay to ${peers[i]} threw (eventId=${event.eventId}, roomId=${event.roomId}):`,
+        `[Federation] Relay to ${peerName} threw (eventId=${event.eventId}, roomId=${event.roomId}):`,
         result.reason
       );
-      failedPeers.push(peers[i]);
+      failedPeers.push(peerName);
     } else if (!result.value) {
       console.warn(
-        `[Federation] Relay to ${peers[i]} returned failure (eventId=${event.eventId}, roomId=${event.roomId})`
+        `[Federation] Relay to ${peerName} returned failure (eventId=${event.eventId}, roomId=${event.roomId})`
       );
-      failedPeers.push(peers[i]);
+      failedPeers.push(peerName);
     }
-  }
+  });
 
   if (failedPeers.length > 0) {
     // TODO: Persist to federation_relay_queue table for retry instead of just logging
     console.error(
-      `[Federation] Failed to relay event ${event.eventId} to ${failedPeers.length}/${peers.length} peers: ${failedPeers.join(', ')}`
+      `[Federation] Failed to relay event ${event.eventId} to ${String(failedPeers.length)}/${String(peers.length)} peers: ${failedPeers.join(', ')}`
     );
   }
 }
@@ -365,7 +369,19 @@ export async function handleIncomingFederationEvent(
     );
   }
 
-  // 4. Store event in local database
+  // 4. Check for replay: if event already exists, return it instead of inserting a duplicate
+  const existingEvent = await pool.query<{ event_id: string; sequence_id: number }>(
+    'SELECT event_id, sequence_id FROM events WHERE event_id = $1',
+    [event.eventId]
+  );
+  if (existingEvent.rows.length > 0) {
+    return {
+      eventId: existingEvent.rows[0].event_id,
+      sequenceId: existingEvent.rows[0].sequence_id,
+    };
+  }
+
+  // 5. Store event in local database
   const stored = await insertEvent(
     event.eventId,
     event.roomId,
@@ -377,7 +393,7 @@ export async function handleIncomingFederationEvent(
     new Date(event.originServerTs)
   );
 
-  // 5. Fan-out to local recipient devices (batch query instead of N+1)
+  // 6. Fan-out to local recipient devices (batch query instead of N+1)
   const members = await getRoomMembers(event.roomId);
   const localMemberIds = members
     .filter((m) => m.user_id.endsWith(`:${config.HOMESERVER_DOMAIN}`))
@@ -385,11 +401,11 @@ export async function handleIncomingFederationEvent(
 
   let localDeviceIds: string[] = [];
   if (localMemberIds.length > 0) {
-    const deviceResult = await pool.query(
+    const deviceResult = await pool.query<{ device_id: string }>(
       'SELECT device_id FROM devices WHERE user_id = ANY($1::text[])',
       [localMemberIds]
     );
-    localDeviceIds = deviceResult.rows.map((r: { device_id: string }) => r.device_id);
+    localDeviceIds = deviceResult.rows.map((r) => r.device_id);
   }
 
   if (localDeviceIds.length > 0) {

@@ -4,8 +4,8 @@ import cors from 'cors';
 import { getConfig, getCorsOrigins } from './config';
 import { getPublicKeyBase64 } from './services/federationService';
 import { pool, closePool } from './db/pool';
-import { redisClient, redisSubscriber, closeRedis, connectRedis } from './redis/client';
-import { errorHandler, asyncHandler } from './middleware/errorHandler';
+import { redisClient, closeRedis, connectRedis } from './redis/client';
+import { errorHandler, asyncHandler, ApiError } from './middleware/errorHandler';
 import { requireAuth } from './middleware/auth';
 import { apiLimiter } from './middleware/rateLimit';
 import { authRouter } from './routes/auth';
@@ -21,6 +21,14 @@ const app = express();
 
 // ── Trust Railway's reverse proxy (required for rate-limit + correct client IP) ──
 app.set('trust proxy', 1);
+
+// ── HSTS (production only) ──
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    next();
+  });
+}
 
 // ── Security headers ──
 app.use(helmet({
@@ -75,8 +83,12 @@ app.use('/rooms', roomsRouter);
 
 // ── To-device messaging (required by vodozemac for Megolm key sharing) ──
 app.put('/sendToDevice/:eventType/:txnId', requireAuth, apiLimiter, asyncHandler(async (req, res) => {
-  const messages = req.body.messages;
-  if (!messages || typeof messages !== 'object') {
+  if (!req.auth) {
+    throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+  }
+  const body = req.body as { messages?: Record<string, Record<string, unknown>> };
+  const messagesObj = body.messages;
+  if (!messagesObj || typeof messagesObj !== 'object') {
     res.status(400).json({ error: { code: 'M_BAD_JSON', message: 'Missing messages object' } });
     return;
   }
@@ -88,9 +100,9 @@ app.put('/sendToDevice/:eventType/:txnId', requireAuth, apiLimiter, asyncHandler
   // Collect all to-device messages for batch insert
   const toDeviceRows: Array<[string, string, string, string, string, string]> = [];
 
-  for (const [userId, devices] of Object.entries(messages)) {
+  for (const [userId, devices] of Object.entries(messagesObj)) {
     if (typeof devices !== 'object' || devices === null) continue;
-    for (const [deviceId, content] of Object.entries(devices as Record<string, unknown>)) {
+    for (const [deviceId, content] of Object.entries(devices)) {
       recipientCount++;
       if (recipientCount > MAX_RECIPIENTS) {
         res.status(400).json({ error: { code: 'M_BAD_JSON', message: 'Too many recipients' } });
@@ -98,7 +110,7 @@ app.put('/sendToDevice/:eventType/:txnId', requireAuth, apiLimiter, asyncHandler
       }
       toDeviceRows.push([
         userId, deviceId,
-        req.auth!.sub, req.auth!.deviceId,
+        req.auth.sub, req.auth.deviceId,
         req.params.eventType, JSON.stringify(content),
       ]);
     }
@@ -117,9 +129,12 @@ app.put('/sendToDevice/:eventType/:txnId', requireAuth, apiLimiter, asyncHandler
       toDeviceRows.flat()
     );
 
-    // Also notify via Redis pub/sub for instant delivery to online clients
+    // Notify via Redis pub/sub for instant delivery to online clients.
+    // SECURITY: Only a type hint is published — no event content, sender info,
+    // or encryption material passes through Redis. The actual payload is stored
+    // in PostgreSQL and fetched via authenticated /messages/sync.
     await Promise.all(
-      toDeviceRows.map(([userId, deviceId]) =>
+      toDeviceRows.map(([, deviceId]) =>
         redisClient.publish(`device:${deviceId}`, JSON.stringify({ type: 'to_device' }))
       )
     );
@@ -147,42 +162,46 @@ let server: ReturnType<typeof app.listen>;
 
 async function startServer() {
   await connectRedis();
-  console.log('Redis connected');
+  console.info('Redis connected');
 
   server = app.listen(config.PORT, () => {
-    console.log(`Homeserver running on port ${config.PORT}`);
-    console.log(`Domain: ${config.HOMESERVER_DOMAIN}`);
-    console.log(`Environment: ${config.NODE_ENV}`);
+    console.info(`Homeserver running on port ${config.PORT}`);
+    console.info(`Domain: ${config.HOMESERVER_DOMAIN}`);
+    console.info(`Environment: ${config.NODE_ENV}`);
   });
 }
 
-startServer().catch((err) => {
+startServer().catch((err: unknown) => {
   console.error('Failed to start server:', err);
   process.exit(1);
 });
 
 // ── Graceful shutdown ──
-async function shutdown(signal: string) {
-  console.log(`Received ${signal}. Shutting down gracefully...`);
+function shutdown(signal: string) {
+  console.info(`Received ${signal}. Shutting down gracefully...`);
 
-  server.close(async () => {
-    console.log('HTTP server closed');
+  server.close(() => {
+    console.info('HTTP server closed');
 
-    try {
-      await closeRedis();
-      console.log('Redis connections closed');
-    } catch (err) {
-      console.error('Error closing Redis:', err);
-    }
+    const cleanupAndExit = async () => {
+      try {
+        await closeRedis();
+        console.info('Redis connections closed');
+      } catch (err) {
+        console.error('Error closing Redis:', err);
+      }
 
-    try {
-      await closePool();
-      console.log('PostgreSQL pool closed');
-    } catch (err) {
-      console.error('Error closing PostgreSQL:', err);
-    }
+      try {
+        await closePool();
+        console.info('PostgreSQL pool closed');
+      } catch (err) {
+        console.error('Error closing PostgreSQL:', err);
+      }
 
-    process.exit(0);
+      process.exit(0);
+    };
+
+    void cleanupAndExit();
   });
 
   // Force shutdown after 10 seconds

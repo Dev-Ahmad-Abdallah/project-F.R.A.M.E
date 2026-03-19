@@ -29,6 +29,7 @@ export interface SyncEvent {
 }
 
 export interface ToDeviceEvent {
+  id: number;
   sender: string;
   sender_device: string;
   type: string;
@@ -62,6 +63,18 @@ export async function sendMessage(
 export async function deleteMessage(eventId: string): Promise<void> {
   return apiRequest<void>(`/messages/${encodeURIComponent(eventId)}`, {
     method: 'DELETE',
+  });
+}
+
+/**
+ * Acknowledge receipt of to-device messages so they are not re-delivered.
+ */
+export async function ackToDeviceMessages(
+  messageIds: number[],
+): Promise<{ acknowledged: number }> {
+  return apiRequest<{ acknowledged: number }>('/messages/ack-to-device', {
+    method: 'POST',
+    body: { messageIds },
   });
 }
 

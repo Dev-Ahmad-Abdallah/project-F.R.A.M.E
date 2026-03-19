@@ -1,0 +1,34 @@
+# Secrets — never in Docker images
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Rebuilt inside Docker
+node_modules/
+dist/
+build/
+
+# Tests — not needed in production image
+src/__tests__/
+**/*.test.ts
+**/*.spec.ts
+coverage/
+jest.config.*
+.eslintrc.*
+
+# Dev tooling
+.vscode/
+.idea/
+*.swp
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Logs
+*.log
+npm-debug.log*

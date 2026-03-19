@@ -5,6 +5,7 @@ import { validateBody } from '../middleware/validation';
 import { registerSchema, loginSchema, refreshSchema } from '../middleware/validation';
 import { requireAuth } from '../middleware/auth';
 import { register, login, refreshAccessToken, revokeAllTokens } from '../services/authService';
+import type { RegisterParams, LoginParams } from '../services/authService';
 
 export const authRouter = Router();
 
@@ -14,7 +15,7 @@ authRouter.post(
   registerLimiter,
   validateBody(registerSchema),
   asyncHandler(async (req, res) => {
-    const result = await register(req.body);
+    const result = await register(req.body as RegisterParams);
     res.status(201).json(result);
   })
 );
@@ -25,7 +26,7 @@ authRouter.post(
   loginLimiter,
   validateBody(loginSchema),
   asyncHandler(async (req, res) => {
-    const result = await login(req.body);
+    const result = await login(req.body as LoginParams);
     res.json(result);
   })
 );
@@ -36,7 +37,11 @@ authRouter.post(
   requireAuth,
   apiLimiter,
   asyncHandler(async (req, res) => {
-    await revokeAllTokens(req.auth!.sub);
+    if (!req.auth) {
+      res.status(401).json({ error: { code: 'M_UNAUTHORIZED', message: 'Not authenticated' } });
+      return;
+    }
+    await revokeAllTokens(req.auth.sub);
     res.json({ success: true });
   })
 );
@@ -47,7 +52,8 @@ authRouter.post(
   refreshLimiter,
   validateBody(refreshSchema),
   asyncHandler(async (req, res) => {
-    const result = await refreshAccessToken(req.body.refreshToken);
+    const body = req.body as { refreshToken: string };
+    const result = await refreshAccessToken(body.refreshToken);
     res.json(result);
   })
 );

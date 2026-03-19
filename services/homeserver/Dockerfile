@@ -1,43 +1,59 @@
-# Stage 1: Build
-FROM node:20-alpine AS builder
+# ── Stage 1: Builder ─────────────────────────────────────────
+# Pinned to exact patch version — never :latest or :20-alpine (floating)
+FROM node:20.14.0-alpine3.20 AS builder
 WORKDIR /app
 
-# Copy workspace config and shared types
-COPY package.json ./
+# Copy package manifests first for better layer caching
+COPY package.json package-lock.json ./
 COPY shared/package.json shared/
 COPY shared/tsconfig.json shared/
 COPY shared/types/ shared/types/
 COPY services/homeserver/package.json services/homeserver/
 COPY services/homeserver/tsconfig.json services/homeserver/
 
-# Install dependencies
-RUN npm install --workspace=@frame/shared --workspace=@frame/homeserver
+# npm ci — uses lockfile for deterministic installs, NOT npm install
+RUN npm ci --workspace=@frame/shared --workspace=@frame/homeserver
 
-# Copy source and migrations
+# Copy source after deps (avoids invalidating dep cache on code changes)
 COPY shared/ shared/
 COPY services/homeserver/src/ services/homeserver/src/
 COPY services/homeserver/migrations/ services/homeserver/migrations/
 
-# Build shared types first, then homeserver
+# Build
 RUN npm run build --workspace=@frame/shared
 RUN npm run build --workspace=@frame/homeserver
 
-# Stage 2: Production
-FROM node:20-alpine
-RUN addgroup -g 1001 appgroup && adduser -u 1001 -G appgroup -s /bin/sh -D appuser
+# Prune dev dependencies from node_modules
+RUN npm prune --omit=dev
+
+# ── Stage 2: Production runtime ──────────────────────────────
+FROM node:20.14.0-alpine3.20
+
+# Non-root user — never run Node.js as root in production
+RUN addgroup -g 1001 -S appgroup \
+    && adduser -u 1001 -S appuser -G appgroup
+
 WORKDIR /app
 
-# Copy built artifacts and production dependencies
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/shared/package.json shared/
-COPY --from=builder /app/shared/dist/ shared/dist/
-COPY --from=builder /app/services/homeserver/package.json services/homeserver/
-COPY --from=builder /app/services/homeserver/dist/ services/homeserver/dist/
-COPY --from=builder /app/services/homeserver/migrations/ services/homeserver/migrations/
-COPY --from=builder /app/node_modules/ node_modules/
+# Copy only compiled output + production deps from builder
+COPY --from=builder --chown=appuser:appgroup /app/package.json ./
+COPY --from=builder --chown=appuser:appgroup /app/shared/package.json shared/
+COPY --from=builder --chown=appuser:appgroup /app/shared/dist/ shared/dist/
+COPY --from=builder --chown=appuser:appgroup /app/services/homeserver/package.json services/homeserver/
+COPY --from=builder --chown=appuser:appgroup /app/services/homeserver/dist/ services/homeserver/dist/
+COPY --from=builder --chown=appuser:appgroup /app/services/homeserver/migrations/ services/homeserver/migrations/
+COPY --from=builder --chown=appuser:appgroup /app/node_modules/ node_modules/
 
 USER appuser
 EXPOSE 3000
+
+# Prevent unbounded memory growth crashing the container on Railway
+ENV NODE_OPTIONS="--max-old-space-size=512"
+
+# Railway polls /health every 30s — 3 failures triggers auto-restart
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider \
+        http://localhost:${PORT:-3000}/health || exit 1
 
 # Run migrations then start server
 CMD ["sh", "-c", "cd services/homeserver && npx node-pg-migrate up && node dist/server.js"]

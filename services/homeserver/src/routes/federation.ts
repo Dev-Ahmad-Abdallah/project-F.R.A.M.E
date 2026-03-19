@@ -8,7 +8,7 @@ import {
 } from '../services/federationService';
 import { getKeyBundle } from '../db/queries/keys';
 import { getEventsSince } from '../db/queries/events';
-import type { FederationEvent, FederationSendRequest } from '@frame/shared/federation';
+import type { FederationEvent } from '@frame/shared/federation';
 
 export const federationRouter = Router();
 
@@ -44,7 +44,7 @@ federationRouter.post('/send', apiLimiter, asyncHandler(async (req, res) => {
     throw new ApiError(400, 'M_BAD_JSON', `Invalid request body: ${parseResult.error.message}`);
   }
 
-  const { events } = parseResult.data as FederationSendRequest;
+  const { events } = parseResult.data;
 
   // Verify all events come from trusted peers before processing any
   for (const event of events) {

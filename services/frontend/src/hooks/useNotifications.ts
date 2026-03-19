@@ -79,18 +79,21 @@ export function useNotifications(): UseNotificationsReturn {
 
   // ── Unread tracking ──
 
-  const incrementUnread = useCallback((roomId: string, count: number = 1) => {
-    setUnreadByRoom((prev) => ({
-      ...prev,
-      [roomId]: (prev[roomId] || 0) + count,
-    }));
+  const incrementUnread = useCallback((roomId: string, count = 1) => {
+    setUnreadByRoom((prev) => {
+      const prevCount = prev[roomId] ?? 0; // eslint-disable-line security/detect-object-injection
+      return {
+        ...prev,
+        [roomId]: prevCount + count,
+      };
+    });
   }, []);
 
   const clearUnread = useCallback((roomId: string) => {
     setUnreadByRoom((prev) => {
-      if (!prev[roomId]) return prev; // no-op avoids re-render
+      if (!prev[roomId]) return prev; // eslint-disable-line security/detect-object-injection
       const next = { ...prev };
-      delete next[roomId];
+      delete next[roomId]; // eslint-disable-line security/detect-object-injection
       return next;
     });
   }, []);
@@ -103,7 +106,7 @@ export function useNotifications(): UseNotificationsReturn {
 
   const notifyIfHidden = useCallback(() => {
     if (document.visibilityState === 'hidden' && isNotificationPermissionGranted()) {
-      sendLocalNotification('F.R.A.M.E.', 'New message');
+      void sendLocalNotification('F.R.A.M.E.', 'New message');
     }
   }, []);
 

@@ -33,7 +33,7 @@ export async function createRoom(
   try {
     await client.query('BEGIN');
 
-    const roomResult = await client.query(
+    const roomResult = await client.query<RoomRow>(
       `INSERT INTO rooms (room_id, room_type, created_by, name)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
@@ -71,7 +71,7 @@ export async function addRoomMember(
 }
 
 export async function getRoomMembers(roomId: string): Promise<RoomMemberRow[]> {
-  const result = await pool.query(
+  const result = await pool.query<RoomMemberRow>(
     'SELECT * FROM room_members WHERE room_id = $1',
     [roomId]
   );
@@ -79,7 +79,7 @@ export async function getRoomMembers(roomId: string): Promise<RoomMemberRow[]> {
 }
 
 export async function getRoomMembersWithDeviceCounts(roomId: string): Promise<RoomMemberWithDeviceCount[]> {
-  const result = await pool.query(
+  const result = await pool.query<RoomMemberWithDeviceCount>(
     `SELECT rm.*, COALESCE(COUNT(d.device_id), 0)::int AS device_count
      FROM room_members rm
      LEFT JOIN devices d ON rm.user_id = d.user_id
@@ -91,7 +91,7 @@ export async function getRoomMembersWithDeviceCounts(roomId: string): Promise<Ro
 }
 
 export async function getUserRooms(userId: string): Promise<RoomRow[]> {
-  const result = await pool.query(
+  const result = await pool.query<RoomRow>(
     `SELECT r.* FROM rooms r
      JOIN room_members rm ON r.room_id = rm.room_id
      WHERE rm.user_id = $1
@@ -105,9 +105,15 @@ export interface RoomWithMembers extends RoomRow {
   members: { user_id: string; role: string }[];
 }
 
+interface MemberQueryRow {
+  room_id: string;
+  user_id: string;
+  role: string;
+}
+
 export async function getUserRoomsWithMembers(userId: string): Promise<RoomWithMembers[]> {
   // Get rooms the user belongs to
-  const roomsResult = await pool.query(
+  const roomsResult = await pool.query<RoomRow>(
     `SELECT r.* FROM rooms r
      JOIN room_members rm ON r.room_id = rm.room_id
      WHERE rm.user_id = $1
@@ -119,21 +125,25 @@ export async function getUserRoomsWithMembers(userId: string): Promise<RoomWithM
 
   // Get all members for these rooms in a single query
   const roomIds = roomsResult.rows.map((r: RoomRow) => r.room_id);
-  const membersResult = await pool.query(
+  const membersResult = await pool.query<MemberQueryRow>(
     `SELECT room_id, user_id, role FROM room_members WHERE room_id = ANY($1::text[])`,
     [roomIds]
   );
 
-  // Group members by room
-  const membersByRoom: Record<string, { user_id: string; role: string }[]> = {};
+  // Group members by room using a Map
+  const membersByRoom = new Map<string, { user_id: string; role: string }[]>();
   for (const m of membersResult.rows) {
-    if (!membersByRoom[m.room_id]) membersByRoom[m.room_id] = [];
-    membersByRoom[m.room_id].push({ user_id: m.user_id, role: m.role });
+    const roomMembers = membersByRoom.get(m.room_id);
+    if (roomMembers) {
+      roomMembers.push({ user_id: m.user_id, role: m.role });
+    } else {
+      membersByRoom.set(m.room_id, [{ user_id: m.user_id, role: m.role }]);
+    }
   }
 
   return roomsResult.rows.map((r: RoomRow) => ({
     ...r,
-    members: membersByRoom[r.room_id] || [],
+    members: membersByRoom.get(r.room_id) || [],
   }));
 }
 
@@ -149,7 +159,7 @@ export async function usersShareRoom(userIdA: string, userIdB: string): Promise<
 }
 
 export async function updateRoomName(roomId: string, name: string): Promise<RoomRow> {
-  const result = await pool.query(
+  const result = await pool.query<RoomRow>(
     `UPDATE rooms SET name = $2 WHERE room_id = $1 RETURNING *`,
     [roomId, name]
   );
@@ -160,7 +170,7 @@ export async function updateRoomName(roomId: string, name: string): Promise<Room
 }
 
 export async function updateRoomSettings(roomId: string, settings: Record<string, unknown>): Promise<RoomRow> {
-  const result = await pool.query(
+  const result = await pool.query<RoomRow>(
     `UPDATE rooms SET settings = $2::jsonb WHERE room_id = $1 RETURNING *`,
     [roomId, JSON.stringify(settings)]
   );

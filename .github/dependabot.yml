@@ -1,0 +1,65 @@
+version: 2
+
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "08:00"
+      timezone: "Africa/Cairo"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "devops"]
+    reviewers: ["Dev-Hossam"]
+    commit-message:
+      prefix: "chore(deps)"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "npm"
+    directory: "/services/homeserver"
+    schedule:
+      interval: "daily"
+      time: "08:00"
+      timezone: "Africa/Cairo"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "backend"]
+    reviewers: ["Dev-Ahmad-Abdallah", "Dev-Hossam"]
+    commit-message:
+      prefix: "chore(deps/backend)"
+    ignore:
+      # Crypto-critical packages — require manual review
+      - dependency-name: "jsonwebtoken"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "bcrypt"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "npm"
+    directory: "/services/frontend"
+    schedule:
+      interval: "daily"
+      time: "08:00"
+      timezone: "Africa/Cairo"
+    open-pull-requests-limit: 10
+    labels: ["dependencies", "frontend"]
+    reviewers: ["devmohamedhussien-cmd", "Dev-Hossam"]
+    commit-message:
+      prefix: "chore(deps/frontend)"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # Keep GitHub Actions pinned SHAs up to date
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "08:00"
+      timezone: "Africa/Cairo"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "devops", "github-actions"]
+    reviewers: ["Dev-Hossam"]
+    commit-message:
+      prefix: "ci(actions)"

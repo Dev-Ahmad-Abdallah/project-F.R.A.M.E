@@ -66,6 +66,19 @@ class Mutex {
 const CHANNEL_NAME = 'frame-olm-machine';
 let broadcastChannel: BroadcastChannel | null = null;
 
+/**
+ * Flag set to true when another tab is already running an OlmMachine.
+ * Checked in initCrypto() to prevent concurrent instances that cause key conflicts.
+ */
+let anotherTabActive = false;
+
+/**
+ * Returns true if another tab has been detected running an OlmMachine.
+ */
+export function isOtherTabActive(): boolean {
+  return anotherTabActive;
+}
+
 function setupBroadcastChannel(): void {
   if (typeof BroadcastChannel === 'undefined') return;
 
@@ -75,12 +88,19 @@ function setupBroadcastChannel(): void {
   broadcastChannel.postMessage({ type: 'olm-machine-active' });
 
   broadcastChannel.onmessage = (event: MessageEvent) => {
-    if (event.data?.type === 'olm-machine-active' && machine !== null) {
-      console.warn(
-        '[F.R.A.M.E.] Another tab is running an OlmMachine. ' +
-          'Concurrent OlmMachine instances may cause key conflicts. ' +
-          'Close other tabs to avoid issues.',
-      );
+    const msgData = event.data as Record<string, unknown> | undefined;
+    if (msgData?.type === 'olm-machine-active') {
+      if (machine !== null) {
+        // Another tab started while we are already running — warn but keep running
+        // (we are the primary tab).
+        console.warn(
+          '[F.R.A.M.E.] Another tab attempted to start an OlmMachine. ' +
+            'This tab is the primary crypto instance.',
+        );
+      } else {
+        // We haven't initialised yet but another tab is active — block init
+        anotherTabActive = true;
+      }
     }
   };
 }
@@ -88,6 +108,7 @@ function setupBroadcastChannel(): void {
 function teardownBroadcastChannel(): void {
   broadcastChannel?.close();
   broadcastChannel = null;
+  anotherTabActive = false;
 }
 
 // ── Singleton state ──
@@ -114,6 +135,16 @@ export async function initCrypto(
   userId: string,
   deviceId: string,
 ): Promise<void> {
+  // Block initialisation if another tab is already running an OlmMachine.
+  // Concurrent instances sharing the same IndexedDB store cause key conflicts
+  // and message decryption failures.
+  if (anotherTabActive) {
+    throw new Error(
+      'F.R.A.M.E. encryption is already active in another tab. ' +
+        'Please close the other tab and reload this page to use encryption here.',
+    );
+  }
+
   // Initialise WASM runtime once
   if (!wasmInitialised) {
     await sdk.initAsync();
@@ -127,7 +158,7 @@ export async function initCrypto(
       return; // Same identity — no-op
     }
     console.warn(
-      `[F.R.A.M.E.] OlmMachine identity changed (${currentUserId}/${currentDeviceId} → ${userId}/${deviceId}). Destroying old machine.`,
+      `[F.R.A.M.E.] OlmMachine identity changed (${currentUserId ?? 'null'}/${currentDeviceId ?? 'null'} → ${userId}/${deviceId}). Destroying old machine.`,
     );
     destroyCrypto();
   }
@@ -232,21 +263,21 @@ export function destroyCrypto(): void {
  * `markRequestAsSent`.
  */
 async function sendOutgoingRequest(request: OutgoingRequest): Promise<string> {
-  const body = JSON.parse(request.body);
+  const body = JSON.parse(request.body) as Record<string, unknown>;
   switch (request.type) {
     case sdk.RequestType.KeysUpload:
       return JSON.stringify(
-        await apiRequest('/keys/upload', { method: 'POST', body }),
+        await apiRequest<Record<string, unknown>>('/keys/upload', { method: 'POST', body }),
       );
 
     case sdk.RequestType.KeysQuery:
       return JSON.stringify(
-        await apiRequest('/keys/query', { method: 'POST', body }),
+        await apiRequest<Record<string, unknown>>('/keys/query', { method: 'POST', body }),
       );
 
     case sdk.RequestType.KeysClaim:
       return JSON.stringify(
-        await apiRequest('/keys/claim', { method: 'POST', body }),
+        await apiRequest<Record<string, unknown>>('/keys/claim', { method: 'POST', body }),
       );
 
     default:

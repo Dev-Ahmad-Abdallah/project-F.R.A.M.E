@@ -12,11 +12,9 @@ export interface AuthPayload {
 }
 
 // Extend Express Request to include auth payload
-declare global {
-  namespace Express {
-    interface Request {
-      auth?: AuthPayload;
-    }
+declare module 'express-serve-static-core' {
+  interface Request {
+    auth?: AuthPayload;
   }
 }
 

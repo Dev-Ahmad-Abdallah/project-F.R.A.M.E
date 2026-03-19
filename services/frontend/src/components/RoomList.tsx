@@ -38,7 +38,7 @@ const ARCHIVED_KEY = 'frame:archived-rooms';
 function getStoredSet(key: string): Set<string> {
   try {
     const raw = localStorage.getItem(key);
-    if (raw) return new Set(JSON.parse(raw));
+    if (raw) return new Set(JSON.parse(raw) as string[]);
   } catch { /* ignore */ }
   return new Set();
 }
@@ -335,7 +335,7 @@ const RoomList: React.FC<RoomListProps> = ({
 
       {/* No results */}
       {searchQuery.trim() && filteredRooms.length === 0 && (
-        <div style={styles.noResults}>No conversations match "{searchQuery.trim()}"</div>
+        <div style={styles.noResults}>No conversations match &ldquo;{searchQuery.trim()}&rdquo;</div>
       )}
 
       {/* Starred section */}

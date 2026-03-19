@@ -170,7 +170,7 @@ const FingerprintUI: React.FC<FingerprintUIProps> = ({
       }
     }
 
-    computeFingerprints();
+    void computeFingerprints();
     return () => { cancelled = true; };
   }, [publicKey, ownPublicKey]);
 

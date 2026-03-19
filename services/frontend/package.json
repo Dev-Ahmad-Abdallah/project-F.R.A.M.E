@@ -9,24 +9,38 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "react-scripts": "5.0.1",
+    "@frame/shared": "1.0.0",
     "@matrix-org/matrix-sdk-crypto-wasm": "^18.0.0",
     "dompurify": "^3.2.0",
     "idb": "^8.0.0",
     "qrcode.react": "^4.1.0",
-    "@frame/shared": "1.0.0"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-scripts": "5.0.1"
   },
   "devDependencies": {
-    "typescript": "~5.4.5",
+    "@types/dompurify": "^3.0.5",
+    "@types/node": "^20.14.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/dompurify": "^3.0.5",
-    "@types/node": "^20.14.0"
+    "@typescript-eslint/eslint-plugin": "^5.62.0",
+    "@typescript-eslint/parser": "^5.62.0",
+    "eslint-plugin-no-secrets": "^2.3.3",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^4.6.2",
+    "eslint-plugin-security": "^1.7.1",
+    "typescript": "~5.4.5"
   },
   "browserslist": {
-    "production": [">0.2%", "not dead", "not op_mini all"],
-    "development": ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
   }
 }

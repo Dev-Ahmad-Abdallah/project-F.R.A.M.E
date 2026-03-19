@@ -193,7 +193,7 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
       }
     }
 
-    compute();
+    void compute();
     return () => { cancelled = true; };
   }, [oldPublicKey, newPublicKey]);
 

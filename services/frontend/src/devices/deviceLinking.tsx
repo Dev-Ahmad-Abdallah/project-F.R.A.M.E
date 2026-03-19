@@ -36,7 +36,7 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
 
   useEffect(() => {
     let cancelled = false;
-    generateFingerprint(devicePublicKey).then((fp) => {
+    void generateFingerprint(devicePublicKey).then((fp) => {
       if (!cancelled) setFingerprint(fp);
     });
     return () => {

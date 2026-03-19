@@ -77,7 +77,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
   }, [userId, onUnknownDevice]);
 
   useEffect(() => {
-    loadDevices();
+    void loadDevices();
   }, [loadDevices]);
 
   const handleRemoveRequest = useCallback(
@@ -240,7 +240,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
               <button
                 type="button"
                 style={styles.confirmRemove}
-                onClick={handleRemoveConfirm}
+                onClick={() => void handleRemoveConfirm()}
               >
                 Remove
               </button>
@@ -255,7 +255,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
           ...styles.refreshButton,
           ...(isMobile ? { alignSelf: 'stretch', minHeight: 44 } : {}),
         }}
-        onClick={loadDevices}
+        onClick={() => void loadDevices()}
         disabled={loading}
       >
         Refresh

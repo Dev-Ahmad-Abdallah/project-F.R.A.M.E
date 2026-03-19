@@ -1,0 +1,35 @@
+name: "F.R.A.M.E. CodeQL Config"
+
+queries:
+  - uses: security-extended
+  - uses: security-and-quality
+
+paths:
+  - services/homeserver/src
+  - services/frontend/src
+  - shared/types
+
+paths-ignore:
+  - "**/__tests__/**"
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/build/**"
+  - "**/coverage/**"
+  - "docs/**"
+
+query-filters:
+  - include:
+      kind: problem
+      precision: high
+      tags contain: security
+  - include:
+      kind: path-problem
+      precision: high
+      tags contain: security
+  - include:
+      kind: problem
+      tags contain:
+        - correctness
+      precision: very-high

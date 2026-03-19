@@ -1,8 +1,7 @@
 import crypto from 'crypto';
 import { getConfig } from '../config';
-import { insertEvent, getEventsByUser, createDeliveryEntries, getPendingDeliveries, markDelivered, softDeleteEvent } from '../db/queries/events';
+import { insertEvent, getEventsByUser, createDeliveryEntries } from '../db/queries/events';
 import { isRoomMember, getRoomMembers } from '../db/queries/rooms';
-import { findDevicesByUser } from '../db/queries/devices';
 import { pool } from '../db/pool';
 import { redisClient, redisSubscriber } from '../redis/client';
 import { ApiError } from '../middleware/errorHandler';
@@ -46,7 +45,7 @@ export async function cleanupExpiredMessages(): Promise<number> {
 
 // Run cleanup every 30 seconds
 setInterval(() => {
-  cleanupExpiredMessages().catch((err) =>
+  cleanupExpiredMessages().catch((err: unknown) =>
     console.error('[Disappearing] Cleanup error:', err),
   );
 }, 30_000);
@@ -79,21 +78,23 @@ export async function sendMessage(params: SendMessageParams) {
   const members = await getRoomMembers(roomId);
   const memberIds = members.map((m) => m.user_id);
 
-  const deviceResult = await pool.query(
+  const deviceResult = await pool.query<{ device_id: string }>(
     'SELECT device_id FROM devices WHERE user_id = ANY($1::text[])',
     [memberIds]
   );
 
   const allDeviceIds = deviceResult.rows
-    .map((r: { device_id: string }) => r.device_id)
-    .filter((id: string) => id !== senderDeviceId);
+    .map((r) => r.device_id)
+    .filter((id) => id !== senderDeviceId);
 
   await createDeliveryEntries(eventId, allDeviceIds);
 
-  // Notify via Redis pub/sub in parallel (fixes sequential publish — Perf Finding 2)
+  // Notify via Redis pub/sub in parallel (fixes sequential publish — Perf Finding 2).
+  // SECURITY: Only metadata (IDs) is published — no message content or encryption
+  // material passes through Redis. Actual content is fetched via authenticated /messages/sync.
   const notification = JSON.stringify({ eventId, roomId, sequenceId: event.sequence_id });
   await Promise.all(
-    allDeviceIds.map((deviceId: string) =>
+    allDeviceIds.map((deviceId) =>
       redisClient.publish(`device:${deviceId}`, notification)
     )
   );
@@ -115,7 +116,7 @@ export async function sendMessage(params: SendMessageParams) {
       signatures: {},
     };
     // Fire and forget — don't block the sender on federation relay
-    relayEventToAllPeers(federationEvent).catch((err) =>
+    relayEventToAllPeers(federationEvent).catch((err: unknown) =>
       console.error('[Federation] Relay failed after sendMessage:', err)
     );
   }
@@ -133,7 +134,7 @@ export async function sendMessage(params: SendMessageParams) {
  */
 export async function deleteMessage(eventId: string, userId: string): Promise<void> {
   // Verify the event exists and the user is the sender
-  const result = await pool.query(
+  const result = await pool.query<{ sender_id: string }>(
     'SELECT sender_id FROM events WHERE event_id = $1',
     [eventId],
   );
@@ -156,6 +157,36 @@ export async function deleteMessage(eventId: string, userId: string): Promise<vo
   );
 }
 
+/**
+ * Mark to-device messages as acknowledged by the client.
+ * This removes the messages from the database so they won't be re-delivered.
+ */
+export async function acknowledgeToDeviceMessages(
+  userId: string,
+  deviceId: string,
+  messageIds: number[],
+): Promise<number> {
+  if (messageIds.length === 0) return 0;
+
+  // Only delete messages that belong to this user/device to prevent abuse
+  const result = await pool.query(
+    `DELETE FROM to_device_messages
+     WHERE id = ANY($1::bigint[])
+       AND recipient_user_id = $2
+       AND recipient_device_id = $3`,
+    [messageIds, userId, deviceId],
+  );
+  return result.rowCount ?? 0;
+}
+
+interface ToDeviceRow {
+  id: string;
+  sender_user_id: string;
+  sender_device_id: string;
+  event_type: string;
+  content: unknown;
+}
+
 export async function syncMessages(
   userId: string,
   deviceId: string,
@@ -173,7 +204,7 @@ export async function syncMessages(
   );
 
   // Fetch unclaimed to-device messages and mark them as claimed atomically
-  const toDeviceResult = await pool.query(
+  const toDeviceResult = await pool.query<ToDeviceRow>(
     `UPDATE to_device_messages
      SET claimed_at = NOW()
      WHERE id IN (
@@ -186,9 +217,10 @@ export async function syncMessages(
     [userId, deviceId]
   );
 
-  const claimedToDeviceIds = toDeviceResult.rows.map((row: { id: string }) => row.id);
+  const claimedToDeviceIds = toDeviceResult.rows.map((row) => row.id);
 
-  const toDeviceEvents = toDeviceResult.rows.map((row: { sender_user_id: string; sender_device_id: string; event_type: string; content: unknown }) => ({
+  const toDeviceEvents = toDeviceResult.rows.map((row) => ({
+    id: Number(row.id),
     sender: row.sender_user_id,
     sender_device: row.sender_device_id,
     type: row.event_type,
@@ -240,13 +272,15 @@ export async function syncMessages(
   };
 }
 
+type EventRows = Awaited<ReturnType<typeof getEventsByUser>>;
+
 async function waitForEvents(
   userId: string,
   deviceId: string,
   since: number,
   limit: number,
   timeout: number
-): Promise<ReturnType<typeof getEventsByUser> extends Promise<infer T> ? T : never> {
+): Promise<EventRows> {
   return new Promise((resolve) => {
     const channel = `device:${deviceId}`;
     let resolved = false;
@@ -255,21 +289,19 @@ async function waitForEvents(
       if (resolved) return;
       resolved = true;
       redisSubscriber.removeListener('message', onMessage);
-      redisSubscriber.unsubscribe(channel).catch(() => {});
+      redisSubscriber.unsubscribe(channel).catch(() => { /* ignore */ });
     };
 
-    const timer = setTimeout(async () => {
+    const timer = setTimeout(() => {
       cleanup();
-      const events = await getEventsByUser(userId, since, limit);
-      resolve(events);
+      void getEventsByUser(userId, since, limit).then(resolve);
     }, timeout);
 
-    const onMessage = async (ch: string, _msg: string) => {
+    const onMessage = (ch: string, _msg: string) => {
       if (ch !== channel) return;
       clearTimeout(timer);
       cleanup();
-      const events = await getEventsByUser(userId, since, limit);
-      resolve(events);
+      void getEventsByUser(userId, since, limit).then(resolve);
     };
 
     // Use dedicated subscriber client (never the command client)
@@ -281,4 +313,3 @@ async function waitForEvents(
     });
   });
 }
-

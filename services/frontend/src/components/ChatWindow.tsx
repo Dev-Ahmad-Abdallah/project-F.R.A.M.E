@@ -201,7 +201,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleRenameKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      handleConfirmRename();
+      void handleConfirmRename();
     } else if (e.key === 'Escape') {
       handleCancelRename();
     }
@@ -240,7 +240,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   // Fetch disappearing messages settings
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         const { getRoomSettingsAPI } = await import('../api/roomsAPI');
         const resp = await getRoomSettingsAPI(roomId);
@@ -280,7 +280,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     for (const msg of messages) {
       const eventId = msg.event.eventId;
       const isOwn = msg.event.senderId === currentUserId;
-      const isViewOnce = msg.plaintext && (msg.plaintext as Record<string, unknown>).viewOnce === true;
+      const isViewOnce = msg.plaintext && msg.plaintext.viewOnce === true;
       if (isViewOnce && !isOwn && !viewedOnceIds.has(eventId) && !hiddenOnceIds.has(eventId)) {
         setViewedOnceIds((prev) => new Set(prev).add(eventId));
         const timer = setTimeout(() => {
@@ -383,7 +383,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     abortRef.current = true;
 
     const timer = setTimeout(() => {
-      syncLoop();
+      void syncLoop();
     }, 0);
 
     return () => {
@@ -454,14 +454,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const handleRetry = (om: OptimisticMessage) => {
     setOptimisticMessages((prev) => prev.filter((m) => m.id !== om.id));
-    handleSend(om.body);
+    void handleSend(om.body);
   };
 
   // Shift+Enter inserts newline; Enter alone sends
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      void handleSend();
     }
   };
 
@@ -472,7 +472,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     ta.style.height = 'auto';
     const lineHeight = 20;
     const maxHeight = lineHeight * 5 + 16;
-    ta.style.height = Math.min(ta.scrollHeight, maxHeight) + 'px';
+    ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`;
   };
 
   // Close context menu and disappearing menu on click anywhere
@@ -591,8 +591,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     let lastTimestamp: Date | null = null;
     let lastDate: Date | null = null;
 
-    for (let i = 0; i < messages.length; i++) {
-      const decrypted = messages[i];
+    for (const [i, decrypted] of messages.entries()) {
       const event = decrypted.event;
       const isOwn = event.senderId === currentUserId;
       const hasError = decrypted.decryptionError !== null;
@@ -600,7 +599,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       const isDeleted = deletedEventIds.has(event.eventId);
       const isExpired = expiredEventIds.has(event.eventId);
-      const isViewOnce = decrypted.plaintext && (decrypted.plaintext as Record<string, unknown>).viewOnce === true;
+      const isViewOnce = decrypted.plaintext && decrypted.plaintext.viewOnce === true;
       const isHiddenOnce = hiddenOnceIds.has(event.eventId);
 
       // Date separator: show when calendar day changes
@@ -871,20 +870,22 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                       : {}),
                     ...(!disappearingSettings?.enabled && opt.seconds === 0 ? { color: '#58a6ff' } : {}),
                   }}
-                  onClick={async () => {
-                    try {
-                      const { updateRoomSettings } = await import('../api/roomsAPI');
-                      const newSettings = opt.seconds === 0
-                        ? { disappearingMessages: { enabled: false, timeoutSeconds: 0 } }
-                        : { disappearingMessages: { enabled: true, timeoutSeconds: opt.seconds } };
-                      await updateRoomSettings(roomId, newSettings);
-                      setDisappearingSettings(
-                        opt.seconds === 0 ? null : { enabled: true, timeoutSeconds: opt.seconds },
-                      );
-                    } catch (err) {
-                      console.error('Failed to update disappearing settings:', err);
-                    }
-                    setShowDisappearingMenu(false);
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        const { updateRoomSettings } = await import('../api/roomsAPI');
+                        const newSettings = opt.seconds === 0
+                          ? { disappearingMessages: { enabled: false, timeoutSeconds: 0 } }
+                          : { disappearingMessages: { enabled: true, timeoutSeconds: opt.seconds } };
+                        await updateRoomSettings(roomId, newSettings);
+                        setDisappearingSettings(
+                          opt.seconds === 0 ? null : { enabled: true, timeoutSeconds: opt.seconds },
+                        );
+                      } catch (err) {
+                        console.error('Failed to update disappearing settings:', err);
+                      }
+                      setShowDisappearingMenu(false);
+                    })();
                   }}
                 >
                   {opt.label}
@@ -1016,7 +1017,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             ...(isMobile ? { padding: '10px 12px', minWidth: 44, minHeight: 44 } : {}),
             ...((isSending || !inputValue.trim()) ? { opacity: 0.4, cursor: 'not-allowed' } : {}),
           }}
-          onClick={() => handleSend()}
+          onClick={() => void handleSend()}
           disabled={isSending || !inputValue.trim()}
           aria-label="Send message"
         >
@@ -1048,7 +1049,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           <button
             type="button"
             style={styles.contextMenuItem}
-            onClick={() => handleDeleteMessage(contextMenuEventId)}
+            onClick={() => void handleDeleteMessage(contextMenuEventId)}
           >
             Delete
           </button>
