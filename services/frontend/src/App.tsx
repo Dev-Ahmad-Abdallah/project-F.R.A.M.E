@@ -27,6 +27,13 @@ import RoomList from './components/RoomList';
 import NewChatDialog from './components/NewChatDialog';
 import DeviceAlert from './devices/deviceAlert';
 import type { UnknownDeviceInfo } from './devices/deviceAlert';
+import DeviceVerificationGate, {
+  UnverifiedDeviceBanner,
+  deviceNeedsVerification,
+  isDeviceSkipped,
+  setDeviceVerified,
+  setDeviceSkipped,
+} from './devices/DeviceVerificationGate';
 import KeyChangeAlert from './verification/keyChangeAlert';
 import type { KeyChangeAction } from './verification/keyChangeAlert';
 import { getAccessToken, setApiToastCallback, setSessionExpiredCallback, clearTokens } from './api/client';
@@ -176,6 +183,10 @@ function App() {
 
   // Settings: dismissible device verification banner
   const [settingsVerifyBannerDismissed, setSettingsVerifyBannerDismissed] = useState(false);
+
+  // Device verification gate: blocks new/unverified devices until verified or skipped
+  const [showDeviceGate, setShowDeviceGate] = useState(false);
+  const [showUnverifiedBanner, setShowUnverifiedBanner] = useState(false);
 
   // Modal overlay state
   const [deviceAlertInfo, setDeviceAlertInfo] =
@@ -562,7 +573,16 @@ function App() {
           }
         }
 
-        if (!cancelled) setInitPhase('done');
+        if (!cancelled) {
+          setInitPhase('done');
+
+          // Check device verification status on each app load
+          if (deviceNeedsVerification(currentAuth.deviceId)) {
+            setShowDeviceGate(true);
+          } else if (isDeviceSkipped(currentAuth.deviceId)) {
+            setShowUnverifiedBanner(true);
+          }
+        }
       } catch (err) {
         console.error('Initialization error:', err);
         if (!cancelled) {
@@ -1029,6 +1049,10 @@ function App() {
     );
   }
 
+  // ── Device verification gate ──
+  // Shown after init is complete, blocks access until verified or skipped.
+  // Must render BEFORE the main app layout so it overlays everything.
+
   // ── Initialization overlay ──
   if (initPhase !== 'done' && !initError) {
     const phaseLabels = new Map<string, string>([
@@ -1186,6 +1210,10 @@ function App() {
                     if (matched) {
                       await verifyDevice(auth.userId, matched.deviceId);
                     }
+                    // Mark current device as verified in localStorage
+                    setDeviceVerified(auth.deviceId);
+                    setShowUnverifiedBanner(false);
+                    setShowDeviceGate(false);
                   } catch (err) {
                     console.error('Failed to verify linked device:', err);
                   }
@@ -1359,6 +1387,16 @@ function App() {
       {/* Toast notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
+      {/* Unverified device warning banner */}
+      {showUnverifiedBanner && !auth.guest && (
+        <UnverifiedDeviceBanner
+          onVerify={() => {
+            setShowUnverifiedBanner(false);
+            setActiveView('link-device');
+          }}
+        />
+      )}
+
       {/* Guest mode banner */}
       {auth.guest && (
         <div className="frame-guest-banner" style={{
@@ -1445,13 +1483,14 @@ function App() {
             animation: 'frame-scanline 10s linear infinite',
             opacity: 0.4,
           }} />
-          {/* F.R.A.M.E. sidebar header branding */}
-          <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <svg width="16" height="16" viewBox="0 0 64 64" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
-              <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="3" fill="rgba(88,166,255,0.08)" />
+          {/* F.R.A.M.E. sidebar header branding — tactical */}
+          <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid rgba(63,185,80,0.15)' }}>
+            <svg width="16" height="16" viewBox="0 0 64 64" fill="none" aria-hidden="true" style={{ flexShrink: 0, filter: 'drop-shadow(0 0 4px rgba(63,185,80,0.5))' }}>
+              <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#3fb950" strokeWidth="3" fill="rgba(63,185,80,0.06)" />
               <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
             </svg>
-            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1.5, background: 'linear-gradient(135deg, #58a6ff 0%, #c9d1d9 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', textShadow: '0 0 8px rgba(63,185,80,0.3)', filter: 'drop-shadow(0 0 6px rgba(63,185,80,0.25))' }}>F.R.A.M.E.</span>
+            <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 3, color: '#3fb950', fontFamily: '"SF Mono", "Fira Code", monospace', textTransform: 'uppercase' as const, filter: 'drop-shadow(0 0 6px rgba(63,185,80,0.3))' }}>F.R.A.M.E.</span>
+            <span style={{ fontSize: 8, fontWeight: 600, color: '#3fb950', opacity: 0.5, letterSpacing: '0.1em', marginLeft: 'auto' }}>SECURE</span>
           </div>
           {/* User info — click to open profile settings */}
           <div
@@ -1682,6 +1721,22 @@ function App() {
             {renderMainContent()}
           </div>
         </main>
+      )}
+
+      {/* Device verification gate — blocks new device access */}
+      {showDeviceGate && auth && (
+        <DeviceVerificationGate
+          deviceId={auth.deviceId}
+          onVerify={() => {
+            setShowDeviceGate(false);
+            setActiveView('link-device');
+          }}
+          onSkip={() => {
+            setDeviceSkipped(auth.deviceId);
+            setShowDeviceGate(false);
+            setShowUnverifiedBanner(true);
+          }}
+        />
       )}
 
       {/* Modal overlays */}
@@ -1943,14 +1998,16 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     padding: '8px 14px',
     fontSize: 13,
-    fontWeight: 600,
+    fontWeight: 700,
     backgroundColor: '#238636',
     color: '#ffffff',
-    border: 'none',
-    borderRadius: 6,
+    border: '1px solid rgba(63,185,80,0.3)',
+    borderRadius: 3,
     cursor: 'pointer',
     fontFamily: 'inherit',
     transition: 'background-color 0.15s',
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase' as const,
   },
   settingsButton: {
     padding: '8px 10px',
@@ -1958,7 +2015,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'transparent',
     color: '#8b949e',
     border: '1px solid #30363d',
-    borderRadius: 6,
+    borderRadius: 3,
     cursor: 'pointer',
     lineHeight: 1,
     display: 'flex',
@@ -1972,7 +2029,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'transparent',
     color: '#8b949e',
     border: '1px solid #30363d',
-    borderRadius: 6,
+    borderRadius: 3,
     cursor: 'pointer',
     lineHeight: 1,
     display: 'flex',
@@ -2033,14 +2090,16 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 20,
     padding: '10px 24px',
     fontSize: 14,
-    fontWeight: 600,
+    fontWeight: 700,
     backgroundColor: '#238636',
     color: '#ffffff',
-    border: 'none',
-    borderRadius: 8,
+    border: '1px solid rgba(63,185,80,0.3)',
+    borderRadius: 3,
     cursor: 'pointer',
     fontFamily: 'inherit',
     transition: 'background-color 0.15s',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.04em',
   },
   emptyHelpText: {
     marginTop: 10,
@@ -2081,11 +2140,12 @@ const styles: Record<string, React.CSSProperties> = {
   leaveModal: {
     backgroundColor: '#161b22',
     border: '1px solid #30363d',
-    borderRadius: 12,
+    borderRadius: 3,
     padding: 24,
     maxWidth: 380,
     width: '100%',
     boxShadow: '0 16px 48px rgba(0, 0, 0, 0.4)',
+    borderTop: '2px solid #3fb950',
   },
   leaveCancelBtn: {
     padding: '8px 18px',
@@ -2094,7 +2154,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#21262d',
     color: '#c9d1d9',
     border: '1px solid #30363d',
-    borderRadius: 6,
+    borderRadius: 3,
     cursor: 'pointer',
     fontFamily: 'inherit',
   },
@@ -2144,15 +2204,19 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 40,
     backgroundColor: '#161b22',
     border: '1px solid #30363d',
-    borderRadius: 12,
+    borderRadius: 3,
     maxWidth: 380,
     width: '90%',
+    borderTop: '2px solid #3fb950',
+    boxShadow: '0 0 20px rgba(63,185,80,0.08)',
   },
   lockTitle: {
     margin: 0,
     fontSize: 20,
     fontWeight: 600,
     color: '#e6edf3',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.08em',
   },
   lockSubtitle: {
     margin: '8px 0 16px',
@@ -2175,13 +2239,14 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     padding: '10px 14px',
     fontSize: 14,
-    borderRadius: 8,
+    borderRadius: 3,
     border: '1px solid #30363d',
     backgroundColor: '#0d1117',
     color: '#c9d1d9',
-    fontFamily: 'inherit',
+    fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
     marginBottom: 16,
     boxSizing: 'border-box' as const,
+    letterSpacing: '0.03em',
   },
   lockActions: {
     display: 'flex',
@@ -2192,13 +2257,15 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     padding: '10px 16px',
     fontSize: 14,
-    fontWeight: 600,
+    fontWeight: 700,
     backgroundColor: '#238636',
     color: '#ffffff',
-    border: 'none',
-    borderRadius: 8,
+    border: '1px solid rgba(63,185,80,0.3)',
+    borderRadius: 3,
     cursor: 'pointer',
     fontFamily: 'inherit',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.06em',
   },
   lockLogoutButton: {
     padding: '10px 16px',
@@ -2207,13 +2274,15 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: 'transparent',
     color: '#f85149',
     border: '1px solid #6e3630',
-    borderRadius: 8,
+    borderRadius: 3,
     cursor: 'pointer',
     fontFamily: 'inherit',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.06em',
   },
-  skipToContent: { position: 'absolute' as const, top: -100, left: 8, zIndex: 10001, padding: '8px 16px', backgroundColor: '#58a6ff', color: '#0d1117', fontSize: 13, fontWeight: 600, borderRadius: 6, textDecoration: 'none', transition: 'top 0.2s ease' },
-  shortcutsHelpButton: { padding: '6px 10px', fontSize: 13, fontWeight: 700, backgroundColor: 'transparent', color: '#8b949e', border: '1px solid #30363d', borderRadius: 6, cursor: 'pointer', lineHeight: 1, fontFamily: 'inherit', transition: 'border-color 0.15s, color 0.15s' },
-  shortcutsPopup: { position: 'absolute' as const, bottom: 44, right: 0, width: 240, padding: 16, backgroundColor: '#161b22', border: '1px solid #30363d', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 100 },
+  skipToContent: { position: 'absolute' as const, top: -100, left: 8, zIndex: 10001, padding: '8px 16px', backgroundColor: '#58a6ff', color: '#0d1117', fontSize: 13, fontWeight: 600, borderRadius: 3, textDecoration: 'none', transition: 'top 0.2s ease' },
+  shortcutsHelpButton: { padding: '6px 10px', fontSize: 13, fontWeight: 700, backgroundColor: 'transparent', color: '#8b949e', border: '1px solid #30363d', borderRadius: 3, cursor: 'pointer', lineHeight: 1, fontFamily: 'inherit', transition: 'border-color 0.15s, color 0.15s' },
+  shortcutsPopup: { position: 'absolute' as const, bottom: 44, right: 0, width: 240, padding: 16, backgroundColor: '#161b22', border: '1px solid #30363d', borderRadius: 4, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 100 },
   shortcutsPopupTitle: { fontSize: 13, fontWeight: 600, color: '#e6edf3', marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid #21262d' },
   shortcutsPopupRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', fontSize: 12, color: '#8b949e' },
   kbd: { display: 'inline-block', padding: '2px 6px', fontSize: 11, fontWeight: 600, fontFamily: 'monospace', color: '#c9d1d9', backgroundColor: '#21262d', border: '1px solid #30363d', borderRadius: 4, lineHeight: '16px' },

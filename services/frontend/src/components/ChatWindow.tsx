@@ -1194,8 +1194,34 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     return DOMPurify.sanitize(raw, PURIFY_CONFIG);
   };
 
-  function isAudioMessage(content: Record<string, unknown>): boolean {
-    return content?.msgtype === 'm.audio' && typeof content?.audioData === 'string';
+  function parseContentIfString(content: unknown): Record<string, unknown> | null {
+    if (content != null && typeof content === 'object') {
+      return content as Record<string, unknown>;
+    }
+    if (typeof content === 'string') {
+      try {
+        const parsed: unknown = JSON.parse(content);
+        if (parsed != null && typeof parsed === 'object') {
+          return parsed as Record<string, unknown>;
+        }
+      } catch {
+        // Not valid JSON — return null
+      }
+    }
+    return null;
+  }
+
+  function isAudioMessage(content: unknown): boolean {
+    const obj = parseContentIfString(content);
+    return obj != null && obj.msgtype === 'm.audio' && typeof obj.audioData === 'string';
+  }
+
+  function getAudioContent(content: unknown): { audioData: string; duration: number } | null {
+    const obj = parseContentIfString(content);
+    if (obj != null && obj.msgtype === 'm.audio' && typeof obj.audioData === 'string') {
+      return { audioData: String(obj.audioData), duration: Number(obj.duration) || 0 };
+    }
+    return null;
   }
 
   const renderEncryptionIcon = (decrypted: DecryptedEvent): React.ReactNode => {
@@ -1251,7 +1277,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     if (isAnonymous) {
       return senderDisplayName || 'Anonymous';
     }
-    return formatDisplayName(senderId);
+    // Prefer the server-provided display name so renamed users are shown correctly
+    return senderDisplayName || formatDisplayName(senderId);
   }, [isAnonymous]);
 
   // Memoize message rendering — avoids recomputing grouping/date separators on
@@ -1445,6 +1472,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
           )}
           <div
+            className="frame-msg-bubble"
             style={{ ...styles.messageBubble, ...(isMobile ? { padding: '10px 14px', fontSize: 'clamp(14px, 3.8vw, 16px)' } : {}), ...(isOwn ? styles.ownMessage : styles.otherMessage), ...(hasError ? styles.previousSessionMessage : {}), ...bubbleRadius, marginTop: 0, position: 'relative' as const }}
             onContextMenu={isMobile ? undefined : (e) => handleMessageContextMenu(e, event.eventId, event.senderId)}
             onClick={(e) => handleMessageClick(e, event.eventId)}
@@ -1452,20 +1480,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             {/* Reply quote block */}
             {decrypted.plaintext != null && Boolean(decrypted.plaintext.replyTo) && (() => {
               const rt = decrypted.plaintext.replyTo as { eventId: string; senderId: string; body: string };
-              const replyColor = getAvatarColor(rt.senderId);
-              const truncLen = isMobile ? 60 : 80;
-              const replyPreview = typeof rt.body === 'string' && rt.body.length > truncLen ? rt.body.slice(0, truncLen) + '...' : rt.body;
+              const replyColor = isAnonymous ? '#bc8cff' : getAvatarColor(rt.senderId);
               return (
                 <div
-                  style={{ borderLeft: `3px solid ${replyColor}`, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: '0 6px 6px 0', padding: '4px 8px', marginBottom: 4, cursor: 'pointer', maxWidth: '100%', overflow: 'hidden' }}
+                  className="frame-reply-quote"
+                  style={{ borderLeft: `3px solid ${replyColor}`, backgroundColor: isOwn ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)', borderRadius: '0 6px 6px 0', padding: '6px 10px', marginBottom: 6, marginTop: -2, cursor: 'pointer', maxWidth: '100%', overflow: 'hidden' }}
                   onClick={(e) => { e.stopPropagation(); scrollToMessage(rt.eventId); }}
                   title="Click to scroll to original message"
                 >
-                  <div style={{ fontSize: 10, fontWeight: 600, color: isAnonymous ? '#bc8cff' : replyColor, marginBottom: 1 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: replyColor, marginBottom: 2, lineHeight: 1.3 }}>
                     {DOMPurify.sanitize(isAnonymous ? 'Anonymous' : formatDisplayName(rt.senderId), PURIFY_CONFIG)}
                   </div>
-                  <div style={{ fontSize: 11, color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
-                    {typeof replyPreview === 'string' ? DOMPurify.sanitize(replyPreview, PURIFY_CONFIG) : 'Message'}
+                  <div className="frame-reply-quote-text" style={{ fontSize: 12, color: isOwn ? 'rgba(255,255,255,0.7)' : '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as const, lineHeight: 1.35, wordBreak: 'break-word' as const }}>
+                    {typeof rt.body === 'string' ? DOMPurify.sanitize(rt.body, PURIFY_CONFIG) : 'Message'}
                   </div>
                 </div>
               );
@@ -1503,11 +1530,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     </span>
                   ) : (
                     decrypted.plaintext && isAudioMessage(decrypted.plaintext)
-                    ? <AudioPlayer
-                        audioBase64={String(decrypted.plaintext.audioData)}
-                        durationMs={Number(decrypted.plaintext.duration) || 0}
-                        isSent={isOwn}
-                      />
+                    ? (() => {
+                        const audio = getAudioContent(decrypted.plaintext);
+                        return audio ? (
+                          <AudioPlayer
+                            audioBase64={audio.audioData}
+                            durationMs={audio.duration}
+                            isSent={isOwn}
+                          />
+                        ) : null;
+                      })()
                     : <span>{(() => {
                       const text = renderMessageContent(decrypted);
                       if (!searchQuery.trim()) return text;
@@ -1644,6 +1676,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   return (
     <div style={styles.container}>
+      {/* Secure channel green accent line */}
+      <div style={{ height: 2, backgroundColor: '#3fb950', boxShadow: '0 0 8px rgba(63,185,80,0.4)', flexShrink: 0 }} />
       {/* Room header -- compact on mobile (item 2) */}
       <div style={{ ...styles.header, padding: isMobile ? '6px 8px' : 'clamp(6px, 1vw, 10px) clamp(10px, 1.2vw, 14px)' }}>
         <div style={styles.headerLeft}>
@@ -1896,12 +1930,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             <circle cx="7" cy="7" r="5.5" stroke="#d29922" strokeWidth="1.2" strokeDasharray="20 12" fill="none" />
           </svg>
           <span style={{ fontSize: 11, color: '#d29922' }}>Reconnecting...</span>
+          <button type="button" onClick={() => { syncBackoffRef.current = 1000; const freshGen = ++syncGenRef.current; void syncLoop(freshGen); }} style={{ marginLeft: 'auto', padding: '2px 10px', fontSize: 10, fontWeight: 600, backgroundColor: 'rgba(210,153,34,0.15)', color: '#d29922', border: '1px solid rgba(210,153,34,0.3)', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit' }}>Retry Now</button>
         </div>
       )}
 
-      {/* Vignette depth gradient overlays */}
-      <div style={{ position: 'absolute' as const, top: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(180deg, rgba(13,17,23,0.6) 0%, transparent 100%)', pointerEvents: 'none' as const, zIndex: 2 }} />
-      <div style={{ position: 'absolute' as const, bottom: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(0deg, rgba(13,17,23,0.6) 0%, transparent 100%)', pointerEvents: 'none' as const, zIndex: 2 }} />
+      {/* Vignette depth gradient overlays — enhanced with lateral edges */}
+      <div style={{ position: 'absolute' as const, top: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(180deg, rgba(13,17,23,0.7) 0%, transparent 100%)', pointerEvents: 'none' as const, zIndex: 2 }} />
+      <div style={{ position: 'absolute' as const, bottom: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(0deg, rgba(13,17,23,0.7) 0%, transparent 100%)', pointerEvents: 'none' as const, zIndex: 2 }} />
+      <div className="frame-chat-vignette" />
 
       <div ref={messageListRef} style={{ ...styles.messageList, position: 'relative' as const }} onScroll={handleScroll}>
         {/* Subtle F.R.A.M.E. watermark */}
@@ -1960,12 +1996,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {/* Reply preview bar — compact on mobile (item 11) */}
       {replyTo && (
-        <div className={isMobile ? 'frame-reply-preview-mobile' : ''} style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 6 : 8, padding: isMobile ? '4px 10px' : '6px 12px', borderTop: '1px solid #30363d', backgroundColor: '#1c2128' }}>
-          <div style={{ flex: 1, borderLeft: `3px solid ${isAnonymous ? '#bc8cff' : getAvatarColor(replyTo.senderId)}`, paddingLeft: 8, overflow: 'hidden' }}>
-            <div style={{ fontSize: isMobile ? 10 : 11, fontWeight: 600, color: isAnonymous ? '#bc8cff' : getAvatarColor(replyTo.senderId), marginBottom: 1 }}>
+        <div className={isMobile ? 'frame-reply-preview-mobile' : ''} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: isMobile ? '6px 10px' : '8px 12px', borderTop: '1px solid #30363d', backgroundColor: '#1c2128' }}>
+          <div style={{ flex: 1, borderLeft: `3px solid ${isAnonymous ? '#bc8cff' : getAvatarColor(replyTo.senderId)}`, paddingLeft: 8, overflow: 'hidden', minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: isAnonymous ? '#bc8cff' : getAvatarColor(replyTo.senderId), marginBottom: 2, lineHeight: 1.3 }}>
               {DOMPurify.sanitize(isAnonymous ? 'Anonymous' : formatDisplayName(replyTo.senderId), PURIFY_CONFIG)}
             </div>
-            <div className="frame-reply-body" style={{ fontSize: isMobile ? 11 : 12, color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, maxWidth: isMobile ? 'calc(100vw - 80px)' : undefined }}>
+            <div className="frame-reply-body" style={{ fontSize: 12, color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, maxWidth: isMobile ? 'calc(100vw - 100px)' : undefined }}>
               {DOMPurify.sanitize(replyTo.body.length > (isMobile ? 60 : 100) ? replyTo.body.slice(0, isMobile ? 60 : 100) + '...' : replyTo.body, PURIFY_CONFIG)}
             </div>
           </div>
@@ -1985,7 +2021,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
       ) : (
       <div className="frame-chat-input-area" style={{ borderTop: replyTo ? 'none' : undefined }}>
-        <div style={{ display: 'flex', alignItems: 'flex-end', flex: 1, backgroundColor: '#0d1117', borderRadius: 24, border: isTextareaFocused ? '1px solid #58a6ff' : '1px solid #30363d', transition: 'border-color 0.2s', padding: '4px 4px 4px 8px', gap: 2, position: 'relative' as const, ...(isTextareaFocused ? { animation: 'frame-textarea-glow 2s ease-in-out infinite' } : {}) }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', flex: 1, backgroundColor: '#0d1117', borderRadius: 4, border: isTextareaFocused ? '1px solid #3fb950' : '1px solid #30363d', transition: 'border-color 0.2s', padding: '4px 4px 4px 8px', gap: 2, position: 'relative' as const, ...(isTextareaFocused ? { boxShadow: '0 0 8px rgba(63,185,80,0.15)' } : {}) }}>
           {/* Attachment placeholder */}
           <button type="button" title="File sharing coming soon" aria-label="Attach file (coming soon)" style={{ background: 'none', border: 'none', cursor: 'default', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.35, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.49" /></svg>
@@ -2023,8 +2059,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           )}
           {/* Send button — only when text exists. 44px min touch target on mobile */}
           {inputValue.trim() && (
-            <button style={{ padding: isMobile ? '10px 12px' : '6px 14px', borderRadius: 18, border: 'none', backgroundColor: '#58a6ff', color: '#fff', fontSize: 13, fontWeight: 600, cursor: isSending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background-color 0.15s, opacity 0.15s', alignSelf: 'flex-end', flexShrink: 0, marginBottom: 2, opacity: isSending ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, minWidth: isMobile ? 44 : undefined, minHeight: isMobile ? 44 : undefined, ...(sendButtonAnimating ? { animation: 'frame-send-launch 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)' } : {}) }} onClick={() => void handleSend()} disabled={isSending} aria-label="Send message">
-              {isMobile ? (isSending ? (<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 14" /></svg>) : (<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>)) : (isSending ? 'Sending...' : 'Send')}
+            <button style={{ padding: isMobile ? '10px 12px' : '6px 14px', borderRadius: 3, border: '1px solid rgba(63,185,80,0.3)', backgroundColor: '#238636', color: '#fff', fontSize: 13, fontWeight: 700, cursor: isSending ? 'not-allowed' : 'pointer', fontFamily: '"SF Mono", "Fira Code", monospace', transition: 'background-color 0.15s, opacity 0.15s', alignSelf: 'flex-end', flexShrink: 0, marginBottom: 2, opacity: isSending ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, minWidth: isMobile ? 44 : undefined, minHeight: isMobile ? 44 : undefined, letterSpacing: '0.05em', textTransform: 'uppercase' as const, boxShadow: '0 0 6px rgba(63,185,80,0.15)', ...(sendButtonAnimating ? { animation: 'frame-send-launch 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)' } : {}) }} onClick={() => void handleSend()} disabled={isSending} aria-label="Send message">
+              {isMobile ? (isSending ? (<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 14" /></svg>) : (<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>)) : (isSending ? 'SENDING...' : 'SEND')}
             </button>
           )}
         </div>
@@ -2147,7 +2183,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 // ── Inline styles ──
 
 const styles: Record<string, React.CSSProperties> = {
-  container: { display: 'flex', flexDirection: 'column', height: '100%', fontFamily: FONT_BODY, border: '1px solid #30363d', borderRadius: 8, overflow: 'hidden', backgroundColor: '#0d1117', position: 'relative' },
+  container: { display: 'flex', flexDirection: 'column', height: '100%', fontFamily: FONT_BODY, border: '1px solid #30363d', borderRadius: 3, overflow: 'hidden', backgroundColor: '#0d1117', position: 'relative' },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 14px', borderBottom: '1px solid #30363d', backgroundColor: '#161b22' },
   headerLeft: { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 },
   headerNameRow: { display: 'flex', alignItems: 'center', gap: 6 },
@@ -2157,7 +2193,7 @@ const styles: Record<string, React.CSSProperties> = {
   headerMemberCount: { fontSize: 12, color: '#8b949e' },
   infoButton: { width: 28, height: 28, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#c9d1d9', fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'border-color 0.15s, color 0.15s' },
   renameInput: { fontSize: 15, fontWeight: 600, color: '#e6edf3', backgroundColor: '#0d1117', border: '1px solid #58a6ff', borderRadius: 4, padding: '2px 6px', fontFamily: 'inherit', outline: 'none', width: '100%', maxWidth: 240 },
-  encryptionBadge: { fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 2, backgroundColor: 'rgba(63, 185, 80, 0.12)', color: '#3fb950', border: '1px solid rgba(63, 185, 80, 0.25)', textTransform: 'uppercase' as const, letterSpacing: '0.08em', boxShadow: '0 0 4px rgba(63,185,80,0.15)' },
+  encryptionBadge: { fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 1, backgroundColor: 'rgba(63, 185, 80, 0.08)', color: '#3fb950', border: '2px solid rgba(63, 185, 80, 0.4)', textTransform: 'uppercase' as const, letterSpacing: '0.12em', boxShadow: '0 0 6px rgba(63,185,80,0.2), inset 0 0 4px rgba(63,185,80,0.08)', fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace' },
   roomLabel: { fontSize: 13, color: '#c9d1d9' },
   syncErrorIndicator: { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 14px', backgroundColor: 'rgba(210, 153, 34, 0.08)', borderBottom: '1px solid rgba(210, 153, 34, 0.15)' },
   messageList: { flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 2, scrollBehavior: 'smooth' as const, WebkitOverflowScrolling: 'touch' as const },
@@ -2167,7 +2203,7 @@ const styles: Record<string, React.CSSProperties> = {
   timeGap: { display: 'flex', justifyContent: 'center', margin: '8px 0 4px' },
   timeGapText: { fontSize: 10, color: '#8b949e', backgroundColor: '#161b22', padding: '2px 10px', borderRadius: 10 },
   emptyState: { textAlign: 'center', color: '#8b949e', marginTop: 40, fontSize: 14 },
-  messageBubble: { maxWidth: 'clamp(200px, 75%, 600px)', minWidth: 80, padding: '8px 12px', borderRadius: 12, fontSize: 'clamp(13px, 1.4vw, 16px)', lineHeight: 1.4, wordBreak: 'break-word' as const, overflowWrap: 'break-word' as const },
+  messageBubble: { maxWidth: 'clamp(200px, 75%, 600px)', minWidth: 80, padding: '8px 12px', borderRadius: 4, fontSize: 'clamp(13px, 1.4vw, 16px)', lineHeight: 1.4, wordBreak: 'break-word' as const, overflowWrap: 'break-word' as const },
   ownMessage: { backgroundColor: '#4A90D9', color: '#ffffff' },
   otherMessage: { backgroundColor: '#21262d', color: '#c9d1d9' },
   errorMessage: { opacity: 0.7, borderLeft: '3px solid #f85149' },
@@ -2184,7 +2220,7 @@ const styles: Record<string, React.CSSProperties> = {
   optimisticFailed: { opacity: 0.8, backgroundColor: '#4a3040', borderRight: '3px solid #f85149' },
   senderName: { fontSize: 11, fontWeight: 600, marginBottom: 2 },
   messageBody: { display: 'flex', alignItems: 'flex-start', gap: 3, overflowWrap: 'break-word' as const, wordBreak: 'break-word' as const },
-  encryptionLock: { fontSize: 10, flexShrink: 0, marginTop: 2, opacity: 0.6, filter: 'drop-shadow(0 0 3px rgba(63,185,80,0.4))', color: '#3fb950' },
+  encryptionLock: { fontSize: 10, flexShrink: 0, marginTop: 2, opacity: 0.75, filter: 'drop-shadow(0 0 4px rgba(63,185,80,0.6)) drop-shadow(0 0 8px rgba(63,185,80,0.3))', color: '#3fb950' },
   encryptionWarning: { fontSize: 14, color: '#8b949e', flexShrink: 0, marginTop: -1 },
   decryptErrorInline: { display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'help' },
   errorText: { fontStyle: 'italic', opacity: 0.8, fontSize: 13, color: '#8b949e' },
@@ -2195,7 +2231,7 @@ const styles: Record<string, React.CSSProperties> = {
   statusIconFailed: { fontSize: 12, color: '#f85149' },
   retryInlineButton: { padding: '1px 6px', fontSize: 10, fontWeight: 600, backgroundColor: 'rgba(248, 81, 73, 0.2)', color: '#f85149', border: '1px solid rgba(248, 81, 73, 0.4)', borderRadius: 3, cursor: 'pointer', fontFamily: 'inherit', marginLeft: 2 },
   deletedText: { fontStyle: 'italic', color: '#8b949e', opacity: 0.7 },
-  contextMenu: { position: 'fixed' as const, zIndex: 9999, backgroundColor: '#1c2128', border: '1px solid rgba(99, 110, 123, 0.35)', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)', padding: 6, minWidth: 140, backdropFilter: 'blur(12px)', animation: 'frame-context-menu-in 0.15s ease-out' },
+  contextMenu: { position: 'fixed' as const, zIndex: 9999, backgroundColor: '#1c2128', border: '1px solid rgba(99, 110, 123, 0.35)', borderRadius: 3, boxShadow: '0 12px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)', padding: 6, minWidth: 140, backdropFilter: 'blur(12px)', animation: 'frame-context-menu-in 0.15s ease-out' },
   contextMenuItem: { display: 'block', width: '100%', padding: '8px 14px', fontSize: 13, color: '#f85149', backgroundColor: 'transparent', border: 'none', borderRadius: 6, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', transition: 'background-color 0.12s' },
   expiredText: { fontStyle: 'italic', color: '#8b949e', opacity: 0.6 },
   leaveButton: { padding: '4px 10px', fontSize: 11, fontWeight: 600, backgroundColor: 'rgba(248, 81, 73, 0.1)', color: '#f85149', border: '1px solid rgba(248, 81, 73, 0.3)', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' },
@@ -2205,14 +2241,14 @@ const styles: Record<string, React.CSSProperties> = {
   disappearingMenuTitle: { fontSize: 11, fontWeight: 600, color: '#8b949e', padding: '4px 8px 6px', borderBottom: '1px solid #30363d', marginBottom: 4 },
   disappearingMenuItem: { display: 'block', width: '100%', padding: '6px 8px', fontSize: 12, color: '#c9d1d9', backgroundColor: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit' },
   viewOnceIcon: { fontSize: 12, flexShrink: 0, marginTop: 1, opacity: 0.7 },
-  newMessagesPill: { position: 'absolute' as const, bottom: 80, left: '50%', transform: 'translateX(-50%)', padding: '6px 16px', fontSize: 12, fontWeight: 600, color: '#ffffff', backgroundColor: '#58a6ff', border: 'none', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 10, transition: 'opacity 0.2s' },
+  newMessagesPill: { position: 'absolute' as const, bottom: 80, left: '50%', transform: 'translateX(-50%)', padding: '6px 16px', fontSize: 12, fontWeight: 600, color: '#ffffff', backgroundColor: '#238636', border: '1px solid rgba(63,185,80,0.4)', borderRadius: 3, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 10, transition: 'opacity 0.2s', letterSpacing: '0.04em', textTransform: 'uppercase' as const },
   typingIndicator: { display: 'none', alignItems: 'center', gap: 4, padding: '4px 8px', marginTop: 4, alignSelf: 'flex-start', minHeight: 20 },
   typingDot: { width: 6, height: 6, borderRadius: '50%', backgroundColor: '#484f58', animation: 'frame-typing-bounce 1.4s infinite ease-in-out' },
   welcomeContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 24px', textAlign: 'center', flex: 1 },
   welcomeIconWrap: { marginBottom: 12, opacity: 0.7 },
   welcomeTitle: { fontSize: 15, fontWeight: 600, color: '#e6edf3', marginBottom: 8, maxWidth: 320, lineHeight: 1.4 },
   welcomeSubtitle: { fontSize: 13, color: '#8b949e', marginBottom: 12 },
-  welcomeE2eeBadge: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 12, backgroundColor: 'rgba(35, 134, 54, 0.1)', color: '#3fb950', fontSize: 11, fontWeight: 600 },
+  welcomeE2eeBadge: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 2, backgroundColor: 'rgba(35, 134, 54, 0.08)', color: '#3fb950', fontSize: 11, fontWeight: 600, border: '1px solid rgba(63, 185, 80, 0.3)', letterSpacing: '0.06em', textTransform: 'uppercase' as const },
   reactionsRow: { display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 4 },
   reactionBadge: { display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 6px', fontSize: 12, borderRadius: 10, border: '1px solid #30363d', backgroundColor: 'rgba(33, 38, 45, 0.8)', color: '#c9d1d9', cursor: 'pointer', fontFamily: 'inherit', transition: 'border-color 0.15s, background-color 0.15s', lineHeight: 1.3 },
   reactionBadgeOwn: { borderColor: '#58a6ff', backgroundColor: 'rgba(88, 166, 255, 0.15)' },
@@ -2221,7 +2257,7 @@ const styles: Record<string, React.CSSProperties> = {
   reactionPickerEmoji: { width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, backgroundColor: 'transparent', border: 'none', borderRadius: '50%', cursor: 'pointer', transition: 'background-color 0.12s, transform 0.12s', fontFamily: 'inherit' },
   readReceiptIcon: { fontSize: 11, color: '#3fb950', opacity: 0.8, marginLeft: 2 },
   forwardOverlay: { position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  forwardDialog: { backgroundColor: '#161b22', border: '1px solid #30363d', borderRadius: 12, width: 320, maxHeight: 420, display: 'flex', flexDirection: 'column' as const, boxShadow: '0 16px 48px rgba(0,0,0,0.5)', animation: 'frame-context-menu-in 0.15s ease-out' },
+  forwardDialog: { backgroundColor: '#161b22', border: '1px solid #30363d', borderRadius: 3, width: 320, maxHeight: 420, display: 'flex', flexDirection: 'column' as const, boxShadow: '0 16px 48px rgba(0,0,0,0.5)', animation: 'frame-context-menu-in 0.15s ease-out' },
   forwardTitle: { fontSize: 15, fontWeight: 600, color: '#e6edf3', padding: '16px 16px 12px', borderBottom: '1px solid #30363d' },
   forwardList: { flex: 1, overflowY: 'auto' as const, padding: '4px 0' },
   forwardRoomItem: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 16px', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const, transition: 'background-color 0.12s' },
