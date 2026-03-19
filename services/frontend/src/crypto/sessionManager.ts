@@ -217,9 +217,12 @@ export async function decryptEvent(event: SyncEvent): Promise<DecryptedEvent> {
 
     const roomIdObj = new sdk.RoomId(event.roomId);
 
-    // decryptRoomEvent expects (RoomEvent, RoomId) — construct via SDK
-    const roomEvent = new sdk.RoomEvent(eventJson);
-    const decrypted = await machine.decryptRoomEvent(roomEvent, roomIdObj);
+    // decryptRoomEvent expects (eventJson: string, roomId: RoomId, settings: DecryptionSettings)
+    const decrypted = await machine.decryptRoomEvent(
+      eventJson,
+      roomIdObj,
+      new sdk.DecryptionSettings(sdk.TrustRequirement.Untrusted),
+    );
     const parsed = JSON.parse(decrypted.event);
 
     return {
