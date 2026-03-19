@@ -245,8 +245,8 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
           transition: 'opacity 0.2s ease, transform 0.2s ease',
         }}
       >
-        {/* Shield icon */}
-        <div style={styles.iconWrapper}>
+        {/* Shield icon with green glow pulse */}
+        <div style={{ ...styles.iconWrapper, animation: 'frame-shield-pulse 3s ease-in-out infinite' }}>
           <svg width="40" height="40" viewBox="0 0 64 64" fill="none" aria-hidden="true">
             <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="2" fill="rgba(88,166,255,0.06)" />
             <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
@@ -480,6 +480,11 @@ const keyframes = `
 
 @keyframes frame-fade-in {
   to { opacity: 1; }
+}
+
+@keyframes frame-shield-pulse {
+  0%, 100% { filter: drop-shadow(0 0 0px rgba(63,185,80,0)); }
+  50% { filter: drop-shadow(0 0 10px rgba(63,185,80,0.35)); }
 }
 
 /* ── Mobile optimizations (320px–600px) ── */

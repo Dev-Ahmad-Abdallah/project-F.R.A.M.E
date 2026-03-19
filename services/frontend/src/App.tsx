@@ -48,6 +48,7 @@ import SessionSettings from './components/SessionSettings';
 import ProfileSettings from './components/ProfileSettings';
 import { useSessionTimeout, getAutoLock } from './hooks/useSessionTimeout';
 import { useInstallPrompt } from './hooks/useInstallPrompt';
+import { playNotificationSound } from './sounds';
 
 // Lazy-load components not needed on initial render — reduces main bundle size
 const LandingPage = React.lazy(() => import('./pages/LandingPage'));
@@ -260,21 +261,50 @@ function App() {
     };
   }, [showToast, auth]);
 
-  // ── Periodic room list auto-refresh (every 30s) ──
+  // ── Periodic room list auto-refresh (every 15s) ──
   // Keeps the sidebar fresh without requiring manual reload.
+  // Tracks previous unread count to detect new messages and play notification sounds.
+  const prevUnreadCountRef = useRef(0);
+
+  useEffect(() => {
+    prevUnreadCountRef.current = unreadCount;
+  }, [unreadCount]);
+
   useEffect(() => {
     if (!auth) return;
     const interval = setInterval(() => {
       if (!navigator.onLine) return; // Skip while offline
       void listRooms().then((roomList) => {
+        // Sort rooms by most recent activity (latest message timestamp first)
+        roomList.sort((a, b) => {
+          const timeA = a.lastMessage?.timestamp ? new Date(a.lastMessage.timestamp).getTime() : 0;
+          const timeB = b.lastMessage?.timestamp ? new Date(b.lastMessage.timestamp).getTime() : 0;
+          return timeB - timeA;
+        });
         setRooms(roomList);
         setRoomFetchError(null);
+
+        // Update unread counts from server data
+        const freshUnread: Record<string, number> = {};
+        let totalFresh = 0;
+        for (const r of roomList) {
+          if (r.unreadCount > 0) {
+            freshUnread[r.roomId] = r.unreadCount;
+            totalFresh += r.unreadCount;
+          }
+        }
+        setInitialUnread(freshUnread);
+
+        // Play notification sound when unread count increases while tab is hidden
+        if (totalFresh > prevUnreadCountRef.current && document.visibilityState === 'hidden') {
+          playNotificationSound();
+        }
       }).catch(() => {
         // Silently ignore — will retry on next tick
       });
-    }, 30_000);
+    }, 15_000);
     return () => clearInterval(interval);
-  }, [auth]);
+  }, [auth, setInitialUnread]);
 
   // Inject spinner keyframes (Fix 3)
   useEffect(() => {
@@ -1374,15 +1404,33 @@ function App() {
         <aside
           ref={sidebarRef}
           className={`frame-sidebar${isMobile && !sidebarOpen ? ' frame-sidebar-hidden' : ''}`}
-          style={{ flexShrink: 0 }}
+          style={{ flexShrink: 0, position: 'relative' as const, overflow: 'hidden' }}
         >
+          {/* Subtle scan-line overlay for military HUD feel */}
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            zIndex: 0,
+            background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(63,185,80,0.015) 2px, rgba(63,185,80,0.015) 4px)',
+            opacity: 1,
+          }} />
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            zIndex: 0,
+            background: 'linear-gradient(180deg, rgba(63,185,80,0.03) 0%, transparent 10%, transparent 90%, rgba(63,185,80,0.03) 100%)',
+            animation: 'frame-scanline 8s linear infinite',
+            opacity: 0.5,
+          }} />
           {/* F.R.A.M.E. sidebar header branding */}
           <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
             <svg width="16" height="16" viewBox="0 0 64 64" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
               <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="3" fill="rgba(88,166,255,0.08)" />
               <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
             </svg>
-            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1.5, background: 'linear-gradient(135deg, #58a6ff 0%, #c9d1d9 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>F.R.A.M.E.</span>
+            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1.5, background: 'linear-gradient(135deg, #58a6ff 0%, #c9d1d9 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', textShadow: '0 0 8px rgba(63,185,80,0.3)', filter: 'drop-shadow(0 0 6px rgba(63,185,80,0.25))' }}>F.R.A.M.E.</span>
           </div>
           {/* User info — click to open profile settings */}
           <div
