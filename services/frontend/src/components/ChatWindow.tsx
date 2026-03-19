@@ -19,6 +19,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { SkeletonMessageBubble, SyncIndicator } from './Skeleton';
 import { playMessageSound, playSendSound, playErrorSound } from '../sounds';
 import VoiceRecorder from './VoiceRecorder';
+import CameraCapture from './CameraCapture';
 import AudioPlayer from './AudioPlayer';
 import FileAttachment from './FileAttachment';
 import { encryptFile } from '../crypto/fileEncryption';
@@ -195,6 +196,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [inputValue, setInputValue] = useState('');
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [voiceStream, setVoiceStream] = useState<MediaStream | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [contextMenuEventId, setContextMenuEventId] = useState<string | null>(null);
@@ -203,6 +206,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [viewOnceMode, setViewOnceMode] = useState(false);
   const [viewedOnceIds, setViewedOnceIds] = useState<Set<string>>(new Set());
   const [hiddenOnceIds, setHiddenOnceIds] = useState<Set<string>>(new Set());
+  const [consumedOnceIds, setConsumedOnceIds] = useState<Set<string>>(new Set());
   const [expiredEventIds, setExpiredEventIds] = useState<Set<string>>(new Set());
   const [disappearingSettings, setDisappearingSettings] = useState<{
     enabled: boolean;
@@ -973,6 +977,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       if (mimeType) {
         voiceContent.audioMimeType = mimeType;
       }
+      if (viewOnceMode) {
+        voiceContent.viewOnce = true;
+      }
       const encrypted = await encryptForRoom(roomId, 'm.room.message', voiceContent, memberUserIds);
       await sendMessage(roomId, 'm.room.encrypted', encrypted);
       playSendSound();
@@ -1064,6 +1071,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         mimeType: file.type || 'application/octet-stream',
         fileSize: file.size,
       };
+      if (viewOnceMode) {
+        plaintext.viewOnce = true;
+      }
 
       const encryptedContent = await encryptForRoom(
         roomId,
@@ -1089,6 +1099,62 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       setUploadStatus(null);
     }
   }, [pendingFile, roomId, isUploadingFile, memberUserIds, showToast]);
+
+  /** Handle captured photo from CameraCapture — encrypt, upload, send as E2EE image */
+  const handleCameraCapture = useCallback(async (file: File) => {
+    setShowCamera(false);
+    setCameraStream(null);
+
+    setIsUploadingFile(true);
+    setUploadStatus('Encrypting...');
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const plainBytes = new Uint8Array(arrayBuffer);
+
+      const { encryptedBytes, key: fileKey, iv: fileIv } = await encryptFile(plainBytes);
+
+      setUploadStatus(`Uploading (${formatFileSize(file.size)})...`);
+      const uploadResult = await uploadFile(
+        encryptedBytes,
+        roomId,
+        file.name,
+        file.type || 'image/jpeg',
+      );
+
+      setUploadStatus('Securing...');
+
+      const plaintext: Record<string, unknown> = {
+        msgtype: 'm.image',
+        body: file.name,
+        filename: file.name,
+        fileId: uploadResult.fileId,
+        fileKey,
+        fileIv,
+        mimeType: file.type || 'image/jpeg',
+        fileSize: file.size,
+      };
+
+      const encryptedContent = await encryptForRoom(
+        roomId,
+        'm.room.message',
+        plaintext,
+        memberUserIds,
+      );
+
+      await sendMessage(roomId, 'm.room.encrypted', encryptedContent);
+      playSendSound();
+      showToast?.('success', 'Photo sent securely', { duration: 2000 });
+    } catch (err) {
+      console.error('[CameraCapture] Send failed:', err);
+      playErrorSound();
+      const msg = err instanceof Error ? err.message : 'Failed to send photo';
+      showToast?.('error', `Photo send failed: ${msg}`, { duration: 5000, dedupeKey: 'camera-fail' });
+    } finally {
+      setIsUploadingFile(false);
+      setUploadStatus(null);
+    }
+  }, [roomId, memberUserIds, showToast]);
 
   // ── Paste handler: capture images from clipboard ──
   useEffect(() => {
@@ -1615,7 +1681,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       if (isViewOnce && isHiddenOnce && !isOwn) {
         elements.push(
-          <div key={event.eventId} style={{ ...styles.messageBubble, maxWidth: isMobile ? '85%' : 'clamp(200px, 75%, 600px)', ...styles.otherMessage, opacity: 0.5, alignSelf: 'flex-start' as const }}>
+          <div key={event.eventId} style={{ ...styles.messageBubble, maxWidth: isMobile ? '85%' : 'clamp(180px, 65%, 480px)', ...styles.otherMessage, opacity: 0.5, alignSelf: 'flex-start' as const }}>
             <div style={styles.messageBody}>
               <span style={styles.viewOnceIcon} title="View-once message">&#128065;</span>
               <span style={{ fontStyle: 'italic', color: '#8b949e' }}>Viewed</span>
@@ -1679,7 +1745,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           style={{
             display: 'flex', alignItems: 'flex-end', gap: 8,
             alignSelf: isOwn ? 'flex-end' : 'flex-start',
-            maxWidth: isMobile ? '85%' : 'clamp(200px, 75%, 600px)',
+            maxWidth: isMobile ? '85%' : 'clamp(180px, 65%, 480px)',
             marginTop: isFirstInGroup ? 8 : 2,
             position: 'relative' as const,
             ...(hasPopIn ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}),
@@ -1744,7 +1810,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               ) : (
                 <>
                   {isViewOnce && <span style={styles.viewOnceIcon} title="View-once message">&#128065;</span>}
-                  {renderEncryptionIcon(decrypted)}
+                  {/* Hide encryption icon on emoji-only messages */}
+                  {(() => {
+                    if (!hasError && decrypted.plaintext && !isFileMessage(decrypted.plaintext) && !isAudioMessage(decrypted.plaintext)) {
+                      const txt = renderMessageContent(decrypted);
+                      const emojiOnlyCheck = /^[\p{Emoji_Presentation}\p{Extended_Pictographic}\u{FE0F}\u{200D}\s]{1,10}$/u;
+                      if (emojiOnlyCheck.test(txt.trim()) && txt.trim().length <= 12) return null;
+                    }
+                    return renderEncryptionIcon(decrypted);
+                  })()}
                   {hasError ? (
                     <span style={styles.previousSessionInline}>
                       <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
@@ -1776,6 +1850,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                             fileKey={fc.fileKey}
                             fileIv={fc.fileIv}
                             isSent={isOwn}
+                            viewOnce={isViewOnce || undefined}
+                            onConsumed={isViewOnce ? () => setConsumedOnceIds((prev) => new Set(prev).add(event.eventId)) : undefined}
                           />
                         ) : null;
                       })()
@@ -1788,13 +1864,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                             durationMs={audio.duration}
                             isSent={isOwn}
                             mimeType={audio.mimeType}
+                            viewOnce={isViewOnce || undefined}
+                            onConsumed={isViewOnce ? () => setConsumedOnceIds((prev) => new Set(prev).add(event.eventId)) : undefined}
                           />
                         ) : null;
                       })()
                     : <span className={isOwn ? 'frame-msg-text-own' : 'frame-msg-text'} style={(() => {
                       const t = renderMessageContent(decrypted);
                       const emojiOnly = /^[\p{Emoji_Presentation}\p{Extended_Pictographic}\u{FE0F}\u{200D}\s]{1,10}$/u;
-                      if (emojiOnly.test(t.trim()) && t.trim().length <= 12) return { fontSize: 32, lineHeight: 1.3 };
+                      if (emojiOnly.test(t.trim()) && t.trim().length <= 12) return { fontSize: 32, lineHeight: 1.3, textAlign: 'center' as const, display: 'block', padding: 0 };
                       return {};
                     })()}>{(() => {
                       const text = renderMessageContent(decrypted);
@@ -2253,7 +2331,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         {renderWelcome()}
         {renderedMessages}
         {optimisticMessages.map((om) => (
-          <div key={om.id} style={{ ...styles.messageBubble, ...(isMobile ? { maxWidth: '85%', padding: '10px 14px', fontSize: 'clamp(14px, 3.8vw, 16px)' } : { maxWidth: 'clamp(200px, 75%, 600px)' }), ...styles.ownMessage, ...(om.status === 'sending' ? styles.optimisticSending : {}), ...(om.status === 'failed' ? styles.optimisticFailed : {}), alignSelf: 'flex-end' as const, ...(recentlySentIds.has(om.id) ? { animation: 'frame-msg-slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}) }}>
+          <div key={om.id} style={{ ...styles.messageBubble, ...(isMobile ? { maxWidth: '85%', padding: '10px 14px', fontSize: 'clamp(14px, 3.8vw, 16px)' } : { maxWidth: 'clamp(180px, 65%, 480px)' }), ...styles.ownMessage, ...(om.status === 'sending' ? styles.optimisticSending : {}), ...(om.status === 'failed' ? styles.optimisticFailed : {}), alignSelf: 'flex-end' as const, ...(recentlySentIds.has(om.id) ? { animation: 'frame-msg-slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}) }}>
             <div style={styles.messageBody}>
               <span className="frame-msg-text-own">{DOMPurify.sanitize(om.body, PURIFY_CONFIG)}</span>
             </div>
@@ -2452,6 +2530,46 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           {uploadStatus && (
             <span style={{ fontSize: 10, color: '#58a6ff', alignSelf: 'flex-end', marginBottom: 6, whiteSpace: 'nowrap' as const }}>{uploadStatus}</span>
           )}
+          {/* Camera capture */}
+          <button
+            type="button"
+            title="Take photo"
+            aria-label="Take photo"
+            onClick={() => { void (async () => {
+              try {
+                (window as unknown as Record<string, unknown>).__framePermissionPending = true;
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                (window as unknown as Record<string, unknown>).__framePermissionPending = false;
+                setCameraStream(stream);
+                setShowCamera(true);
+              } catch {
+                (window as unknown as Record<string, unknown>).__framePermissionPending = false;
+                showToast?.('error', 'Camera access denied. Check your browser permissions.', { duration: 5000 });
+              }
+            })(); }}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 8,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: 0.7,
+              flexShrink: 0,
+              alignSelf: 'flex-end',
+              marginBottom: 1,
+              borderRadius: '50%',
+              transition: 'opacity 0.15s, background-color 0.15s',
+              minWidth: 36,
+              minHeight: 36,
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+              <circle cx="12" cy="13" r="4" />
+            </svg>
+          </button>
           {/* View-once toggle with pill badge — compact on mobile */}
           <button type="button" onClick={() => setViewOnceMode((v) => !v)} title={viewOnceMode ? 'View-once enabled' : 'Enable view-once mode'} aria-label="Toggle view-once mode" style={{ background: viewOnceMode ? 'rgba(217,158,36,0.2)' : 'none', border: 'none', cursor: 'pointer', padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 2 : 4, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 1, borderRadius: '50%', transition: 'background-color 0.15s', minWidth: 36, minHeight: 36 }}>
             <svg width={isMobile ? '14' : '16'} height={isMobile ? '14' : '16'} viewBox="0 0 24 24" fill="none" stroke={viewOnceMode ? '#d99e24' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
@@ -2504,6 +2622,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           )}
         </div>
       </div>
+      )}
+
+      {/* Camera capture modal */}
+      {showCamera && cameraStream && (
+        <CameraCapture
+          stream={cameraStream}
+          onCapture={(file) => { void handleCameraCapture(file); }}
+          onClose={() => { setShowCamera(false); setCameraStream(null); }}
+        />
       )}
 
       {/* Context menu: bottom sheet on mobile, fixed dropdown on desktop */}
@@ -2642,7 +2769,7 @@ const styles: Record<string, React.CSSProperties> = {
   timeGap: { display: 'flex', justifyContent: 'center', margin: '8px 0 4px' },
   timeGapText: { fontSize: 10, color: '#8b949e', backgroundColor: '#161b22', padding: '2px 10px', borderRadius: 10 },
   emptyState: { textAlign: 'center', color: '#8b949e', marginTop: 40, fontSize: 14 },
-  messageBubble: { maxWidth: 'clamp(200px, 75%, 600px)', minWidth: 80, padding: '10px 14px', borderRadius: 16, fontSize: 'clamp(13px, 1.4vw, 15px)', lineHeight: 1.5, wordBreak: 'break-word' as const, overflowWrap: 'break-word' as const, transition: 'background-color 0.15s' },
+  messageBubble: { maxWidth: 'clamp(180px, 65%, 480px)', minWidth: 80, padding: '10px 14px', borderRadius: 16, fontSize: 'clamp(13px, 1.4vw, 15px)', lineHeight: 1.5, wordBreak: 'break-word' as const, overflowWrap: 'break-word' as const, transition: 'background-color 0.15s' },
   ownMessage: { backgroundColor: '#1B6EF3', color: '#ffffff' },
   otherMessage: { backgroundColor: '#2D333B', color: '#e6edf3' },
   errorMessage: { opacity: 0.7, borderLeft: '3px solid #f85149' },

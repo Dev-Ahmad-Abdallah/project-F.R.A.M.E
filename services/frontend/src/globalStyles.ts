@@ -11,6 +11,22 @@ export const FONT_MONO = '"SF Mono", "Fira Code", "Cascadia Code", monospace';
 const GLOBAL_STYLE_ID = 'frame-global-styles';
 
 const GLOBAL_CSS = `
+/* ── Base typography ── */
+body {
+  font-size: 14px;
+  line-height: 1.5;
+}
+small, .frame-text-sm { font-size: 12px; line-height: 1.4; }
+h1, .frame-h1 { font-size: 18px; font-weight: 700; }
+h2, .frame-h2 { font-size: 16px; font-weight: 600; }
+h3, .frame-h3 { font-size: 14px; font-weight: 600; }
+
+/* ── Smooth transitions on ALL interactive elements ── */
+button, a, [role="button"], .frame-interactive,
+input, textarea, select {
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s;
+}
+
 /* Hover states */
 button:hover:not(:disabled) { filter: brightness(1.1); }
 button:active:not(:disabled) { filter: brightness(0.95); transform: scale(0.98); }
@@ -28,23 +44,47 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   from { opacity: 0; }
   to { opacity: 1; }
 }
-.frame-dialog-enter { animation: frame-dialog-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.frame-dialog-enter { animation: frame-dialog-enter 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
 .frame-dialog-backdrop-enter { animation: frame-dialog-backdrop-enter 0.2s ease-out forwards; }
 
-/* Focus visible */
-button:focus-visible, input:focus-visible, textarea:focus-visible {
+/* Focus visible — consistent green ring on all focusable elements */
+button:focus-visible, a:focus-visible, input:focus-visible,
+textarea:focus-visible, select:focus-visible, [role="button"]:focus-visible,
+[tabindex]:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px #3fb950;
+}
+
+/* Input focus: clean border transition */
+input:focus, textarea:focus, select:focus {
+  border-color: #3fb950;
+  outline: none;
 }
 
 /* Input placeholder */
 input::placeholder { color: #8b949e; }
 
+/* Selection color: green-tinted highlight */
+::selection {
+  background: rgba(63, 185, 80, 0.25);
+  color: #f0f6fc;
+}
+::-moz-selection {
+  background: rgba(63, 185, 80, 0.25);
+  color: #f0f6fc;
+}
+
 /* Scrollbar styling for dark theme — thin, precise */
-::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: #0d1117; }
-::-webkit-scrollbar-thumb { background: #1c2128; border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: #21262d; border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: #30363d; }
+
+/* Firefox thin scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #21262d #0d1117;
+}
 
 /* Military/tactical: green caret color on inputs */
 input, textarea {
@@ -67,10 +107,10 @@ input, textarea {
   box-shadow: inset 0 0 80px 20px rgba(0, 0, 0, 0.35);
 }
 
-/* Modal entrance animation */
+/* Modal entrance animation — slide-up with proper easing */
 @keyframes frame-modal-enter {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 /* Subtle scan-line effect for sidebar HUD feel */
@@ -80,11 +120,11 @@ input, textarea {
 }
 
 /* Precision font weight for UI labels */
-button, label, span, [role="button"] {
+button, label, [role="button"] {
   font-weight: 500;
 }
 
-/* Smooth transitions */
+/* Box sizing */
 * { box-sizing: border-box; }
 
 /* ── Fluid Responsive Design ── */
@@ -323,7 +363,7 @@ button, label, span, [role="button"] {
 .frame-hero-title {
   font-size: clamp(24px, 5vw, 56px) !important;
   font-weight: 800;
-  line-height: 1.15;
+  line-height: 1.2;
   max-width: 700px;
   word-break: break-word;
   overflow-wrap: break-word;
@@ -347,11 +387,17 @@ button, label, span, [role="button"] {
   letter-spacing: 0.08em;
 }
 
-/* ── Feature grid: auto-fit columns ── */
+/* ── Feature grid: 3 equal columns desktop, auto-fit smaller ── */
 .frame-feature-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
-  gap: clamp(12px, 2vw, 20px);
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(16px, 2vw, 24px);
+}
+
+@media (max-width: 900px) and (min-width: 601px) {
+  .frame-feature-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
 }
 
 /* ── Trust signals: natural flex wrap ── */
@@ -728,12 +774,7 @@ button, label, span, [role="button"] {
   }
 }
 
-/* ── Bottom sheet animations (global, outside media query) ── */
-@keyframes frame-bottom-sheet-slide-up {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
-}
-
+/* ── Overlay fade-in (global, outside media query) ── */
 @keyframes frame-overlay-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -784,6 +825,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  font-family: ${FONT_BODY};
 }
 
 /* 9. Mobile-specific button styles — 44px min touch target */
@@ -794,27 +836,15 @@ body {
   }
 }
 
-/* 10. Bottom sheet animation keyframes — slide-up for mobile dialogs */
+/* 10. Bottom sheet animation keyframes — slide-up/down for mobile dialogs */
 @keyframes frame-bottom-sheet-slide-up {
-  from {
-    opacity: 0;
-    transform: translateY(100%);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(100%); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes frame-bottom-sheet-slide-down {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(100%);
-  }
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(100%); }
 }
 
 /* Screenshot & copy protection for message content */
@@ -845,7 +875,7 @@ body {
     border-radius: 16px 16px 0 0;
     padding: 16px;
     padding-bottom: env(safe-area-inset-bottom);
-    animation: frame-bottom-sheet-slide-up 0.3s ease-out forwards;
+    animation: frame-bottom-sheet-slide-up 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards;
     max-height: 85vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;

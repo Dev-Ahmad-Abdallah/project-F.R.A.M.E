@@ -6,12 +6,17 @@ interface AudioPlayerProps {
   isSent?: boolean;
   /** MIME type of the audio data (e.g. 'audio/webm;codecs=opus', 'audio/mp4'). Defaults to 'audio/webm'. */
   mimeType?: string;
+  /** If true, the player can only be played once, then shows an expired message. */
+  viewOnce?: boolean;
+  /** Called after a view-once message finishes playing. */
+  onConsumed?: () => void;
 }
 
-const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSent, mimeType = 'audio/webm' }) => {
+const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSent, mimeType = 'audio/webm', viewOnce, onConsumed }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(durationMs / 1000);
+  const [consumed, setConsumed] = useState(false);
   const [waveformBars] = useState<number[]>(() => {
     // Generate pseudo-random waveform bars based on the audio data hash
     const bars: number[] = [];
@@ -19,7 +24,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
     for (let i = 0; i < Math.min(audioBase64.length, 100); i++) {
       seed = (seed + audioBase64.charCodeAt(i)) % 1000;
     }
-    for (let i = 0; i < 32; i++) {
+    for (let i = 0; i < 24; i++) {
       seed = (seed * 1103515245 + 12345) & 0x7fffffff;
       bars.push(0.2 + (seed % 100) / 125);
     }
@@ -46,11 +51,31 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
     };
   }, [cleanupInterval]);
 
+  // Create a stable Blob URL from the base64 data (avoids data-URI size limits)
+  const blobUrlRef = useRef<string | null>(null);
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
+    };
+  }, []);
+
   const getAudioElement = useCallback((): HTMLAudioElement => {
     if (!audioRef.current) {
-      // Use the actual MIME type from recording (e.g. 'audio/mp4' on Safari)
-      const dataUriMime = mimeType.split(';')[0] || 'audio/webm';
-      const audio = new Audio(`data:${dataUriMime};base64,${audioBase64}`);
+      // Decode base64 to binary and create a Blob with the full MIME type (including codecs)
+      const byteString = atob(audioBase64);
+      const bytes = new Uint8Array(byteString.length);
+      for (let i = 0; i < byteString.length; i++) {
+        // eslint-disable-next-line security/detect-object-injection
+        bytes[i] = byteString.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: mimeType || 'audio/webm' });
+      const url = URL.createObjectURL(blob);
+      blobUrlRef.current = url;
+
+      const audio = new Audio(url);
       audio.addEventListener('loadedmetadata', () => {
         if (audio.duration && isFinite(audio.duration)) {
           setDuration(audio.duration);
@@ -60,11 +85,15 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
         setIsPlaying(false);
         setCurrentTime(0);
         cleanupInterval();
+        if (viewOnce && !consumed) {
+          setConsumed(true);
+          onConsumed?.();
+        }
       });
       audioRef.current = audio;
     }
     return audioRef.current;
-  }, [audioBase64, mimeType, cleanupInterval]);
+  }, [audioBase64, mimeType, cleanupInterval, viewOnce, consumed, onConsumed]);
 
   const togglePlay = useCallback(() => {
     const audio = getAudioElement();
@@ -117,14 +146,32 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
   const btnColor = isSent ? '#ffffff' : '#e6edf3';
   const timeColor = isSent ? 'rgba(255,255,255,0.55)' : '#8b949e';
 
+  if (consumed) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '4px 0',
+        width: '100%',
+      }}>
+        <span style={{ fontSize: 12, opacity: 0.7 }}>&#128065;</span>
+        <span style={{ fontStyle: 'italic', color: '#8b949e', fontSize: 13 }}>Voice message expired</span>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       display: 'flex',
       alignItems: 'center',
-      gap: 10,
+      gap: 8,
       padding: '4px 0',
-      minWidth: 220,
-      maxWidth: 320,
+      width: '100%',
+      maxWidth: '100%',
+      minWidth: 0,
+      overflow: 'hidden',
+      boxSizing: 'border-box',
     }}>
       {/* Play/Pause button */}
       <button
@@ -171,6 +218,8 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
           height: 32,
           cursor: 'pointer',
           position: 'relative',
+          overflow: 'hidden',
+          minWidth: 0,
         }}
         onClick={handleBarClick}
         role="slider"
@@ -192,7 +241,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
                 borderRadius: 2,
                 backgroundColor: isActive ? activeColor : inactiveColor,
                 transition: 'background-color 0.12s',
-                flexShrink: 0,
+                flexShrink: 1,
               }}
             />
           );

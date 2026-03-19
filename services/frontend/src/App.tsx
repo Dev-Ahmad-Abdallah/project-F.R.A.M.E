@@ -374,10 +374,10 @@ function App() {
           50% { opacity: 0.7; transform: scale(1.05); }
         }
         @keyframes frame-tip-fade {
-          0% { opacity: 0; transform: translateY(6px); }
-          15% { opacity: 1; transform: translateY(0); }
-          85% { opacity: 1; transform: translateY(0); }
-          100% { opacity: 0; transform: translateY(-6px); }
+          0% { opacity: 0; transform: translateY(8px); }
+          12% { opacity: 1; transform: translateY(0); }
+          88% { opacity: 1; transform: translateY(0); }
+          100% { opacity: 0; transform: translateY(-8px); }
         }
         @media (max-width: 600px) {
           button:active, [role="button"]:active {
@@ -1181,9 +1181,9 @@ function App() {
               </div>
             )}
             <ProfileSettings userId={auth.userId} onDisplayNameChange={setUserDisplayName} onStatusChange={setUserStatus} />
-            <div style={{ borderTop: '1px solid #30363d', width: '100%', maxWidth: 440, margin: '8px 0 20px' }} />
+            <div style={{ borderTop: '1px solid rgba(48, 54, 61, 0.6)', width: '100%', maxWidth: 440, margin: '12px 0 24px' }} />
             <SessionSettings />
-            <div style={{ borderTop: '1px solid #30363d', width: '100%', maxWidth: 440, margin: '8px 0 20px' }} />
+            <div style={{ borderTop: '1px solid rgba(48, 54, 61, 0.6)', width: '100%', maxWidth: 440, margin: '12px 0 24px' }} />
             <React.Suspense fallback={<div style={{ padding: 16, color: '#8b949e' }}>Loading devices...</div>}>
             <DeviceList
               userId={auth.userId}
@@ -1311,38 +1311,38 @@ function App() {
               <span style={{ fontSize: 11, color: '#3fb950', fontWeight: 500, opacity: 0.8 }}>Encryption active</span>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 12, marginTop: 16, width: '100%', maxWidth: 340 }}>
-              <button type="button" onClick={() => setShowNewChatDialog(true)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', backgroundColor: 'rgba(88,166,255,0.06)', border: '1px solid #30363d', borderRadius: 10, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', transition: 'border-color 0.15s, background-color 0.15s' }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#58a6ff'; e.currentTarget.style.backgroundColor = 'rgba(88,166,255,0.1)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#30363d'; e.currentTarget.style.backgroundColor = 'rgba(88,166,255,0.06)'; }}>
-                <div style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(88,166,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 10, marginTop: 20, width: '100%', maxWidth: 360 }}>
+              <button type="button" onClick={() => setShowNewChatDialog(true)} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', backgroundColor: 'rgba(88,166,255,0.04)', border: '1px solid rgba(48,54,61,0.8)', borderRadius: 12, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', transition: 'border-color 0.2s, background-color 0.2s' }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(88,166,255,0.4)'; e.currentTarget.style.backgroundColor = 'rgba(88,166,255,0.08)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(48,54,61,0.8)'; e.currentTarget.style.backgroundColor = 'rgba(88,166,255,0.04)'; }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: 'rgba(88,166,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 3v12M3 9h12" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" /></svg>
                 </div>
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 2 }}>Create your first conversation</div>
-                  <div style={{ fontSize: 12, color: '#8b949e', display: 'flex', alignItems: 'center', gap: 4 }}>Click here or press <span style={{ color: '#58a6ff', fontWeight: 500 }}>+ New Chat</span> <span style={{ fontSize: 14 }}>&#8593;</span></div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 3 }}>Create your first conversation</div>
+                  <div style={{ fontSize: 12, color: '#8b949e', display: 'flex', alignItems: 'center', gap: 4 }}>Click here or press <span style={{ color: '#58a6ff', fontWeight: 500 }}>+ New Chat</span></div>
                 </div>
               </button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', backgroundColor: 'rgba(63,185,80,0.04)', border: '1px solid #30363d', borderRadius: 10 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(63,185,80,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', backgroundColor: 'rgba(63,185,80,0.03)', border: '1px solid rgba(48,54,61,0.8)', borderRadius: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: 'rgba(63,185,80,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <svg width="16" height="18" viewBox="0 0 16 18" fill="none"><rect x="2" y="7" width="12" height="10" rx="2" stroke="#3fb950" strokeWidth="1.5" fill="none" /><path d="M5 7V5a3 3 0 0 1 6 0v2" stroke="#3fb950" strokeWidth="1.5" strokeLinecap="round" fill="none" /></svg>
                 </div>
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 2 }}>Your messages are encrypted end-to-end</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 3 }}>Your messages are encrypted end-to-end</div>
                   <div style={{ fontSize: 12, color: '#8b949e' }}>Only you and the recipient can read them</div>
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 16px', backgroundColor: 'rgba(188,140,255,0.04)', border: '1px solid #30363d', borderRadius: 10 }}>
-                <div style={{ width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(188,140,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 18px', backgroundColor: 'rgba(188,140,255,0.03)', border: '1px solid rgba(48,54,61,0.8)', borderRadius: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: 'rgba(188,140,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 1.5L3 4.5v4.5c0 4.14 2.56 7.01 6 8.5 3.44-1.49 6-4.36 6-8.5V4.5L9 1.5z" stroke="#bc8cff" strokeWidth="1.5" strokeLinejoin="round" fill="none" /><path d="M6.5 9.5l2 2 3.5-4" stroke="#bc8cff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>
                 </div>
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 2 }}>Verify your contacts for maximum security</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#e6edf3', marginBottom: 3 }}>Verify your contacts for maximum security</div>
                   <div style={{ fontSize: 12, color: '#8b949e' }}>Compare fingerprints to prevent impersonation</div>
                 </div>
               </div>
             </div>
 
             {/* Rotating quick tips */}
-            <div key={currentTipIndex} style={{ marginTop: 24, fontSize: 12, color: '#6e7681', fontStyle: 'italic', animation: 'frame-tip-fade 5s ease-in-out', textAlign: 'center' as const, maxWidth: 320 }}>
+            <div key={currentTipIndex} style={{ marginTop: 28, fontSize: 12, color: '#6e7681', fontStyle: 'italic', animation: 'frame-tip-fade 5s ease-in-out forwards', textAlign: 'center' as const, maxWidth: 320, lineHeight: 1.5 }}>
               {/* eslint-disable-next-line security/detect-object-injection */}
               {QUICK_TIPS[currentTipIndex]}
             </div>
@@ -1372,7 +1372,7 @@ function App() {
           <p style={styles.emptySubtitle}>Choose a chat from the sidebar or start a new conversation</p>
 
           {/* Pulsing encryption indicator */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, marginBottom: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 12, marginBottom: 6 }}>
             <div style={{ animation: 'frame-pulse-glow 2s ease-in-out infinite' }}>
               <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
                 <rect x="2" y="6" width="10" height="7" rx="1.5" stroke="#3fb950" strokeWidth="1.2" fill="rgba(63,185,80,0.1)" />
@@ -1386,7 +1386,7 @@ function App() {
           <p style={styles.emptyHelpText}>Send encrypted messages to anyone on your server</p>
 
           {/* Rotating quick tips */}
-          <div key={currentTipIndex} style={{ marginTop: 16, fontSize: 12, color: '#6e7681', fontStyle: 'italic', animation: 'frame-tip-fade 5s ease-in-out', textAlign: 'center' as const, maxWidth: 300 }}>
+          <div key={currentTipIndex} style={{ marginTop: 20, fontSize: 12, color: '#6e7681', fontStyle: 'italic', animation: 'frame-tip-fade 5s ease-in-out forwards', textAlign: 'center' as const, maxWidth: 300, lineHeight: 1.5 }}>
             {/* eslint-disable-next-line security/detect-object-injection */}
             {QUICK_TIPS[currentTipIndex]}
           </div>
@@ -2124,8 +2124,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: 32,
+    padding: '32px 32px 48px',
     overflowY: 'auto',
+    gap: 0,
   },
   centeredContainer: {
     flex: 1,
@@ -2142,8 +2143,8 @@ const styles: Record<string, React.CSSProperties> = {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    backdropFilter: 'blur(4px)',
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backdropFilter: 'blur(8px)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2153,15 +2154,15 @@ const styles: Record<string, React.CSSProperties> = {
   leaveModal: {
     backgroundColor: '#161b22',
     border: '1px solid #30363d',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 24,
     maxWidth: 380,
     width: '90%',
-    boxShadow: '0 24px 64px rgba(0, 0, 0, 0.5)',
+    boxShadow: '0 24px 64px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.03)',
     animation: 'frame-modal-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
   },
   leaveCancelBtn: {
-    padding: '8px 18px',
+    padding: '8px 20px',
     fontSize: 13,
     fontWeight: 500,
     backgroundColor: '#21262d',
@@ -2170,9 +2171,10 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     cursor: 'pointer',
     fontFamily: 'inherit',
+    transition: 'background-color 0.15s ease',
   },
   leaveConfirmBtn: {
-    padding: '8px 18px',
+    padding: '8px 20px',
     fontSize: 13,
     fontWeight: 600,
     backgroundColor: '#da3633',
@@ -2181,6 +2183,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     cursor: 'pointer',
     fontFamily: 'inherit',
+    transition: 'background-color 0.15s ease',
   },
 
   // ── Session warning banner ──
