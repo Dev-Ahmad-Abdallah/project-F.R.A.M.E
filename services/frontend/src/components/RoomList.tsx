@@ -140,6 +140,7 @@ const RoomList: React.FC<RoomListProps> = ({
   const [starredIds, setStarredIds] = useState<Set<string>>(() => getStoredSet(STARRED_KEY));
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => getStoredSet(ARCHIVED_KEY));
   const [showArchived, setShowArchived] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const toggleStar = useCallback((roomId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -187,12 +188,21 @@ const RoomList: React.FC<RoomListProps> = ({
     );
   }
 
+  // Filter rooms by search query (client-side)
+  const filteredRooms = searchQuery.trim()
+    ? rooms.filter((room) => {
+        const name = getRoomDisplayName(room, currentUserId).toLowerCase();
+        const query = searchQuery.trim().toLowerCase();
+        return name.includes(query);
+      })
+    : rooms;
+
   // Partition rooms into sections
   const starredRooms: RoomSummary[] = [];
   const normalRooms: RoomSummary[] = [];
   const archivedRooms: RoomSummary[] = [];
 
-  for (const room of rooms) {
+  for (const room of filteredRooms) {
     if (archivedIds.has(room.roomId)) {
       archivedRooms.push(room);
     } else if (starredIds.has(room.roomId)) {
@@ -295,6 +305,39 @@ const RoomList: React.FC<RoomListProps> = ({
 
   return (
     <div style={styles.container}>
+      {/* Search / filter bar */}
+      <div style={styles.searchContainer}>
+        <div style={styles.searchInputWrap}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+            <circle cx="7" cy="7" r="5" stroke="#484f58" strokeWidth="1.5" fill="none" />
+            <path d="M11 11l3.5 3.5" stroke="#484f58" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <input
+            type="text"
+            style={styles.searchInput}
+            placeholder="Search conversations..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Search conversations"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              style={styles.searchClear}
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+            >
+              &#10005;
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* No results */}
+      {searchQuery.trim() && filteredRooms.length === 0 && (
+        <div style={styles.noResults}>No conversations match "{searchQuery.trim()}"</div>
+      )}
+
       {/* Starred section */}
       {starredRooms.length > 0 && (
         <>
@@ -339,6 +382,48 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     overflowY: 'auto',
     flex: 1,
+  },
+  searchContainer: {
+    padding: '10px 12px 6px',
+    flexShrink: 0,
+  },
+  searchInputWrap: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '6px 10px',
+    borderRadius: 8,
+    border: '1px solid #30363d',
+    backgroundColor: '#0d1117',
+    transition: 'border-color 0.15s',
+  },
+  searchInput: {
+    flex: 1,
+    border: 'none',
+    backgroundColor: 'transparent',
+    color: '#c9d1d9',
+    fontSize: 13,
+    fontFamily: 'inherit',
+    outline: 'none',
+    padding: 0,
+    lineHeight: '18px',
+  },
+  searchClear: {
+    background: 'none',
+    border: 'none',
+    color: '#484f58',
+    fontSize: 10,
+    cursor: 'pointer',
+    padding: '2px 4px',
+    lineHeight: 1,
+    fontFamily: 'inherit',
+    flexShrink: 0,
+  },
+  noResults: {
+    padding: '16px',
+    textAlign: 'center',
+    fontSize: 13,
+    color: '#484f58',
   },
   emptyContainer: {
     display: 'flex',

@@ -90,8 +90,12 @@ export async function ensureSessionsForRoom(
   // Step 1: Update tracked users so the machine knows who is in the room
   // NOTE: updateTrackedUsers destroys UserId instances, so we create
   // separate arrays for each WASM call that needs them.
+  // Step 1: Update tracked users and force re-query of their device keys.
+  // markAllTrackedUsersAsDirty ensures the machine re-fetches keys even if
+  // it has cached state from a previous session (IndexedDB persistence).
   const trackUserIds = memberUserIds.map((id) => new sdk.UserId(id));
   await machine.updateTrackedUsers(trackUserIds);
+  await machine.markAllTrackedUsersAsDirty();
 
   // Step 2: Process outgoing requests (KeysQuery) to discover all devices
   await processOutgoingRequests();

@@ -233,7 +233,6 @@ export function destroyCrypto(): void {
  */
 async function sendOutgoingRequest(request: OutgoingRequest): Promise<string> {
   const body = JSON.parse(request.body);
-
   switch (request.type) {
     case sdk.RequestType.KeysUpload:
       return JSON.stringify(

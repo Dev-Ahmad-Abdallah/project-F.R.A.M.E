@@ -15,13 +15,19 @@ import { useIsMobile } from '../hooks/useIsMobile';
 // ── Helpers ──
 
 /**
+ * Deterministic avatar color from a string — same hash and palette as RoomList
+ * so sender colors are consistent across the app.
+ */
+const AVATAR_COLORS = ['#da3633', '#58a6ff', '#3fb950', '#d29922', '#bc8cff', '#f78166'];
+
+function getAvatarColor(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+/**
  * Format a date as a human-friendly relative timestamp.
- * - < 60s  -> "just now"
- * - < 60m  -> "2 min ago"
- * - < 24h  -> "1 hour ago"
- * - same day -> "Today 3:45 PM"
- * - yesterday -> "Yesterday 3:45 PM"
- * - older -> "Mar 14, 3:45 PM"
  */
 function formatRelativeTime(date: Date | string): string {
   const d = typeof date === 'string' ? new Date(date) : date;
@@ -53,6 +59,33 @@ function formatRelativeTime(date: Date | string): string {
   }) + ', ' + timeStr;
 }
 
+/**
+ * Format a date separator label ("Today", "Yesterday", "March 15").
+ */
+function formatDateSeparator(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const msgDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+  if (msgDay.getTime() === today.getTime()) return 'Today';
+  if (msgDay.getTime() === yesterday.getTime()) return 'Yesterday';
+
+  return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+}
+
+/**
+ * Check if two dates are on different calendar days.
+ */
+function isDifferentDay(a: Date | string, b: Date | string): boolean {
+  const da = typeof a === 'string' ? new Date(a) : a;
+  const db = typeof b === 'string' ? new Date(b) : b;
+  return da.getFullYear() !== db.getFullYear() ||
+    da.getMonth() !== db.getMonth() ||
+    da.getDate() !== db.getDate();
+}
+
 // ── Types ──
 
 type MessageSendStatus = 'sending' | 'sent' | 'failed';
@@ -68,34 +101,33 @@ interface OptimisticMessage {
 interface ChatWindowProps {
   roomId: string;
   currentUserId: string;
-  /** User IDs of all room members (including current user) */
   memberUserIds: string[];
-  /** Display name for the room (used in the header) */
   roomDisplayName?: string;
-  /** Room type: direct or group */
   roomType?: 'direct' | 'group';
-  /** Number of members in the room */
   memberCount?: number;
-  /** Callback when the info button is clicked to open room settings */
   onOpenSettings?: () => void;
-  /** Callback when the room is renamed via inline edit */
   onRoomRenamed?: (roomId: string, newName: string) => void;
-  /** Callback when the user wants to leave the conversation */
   onLeave?: () => void;
   // E2EE is always enabled — no plaintext bypass allowed (Security Finding 1)
 }
 
+/** Time gap threshold for grouping consecutive messages from the same sender (5 min) */
+const GROUP_GAP_MS = 5 * 60 * 1000;
+/** Time gap threshold for showing an inline timestamp between groups (10 min) */
+const TIMESTAMP_GAP_MS = 10 * 60 * 1000;
+
 /**
  * Chat UI component with Megolm group encryption.
  *
- * - Encrypts outgoing messages via encryptForRoom()
- * - Decrypts incoming events via decryptEvent()
- * - Shows encryption status per message (lock / warning icons)
- * - Handles decryption failures gracefully
- * - Sanitises all rendered content via DOMPurify
- * - Shows relative timestamps ("just now", "2 min ago", etc.)
- * - Optimistic send with status indicators (sending / sent / failed)
- * - Room header with name, member count, and info button
+ * Features:
+ * - Message grouping: consecutive messages from the same sender are grouped
+ * - Smart timestamps: only shown between groups or on >10 min gaps
+ * - Date separators: "Today", "Yesterday", "March 15"
+ * - Typing indicator placeholder slot
+ * - Smooth scroll with "New messages" pill when scrolled up
+ * - Auto-growing textarea with Shift+Enter for newlines
+ * - Consistent avatar colors matching RoomList
+ * - Empty room welcome messages
  */
 const ChatWindow: React.FC<ChatWindowProps> = ({
   roomId,
@@ -126,6 +158,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     timeoutSeconds: number;
   } | null>(null);
   const [showDisappearingMenu, setShowDisappearingMenu] = useState(false);
+
+  // "New messages" pill — shown when user has scrolled up and new messages arrive
+  const [showNewMessagesPill, setShowNewMessagesPill] = useState(false);
+  const isNearBottomRef = useRef(true);
 
   // Inline rename state
   const [isEditingName, setIsEditingName] = useState(false);
@@ -172,17 +208,36 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   }, [handleConfirmRename, handleCancelRename]);
 
   const nextBatchRef = useRef<string | undefined>(undefined);
-  const syncGenRef = useRef(0);
+  const abortRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Tick relative timestamps every 30s so "just now" updates to "1 min ago"
+  // Tick relative timestamps every 30s
   const [, setTick] = useState(0);
   useEffect(() => {
     const interval = setInterval(() => setTick((t) => t + 1), 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch disappearing messages settings from the server
+  // Inject typing indicator animation keyframes
+  useEffect(() => {
+    const styleId = 'frame-typing-keyframes';
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = `
+        @keyframes frame-typing-bounce {
+          0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+          40% { transform: translateY(-4px); opacity: 1; }
+        }
+        textarea::placeholder { color: #484f58; }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
+
+  // Fetch disappearing messages settings
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -197,7 +252,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     return () => { cancelled = true; };
   }, [roomId]);
 
-  // Expire messages client-side based on disappearing settings
+  // Expire messages client-side
   useEffect(() => {
     if (!disappearingSettings?.enabled) return;
     const checkExpired = () => {
@@ -219,8 +274,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     return () => clearInterval(disappearTimer);
   }, [disappearingSettings, messages, expiredEventIds]);
 
-  // View-once auto-hide: when a view-once message from another user is displayed,
-  // mark it as viewed and hide it after 5 seconds.
+  // View-once auto-hide
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
     for (const msg of messages) {
@@ -228,12 +282,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       const isOwn = msg.event.senderId === currentUserId;
       const isViewOnce = msg.plaintext && (msg.plaintext as Record<string, unknown>).viewOnce === true;
       if (isViewOnce && !isOwn && !viewedOnceIds.has(eventId) && !hiddenOnceIds.has(eventId)) {
-        // Mark as viewed
         setViewedOnceIds((prev) => new Set(prev).add(eventId));
-        // Start 5-second timer to hide and remove content from state
         const timer = setTimeout(() => {
           setHiddenOnceIds((prev) => new Set(prev).add(eventId));
-          // Remove plaintext content from in-memory state so it cannot be recovered
           setMessages((prev) =>
             prev.map((m) =>
               m.event.eventId === eventId
@@ -250,15 +301,32 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     };
   }, [messages, currentUserId, viewedOnceIds, hiddenOnceIds]);
 
-  // Auto-scroll to bottom when new messages arrive
+  // Track scroll position
+  const handleScroll = useCallback(() => {
+    const el = messageListRef.current;
+    if (!el) return;
+    const threshold = 80;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    isNearBottomRef.current = nearBottom;
+    if (nearBottom) {
+      setShowNewMessagesPill(false);
+    }
+  }, []);
+
+  // Smooth-scroll to bottom when new messages arrive (only if near bottom)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isNearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    } else if (messages.length > 0) {
+      setShowNewMessagesPill(true);
+    }
   }, [messages, optimisticMessages]);
 
-  /**
-   * Decrypt a batch of sync events. Decryption errors are captured
-   * per-event rather than failing the entire batch.
-   */
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    setShowNewMessagesPill(false);
+  }, []);
+
   const decryptEvents = useCallback(
     async (events: SyncEvent[]): Promise<DecryptedEvent[]> => {
       const results: DecryptedEvent[] = [];
@@ -273,62 +341,53 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Long-polling sync loop
   const syncLoop = useCallback(async () => {
-    const gen = syncGenRef.current;
+    abortRef.current = false;
 
-    while (syncGenRef.current === gen) {
+    while (!abortRef.current) {
       try {
         const result = await syncMessages(
           nextBatchRef.current,
-          10000, // 10s long-poll timeout
+          10000,
           50,
         );
 
-        if (syncGenRef.current !== gen) break;
+        if (abortRef.current) break;
 
-        // Feed sync data through the crypto machine for to-device events
         await processSyncResponse(result);
 
         if (result.events.length > 0) {
-          // Decrypt all incoming events
           const decryptedEvents = await decryptEvents(result.events);
 
-          if (syncGenRef.current !== gen) break;
+          if (abortRef.current) break;
 
           setMessages((prev) => [...prev, ...decryptedEvents]);
-
-          // Clear optimistic messages that have been confirmed by the server
           setOptimisticMessages((prev) =>
             prev.filter((om) => om.status === 'failed'),
           );
-
           nextBatchRef.current = result.nextBatch;
         }
 
         setSyncError(null);
       } catch (err) {
-        if (syncGenRef.current !== gen) break;
+        if (abortRef.current) break;
         setSyncError('Failed to sync messages');
-        // Back off before retrying on error
         await new Promise((r) => setTimeout(r, 5000));
       }
     }
   }, [decryptEvents]);
 
   useEffect(() => {
-    // Reset state when room changes
     setMessages([]);
     setOptimisticMessages([]);
     nextBatchRef.current = undefined;
-    syncGenRef.current++;
+    abortRef.current = true;
 
-    // Start sync loop immediately — the generation counter
-    // ensures the previous loop exits on its next check.
     const timer = setTimeout(() => {
       syncLoop();
     }, 0);
 
     return () => {
-      syncGenRef.current++;
+      abortRef.current = true;
       clearTimeout(timer);
     };
   }, [roomId, syncLoop]);
@@ -337,10 +396,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     const text = retryText || inputValue.trim();
     if (!text || isSending) return;
 
-    // Capture view-once state before resetting
     const isViewOnce = viewOnceMode;
 
-    // Create optimistic message
     const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const optimistic: OptimisticMessage = {
       id: optimisticId,
@@ -354,11 +411,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     if (!retryText) {
       setInputValue('');
       setViewOnceMode(false);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
     }
     setIsSending(true);
 
     try {
-      // Always encrypt — no plaintext bypass (Security Finding 1)
       const plaintext: Record<string, unknown> = {
         msgtype: 'm.text',
         body: text,
@@ -376,7 +435,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       await sendMessage(roomId, 'm.room.encrypted', encryptedContent);
 
-      // Mark as sent
       setOptimisticMessages((prev) =>
         prev.map((om) =>
           om.id === optimisticId ? { ...om, status: 'sent' as const } : om,
@@ -384,7 +442,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       );
     } catch (err) {
       console.error('Failed to send message:', err);
-      // Mark as failed
       setOptimisticMessages((prev) =>
         prev.map((om) =>
           om.id === optimisticId ? { ...om, status: 'failed' as const } : om,
@@ -396,16 +453,26 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   const handleRetry = (om: OptimisticMessage) => {
-    // Remove the failed message and re-send
     setOptimisticMessages((prev) => prev.filter((m) => m.id !== om.id));
     handleSend(om.body);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  // Shift+Enter inserts newline; Enter alone sends
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  // Auto-grow textarea up to 5 lines max
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInputValue(e.target.value);
+    const ta = e.target;
+    ta.style.height = 'auto';
+    const lineHeight = 20;
+    const maxHeight = lineHeight * 5 + 16;
+    ta.style.height = Math.min(ta.scrollHeight, maxHeight) + 'px';
   };
 
   // Close context menu and disappearing menu on click anywhere
@@ -444,10 +511,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
-  /**
-   * Render the message body for a decrypted event.
-   * All content is sanitized via DOMPurify before display.
-   */
   const renderMessageContent = (decrypted: DecryptedEvent): string => {
     if (decrypted.decryptionError) {
       return 'Unable to decrypt';
@@ -458,7 +521,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       return 'Unable to decrypt';
     }
 
-    // Prefer the body field for text messages
     const raw =
       typeof content.body === 'string'
         ? content.body
@@ -469,9 +531,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     return DOMPurify.sanitize(raw);
   };
 
-  /**
-   * Render the encryption status icon for a message.
-   */
   const renderEncryptionIcon = (decrypted: DecryptedEvent): React.ReactNode => {
     if (!decrypted.isEncrypted) {
       return null;
@@ -495,29 +554,23 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     );
   };
 
-  /**
-   * Render a send status indicator for outgoing optimistic messages.
-   */
   const renderSendStatus = (status: MessageSendStatus): React.ReactNode => {
     switch (status) {
       case 'sending':
         return (
           <span style={styles.statusIcon} title="Sending">
-            {/* Clock icon (U+1F551) */}
             &#128337;
           </span>
         );
       case 'sent':
         return (
           <span style={styles.statusIconSent} title="Sent">
-            {/* Check mark */}
             &#10003;
           </span>
         );
       case 'failed':
         return (
           <span style={styles.statusIconFailed} title="Failed to send">
-            {/* Cross mark */}
             &#10007;
           </span>
         );
@@ -526,14 +579,217 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
-  // Derive header display name
   const headerName = roomDisplayName
     ? DOMPurify.sanitize(roomDisplayName)
     : DOMPurify.sanitize(roomId);
 
+  // ── Build grouped message list with date separators and smart timestamps ──
+
+  const renderMessages = () => {
+    const elements: React.ReactNode[] = [];
+    let lastSenderId: string | null = null;
+    let lastTimestamp: Date | null = null;
+    let lastDate: Date | null = null;
+
+    for (let i = 0; i < messages.length; i++) {
+      const decrypted = messages[i];
+      const event = decrypted.event;
+      const isOwn = event.senderId === currentUserId;
+      const hasError = decrypted.decryptionError !== null;
+      const msgDate = new Date(event.originServerTs);
+
+      const isDeleted = deletedEventIds.has(event.eventId);
+      const isExpired = expiredEventIds.has(event.eventId);
+      const isViewOnce = decrypted.plaintext && (decrypted.plaintext as Record<string, unknown>).viewOnce === true;
+      const isHiddenOnce = hiddenOnceIds.has(event.eventId);
+
+      // Date separator: show when calendar day changes
+      if (!lastDate || isDifferentDay(lastDate, msgDate)) {
+        elements.push(
+          <div key={`date-${event.eventId}`} style={styles.dateSeparator}>
+            <div style={styles.dateSeparatorLine} />
+            <span style={styles.dateSeparatorText}>{formatDateSeparator(msgDate)}</span>
+            <div style={styles.dateSeparatorLine} />
+          </div>
+        );
+      }
+
+      // Determine if this message starts a new group
+      const timeSinceLastMs = lastTimestamp ? msgDate.getTime() - lastTimestamp.getTime() : Infinity;
+      const isSameSenderAsPrev = lastSenderId === event.senderId;
+      const isNewGroup = !isSameSenderAsPrev || timeSinceLastMs > GROUP_GAP_MS;
+
+      // Show a time gap divider between groups if >10 min (on the same day)
+      if (lastTimestamp && timeSinceLastMs > TIMESTAMP_GAP_MS && lastDate && !isDifferentDay(lastDate, msgDate)) {
+        elements.push(
+          <div key={`gap-${event.eventId}`} style={styles.timeGap}>
+            <span style={styles.timeGapText}>{formatRelativeTime(msgDate)}</span>
+          </div>
+        );
+      }
+
+      // Handle view-once hidden messages
+      if (isViewOnce && isHiddenOnce && !isOwn) {
+        elements.push(
+          <div key={event.eventId} style={{ ...styles.messageBubble, ...(isMobile ? { maxWidth: '85%' } : {}), ...styles.otherMessage, opacity: 0.5, alignSelf: 'flex-start' as const }}>
+            <div style={styles.messageBody}>
+              <span style={styles.viewOnceIcon} title="View-once message">&#128065;</span>
+              <span style={{ fontStyle: 'italic', color: '#8b949e' }}>Viewed</span>
+            </div>
+          </div>
+        );
+        lastSenderId = event.senderId;
+        lastTimestamp = msgDate;
+        lastDate = msgDate;
+        continue;
+      }
+
+      // Determine bubble shape based on grouping
+      const isFirstInGroup = isNewGroup;
+      const nextMsg = messages[i + 1];
+      const isLastInGroup = !nextMsg ||
+        nextMsg.event.senderId !== event.senderId ||
+        (new Date(nextMsg.event.originServerTs).getTime() - msgDate.getTime()) > GROUP_GAP_MS;
+
+      const bubbleRadius = isOwn
+        ? {
+            borderTopLeftRadius: 12,
+            borderTopRightRadius: isFirstInGroup ? 12 : 4,
+            borderBottomLeftRadius: 12,
+            borderBottomRightRadius: isLastInGroup ? 12 : 4,
+          }
+        : {
+            borderTopLeftRadius: isFirstInGroup ? 12 : 4,
+            borderTopRightRadius: 12,
+            borderBottomLeftRadius: isLastInGroup ? 12 : 4,
+            borderBottomRightRadius: 12,
+          };
+
+      elements.push(
+        <div
+          key={event.eventId}
+          style={{
+            display: 'flex',
+            alignItems: 'flex-end',
+            gap: 8,
+            alignSelf: isOwn ? 'flex-end' : 'flex-start',
+            maxWidth: isMobile ? '85%' : '70%',
+            marginTop: isFirstInGroup ? 8 : 2,
+          }}
+        >
+          {/* Avatar — only show on first message in a group from other users */}
+          {!isOwn && (
+            <div style={{
+              width: 28,
+              height: 28,
+              borderRadius: '50%',
+              backgroundColor: isFirstInGroup ? getAvatarColor(event.senderId) : 'transparent',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 12,
+              fontWeight: 600,
+              color: '#fff',
+              flexShrink: 0,
+              visibility: isFirstInGroup ? ('visible' as const) : ('hidden' as const),
+            }}>
+              {isFirstInGroup ? formatDisplayName(event.senderId).charAt(0).toUpperCase() : ''}
+            </div>
+          )}
+          <div
+            style={{
+              ...styles.messageBubble,
+              ...(isOwn ? styles.ownMessage : styles.otherMessage),
+              ...(hasError ? styles.errorMessage : {}),
+              ...bubbleRadius,
+              marginTop: 0,
+            }}
+            onContextMenu={(e) =>
+              handleMessageContextMenu(e, event.eventId, event.senderId)
+            }
+          >
+            {/* Sender name — only on first message of a group from others */}
+            {!isOwn && isFirstInGroup && (
+              <div style={{ ...styles.senderName, color: getAvatarColor(event.senderId) }}>
+                {DOMPurify.sanitize(formatDisplayName(event.senderId))}
+              </div>
+            )}
+            <div style={styles.messageBody}>
+              {isDeleted ? (
+                <span style={styles.deletedText}>This message was deleted</span>
+              ) : isExpired ? (
+                <span style={styles.expiredText}>Message expired</span>
+              ) : (
+                <>
+                  {isViewOnce && <span style={styles.viewOnceIcon} title="View-once message">&#128065;</span>}
+                  {renderEncryptionIcon(decrypted)}
+                  <span style={hasError ? styles.errorText : undefined}>
+                    {renderMessageContent(decrypted)}
+                  </span>
+                </>
+              )}
+            </div>
+            {/* Timestamp — only on last message of a group */}
+            {isLastInGroup && (
+              <div style={styles.timestamp}>
+                {formatRelativeTime(event.originServerTs)}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+
+      lastSenderId = event.senderId;
+      lastTimestamp = msgDate;
+      lastDate = msgDate;
+    }
+
+    return elements;
+  };
+
+  // ── Welcome message for empty rooms ──
+
+  const renderWelcome = () => {
+    if (messages.length > 0 || optimisticMessages.length > 0) return null;
+
+    const isGroup = roomType === 'group';
+
+    return (
+      <div style={styles.welcomeContainer}>
+        <div style={styles.welcomeIconWrap}>
+          {isGroup ? (
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <circle cx="18" cy="16" r="6" stroke="#58a6ff" strokeWidth="1.5" fill="none" />
+              <circle cx="30" cy="16" r="6" stroke="#58a6ff" strokeWidth="1.5" fill="none" />
+              <path d="M6 38c0-6.627 5.373-12 12-12h12c6.627 0 12 5.373 12 12" stroke="#58a6ff" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+            </svg>
+          ) : (
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <rect x="6" y="14" width="36" height="24" rx="6" stroke="#3fb950" strokeWidth="1.5" fill="none" />
+              <path d="M6 20l18 10 18-10" stroke="#3fb950" strokeWidth="1.5" fill="none" />
+            </svg>
+          )}
+        </div>
+        <div style={styles.welcomeTitle}>
+          {isGroup
+            ? `Welcome to ${headerName}`
+            : `This is the beginning of your encrypted conversation with ${headerName}`}
+        </div>
+        <div style={styles.welcomeSubtitle}>
+          {isGroup
+            ? 'Messages in this group are end-to-end encrypted.'
+            : 'Messages are secured with end-to-end encryption.'}
+        </div>
+        <div style={styles.welcomeE2eeBadge}>
+          <span style={{ fontSize: 12 }}>&#128274;</span> E2EE
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div style={{ ...styles.container, ...(isMobile ? { borderRadius: 0, border: 'none' } : {}) }}>
-      {/* Room header with name, member info, encryption badge, and info button */}
+      {/* Room header */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
           <div style={styles.headerNameRow}>
@@ -584,7 +840,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'relative' as const }}>
-          {/* Disappearing messages toggle */}
           <button
             type="button"
             style={{
@@ -662,74 +917,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       {syncError && <div style={styles.errorBanner}>{syncError}</div>}
 
       {/* Message list */}
-      <div style={styles.messageList}>
-        {messages.length === 0 && optimisticMessages.length === 0 && (
-          <div style={styles.emptyState}>No messages yet</div>
-        )}
+      <div
+        ref={messageListRef}
+        style={styles.messageList}
+        onScroll={handleScroll}
+      >
+        {renderWelcome()}
 
-        {/* Server-confirmed messages */}
-        {messages.map((decrypted) => {
-          const event = decrypted.event;
-          const isOwn = event.senderId === currentUserId;
-          const hasError = decrypted.decryptionError !== null;
-
-          const isDeleted = deletedEventIds.has(event.eventId);
-          const isExpired = expiredEventIds.has(event.eventId);
-          const isViewOnce = decrypted.plaintext && (decrypted.plaintext as Record<string, unknown>).viewOnce === true;
-          const isHiddenOnce = hiddenOnceIds.has(event.eventId);
-
-          if (isViewOnce && isHiddenOnce && !isOwn) {
-            return (
-              <div key={event.eventId} style={{ ...styles.messageBubble, ...(isMobile ? { maxWidth: '85%' } : {}), ...styles.otherMessage, opacity: 0.5 }}>
-                <div style={styles.messageBody}>
-                  <span style={styles.viewOnceIcon} title="View-once message">&#128065;</span>
-                  <span style={{ fontStyle: 'italic', color: '#8b949e' }}>Viewed</span>
-                </div>
-              </div>
-            );
-          }
-
-          return (
-            <div
-              key={event.eventId}
-              style={{
-                ...styles.messageBubble,
-                ...(isMobile ? { maxWidth: '85%' } : {}),
-                ...(isOwn ? styles.ownMessage : styles.otherMessage),
-                ...(hasError ? styles.errorMessage : {}),
-              }}
-              onContextMenu={(e) =>
-                handleMessageContextMenu(e, event.eventId, event.senderId)
-              }
-            >
-              {!isOwn && (
-                <div style={styles.senderName}>
-                  {DOMPurify.sanitize(formatDisplayName(event.senderId))}
-                </div>
-              )}
-              <div style={styles.messageBody}>
-                {isDeleted ? (
-                  <span style={styles.deletedText}>This message was deleted</span>
-                ) : isExpired ? (
-                  <span style={styles.expiredText}>Message expired</span>
-                ) : (
-                  <>
-                    {isViewOnce && <span style={styles.viewOnceIcon} title="View-once message">&#128065;</span>}
-                    {renderEncryptionIcon(decrypted)}
-                    <span
-                      style={hasError ? styles.errorText : undefined}
-                    >
-                      {renderMessageContent(decrypted)}
-                    </span>
-                  </>
-                )}
-              </div>
-              <div style={styles.timestamp}>
-                {formatRelativeTime(event.originServerTs)}
-              </div>
-            </div>
-          );
-        })}
+        {renderMessages()}
 
         {/* Optimistic (outgoing) messages */}
         {optimisticMessages.map((om) => (
@@ -741,6 +936,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               ...styles.ownMessage,
               ...(om.status === 'sending' ? styles.optimisticSending : {}),
               ...(om.status === 'failed' ? styles.optimisticFailed : {}),
+              alignSelf: 'flex-end' as const,
             }}
           >
             <div style={styles.messageBody}>
@@ -765,10 +961,28 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
         ))}
 
+        {/* Typing indicator placeholder — hidden by default, set display:'flex' when active */}
+        <div style={styles.typingIndicator} aria-label="Typing indicator">
+          <div style={styles.typingDot} />
+          <div style={{ ...styles.typingDot, animationDelay: '0.2s' }} />
+          <div style={{ ...styles.typingDot, animationDelay: '0.4s' }} />
+        </div>
+
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input area */}
+      {/* "New messages" pill when user has scrolled up */}
+      {showNewMessagesPill && (
+        <button
+          type="button"
+          style={styles.newMessagesPill}
+          onClick={scrollToBottom}
+        >
+          New messages
+        </button>
+      )}
+
+      {/* Input area — textarea with auto-grow, Shift+Enter for newlines */}
       <div style={{ ...styles.inputArea, ...(isMobile ? { padding: '8px 10px', gap: 6 } : {}) }}>
         <button
           type="button"
@@ -782,15 +996,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         >
           &#128065;
         </button>
-        <input
-          type="text"
-          style={{ ...styles.input, ...(isMobile ? { padding: '10px 12px', fontSize: 16 } : {}) }}
+        <textarea
+          ref={textareaRef}
+          style={{
+            ...styles.textarea,
+            ...(isMobile ? { padding: '10px 12px', fontSize: 16 } : {}),
+          }}
           value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
+          onChange={handleTextareaChange}
           onKeyDown={handleKeyDown}
           placeholder={viewOnceMode ? 'View-once message...' : 'Type a message...'}
           disabled={isSending}
           aria-label="Message input"
+          rows={1}
         />
         <button
           style={{
@@ -852,6 +1070,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     overflow: 'hidden',
     backgroundColor: '#0d1117',
+    position: 'relative',
   },
   header: {
     display: 'flex',
@@ -958,8 +1177,44 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 12,
     display: 'flex',
     flexDirection: 'column',
-    gap: 8,
+    gap: 2,
   },
+
+  // ── Date separators ──
+  dateSeparator: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    margin: '16px 0 8px',
+  },
+  dateSeparatorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#21262d',
+  },
+  dateSeparatorText: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#484f58',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
+    flexShrink: 0,
+  },
+
+  // ── Time gap between groups ──
+  timeGap: {
+    display: 'flex',
+    justifyContent: 'center',
+    margin: '8px 0 4px',
+  },
+  timeGapText: {
+    fontSize: 10,
+    color: '#484f58',
+    backgroundColor: '#161b22',
+    padding: '2px 10px',
+    borderRadius: 10,
+  },
+
   emptyState: {
     textAlign: 'center',
     color: '#8b949e',
@@ -975,12 +1230,10 @@ const styles: Record<string, React.CSSProperties> = {
     wordBreak: 'break-word',
   },
   ownMessage: {
-    alignSelf: 'flex-end',
     backgroundColor: '#58a6ff',
     color: '#ffffff',
   },
   otherMessage: {
-    alignSelf: 'flex-start',
     backgroundColor: '#21262d',
     color: '#c9d1d9',
   },
@@ -1000,7 +1253,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontWeight: 600,
     marginBottom: 2,
-    color: '#c9d1d9',
   },
   messageBody: {
     display: 'flex',
@@ -1066,8 +1318,9 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 12,
     borderTop: '1px solid #30363d',
     backgroundColor: '#161b22',
+    alignItems: 'flex-end',
   },
-  input: {
+  textarea: {
     flex: 1,
     padding: '8px 12px',
     borderRadius: 20,
@@ -1077,6 +1330,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     fontFamily: 'inherit',
     transition: 'border-color 0.15s',
+    resize: 'none' as const,
+    lineHeight: '20px',
+    minHeight: 36,
+    maxHeight: 116,
+    overflow: 'auto',
   },
   sendButton: {
     padding: '8px 16px',
@@ -1089,6 +1347,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontFamily: 'inherit',
     transition: 'background-color 0.15s',
+    alignSelf: 'flex-end',
   },
   deletedText: {
     fontStyle: 'italic',
@@ -1201,6 +1460,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     flexShrink: 0,
     transition: 'border-color 0.15s, color 0.15s, background-color 0.15s',
+    alignSelf: 'flex-end',
   },
   viewOnceToggleActive: {
     backgroundColor: 'rgba(210, 153, 34, 0.15)',
@@ -1212,6 +1472,83 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
     marginTop: 1,
     opacity: 0.7,
+  },
+
+  // ── "New messages" pill ──
+  newMessagesPill: {
+    position: 'absolute' as const,
+    bottom: 80,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    padding: '6px 16px',
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#ffffff',
+    backgroundColor: '#58a6ff',
+    border: 'none',
+    borderRadius: 20,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+    zIndex: 10,
+    transition: 'opacity 0.2s',
+  },
+
+  // ── Typing indicator (hidden by default — set display:'flex' when active) ──
+  typingIndicator: {
+    display: 'none',
+    alignItems: 'center',
+    gap: 4,
+    padding: '4px 8px',
+    marginTop: 4,
+    alignSelf: 'flex-start',
+    minHeight: 20,
+  },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: '50%',
+    backgroundColor: '#484f58',
+    animation: 'frame-typing-bounce 1.4s infinite ease-in-out',
+  },
+
+  // ── Welcome / empty room ──
+  welcomeContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '40px 24px',
+    textAlign: 'center',
+    flex: 1,
+  },
+  welcomeIconWrap: {
+    marginBottom: 12,
+    opacity: 0.7,
+  },
+  welcomeTitle: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: '#e6edf3',
+    marginBottom: 8,
+    maxWidth: 320,
+    lineHeight: 1.4,
+  },
+  welcomeSubtitle: {
+    fontSize: 13,
+    color: '#8b949e',
+    marginBottom: 12,
+  },
+  welcomeE2eeBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    padding: '4px 10px',
+    borderRadius: 12,
+    backgroundColor: 'rgba(35, 134, 54, 0.1)',
+    color: '#3fb950',
+    fontSize: 11,
+    fontWeight: 600,
   },
 };
 
