@@ -15,6 +15,7 @@ permissions:
 jobs:
   codeql-deep:
     name: CodeQL — Extended Queries
+    if: github.repository_visibility == 'public'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -82,7 +83,7 @@ jobs:
 
       - name: Upload Semgrep results
         uses: github/codeql-action/upload-sarif@ff0a06e83cb2de871e5a09832bc6a81e7276941f  # v3.28.18
-        if: always()
+        if: always() && github.repository_visibility == 'public'
         with:
           sarif_file: semgrep-results.sarif
           category: semgrep
@@ -119,7 +120,7 @@ jobs:
 
       - name: Upload Trivy SARIF
         uses: github/codeql-action/upload-sarif@ff0a06e83cb2de871e5a09832bc6a81e7276941f  # v3.28.18
-        if: always()
+        if: always() && github.repository_visibility == 'public'
         with:
           sarif_file: "trivy-${{ matrix.service }}.sarif"
           category: "trivy-${{ matrix.service }}"
