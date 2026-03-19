@@ -47,6 +47,9 @@ const upload = multer({
  * Returns true if the content matches or if we can't check (e.g. text types).
  * Returns false if the magic bytes contradict the claimed type.
  */
+// Unused: E2EE files are encrypted client-side, so magic bytes can't be validated server-side.
+// Kept for future use if server-side validation is needed for unencrypted uploads.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function validateMagicBytes(buffer: Buffer, claimedMime: string): boolean {
   if (buffer.length < 4) return false;
 
@@ -70,12 +73,12 @@ function validateMagicBytes(buffer: Buffer, claimedMime: string): boolean {
   if (textTypes.has(claimedMime)) {
     const checkLen = Math.min(buffer.length, 512);
     for (let i = 0; i < checkLen; i++) {
-      if (buffer[i] === 0x00) return false;
+      if (buffer[i] === 0x00) return false; // eslint-disable-line security/detect-object-injection
     }
     return true;
   }
 
-  const sigs = signatures[claimedMime];
+  const sigs = signatures[claimedMime]; // eslint-disable-line security/detect-object-injection
   if (!sigs) return true;
 
   // Special check for WEBP: RIFF header + "WEBP" at offset 8

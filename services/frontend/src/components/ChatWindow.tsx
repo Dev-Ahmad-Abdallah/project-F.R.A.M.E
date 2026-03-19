@@ -393,7 +393,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       return stored ? new Set(JSON.parse(stored) as string[]) : new Set();
     } catch { return new Set(); }
   });
-  const [consumedOnceIds, setConsumedOnceIds] = useState<Set<string>>(() => {
+  const [_consumedOnceIds, setConsumedOnceIds] = useState<Set<string>>(() => {
     try {
       const stored = localStorage.getItem('frame-consumed-once');
       return stored ? new Set(JSON.parse(stored) as string[]) : new Set();
@@ -1631,7 +1631,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   }, []);
 
   // ── Long-press handlers for mobile context menu (item 10) ──
-  const handleTouchStart = useCallback((eventId: string, senderId: string) => {
+  const handleTouchStart = useCallback((eventId: string, _senderId: string) => {
     longPressTriggeredRef.current = false;
     longPressTimerRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true;
@@ -2092,7 +2092,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             {/* Reply quote block */}
             {decrypted.plaintext != null && Boolean(decrypted.plaintext.replyTo) && (() => {
               const rt = decrypted.plaintext.replyTo as { eventId: string; senderId: string; body: string };
-              const replyColor = isAnonymous ? '#bc8cff' : getAvatarColor(rt.senderId);
+              const _replyColor = isAnonymous ? '#bc8cff' : getAvatarColor(rt.senderId);
               return (
                 <div
                   className="frame-reply-quote"

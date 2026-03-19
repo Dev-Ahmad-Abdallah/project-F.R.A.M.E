@@ -55,7 +55,7 @@ function log(level: LogLevel, message: string, meta?: Record<string, unknown>): 
       console.warn(output);
       break;
     case 'debug':
-      console.debug(output);
+      console.info(output); // eslint: debug not in allow list, use info
       break;
     default:
       console.info(output);
