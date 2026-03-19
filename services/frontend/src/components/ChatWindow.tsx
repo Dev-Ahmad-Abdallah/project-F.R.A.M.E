@@ -17,6 +17,7 @@ import {
 import { FONT_BODY } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { SkeletonMessageBubble, SyncIndicator } from './Skeleton';
+import { playMessageSound, playSendSound, playErrorSound } from '../sounds';
 
 // ── Reaction Picker ──
 
@@ -662,12 +663,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
           if (decryptedEvents.length > 0) {
             // Set unread divider on first batch of new messages from others
+            const hasMessageFromOther = decryptedEvents.some((e) => e.event.senderId !== currentUserId);
             if (!hasSetUnreadDividerRef.current) {
               const firstFromOther = decryptedEvents.find((e) => e.event.senderId !== currentUserId);
               if (firstFromOther) {
                 setUnreadDividerEventId(firstFromOther.event.eventId);
                 hasSetUnreadDividerRef.current = true;
               }
+            }
+            // Play incoming message sound when a new message arrives from someone else
+            if (hasMessageFromOther) {
+              playMessageSound();
             }
             setMessages((prev) => [...prev, ...decryptedEvents]);
             const newIds = decryptedEvents.map((e) => e.event.eventId);
@@ -909,6 +915,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       await sendMessage(roomId, 'm.room.encrypted', encryptedContent);
 
+      playSendSound();
       setOptimisticMessages((prev) =>
         prev.map((om) =>
           om.id === optimisticId ? { ...om, status: 'sent' as const } : om,
@@ -916,6 +923,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       );
     } catch (err) {
       console.error('Failed to send message:', err);
+      playErrorSound();
       setOptimisticMessages((prev) =>
         prev.map((om) =>
           om.id === optimisticId ? { ...om, status: 'failed' as const } : om,
@@ -1590,8 +1598,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         <div style={styles.welcomeSubtitle}>
           {isGroup ? 'Messages in this group are end-to-end encrypted.' : 'Messages are secured with end-to-end encryption.'}
         </div>
-        <div style={styles.welcomeE2eeBadge}>
-          <span style={{ fontSize: 12 }}>&#128274;</span> F.R.A.M.E. E2EE
+        <div style={{ ...styles.welcomeE2eeBadge, backgroundColor: 'rgba(63,185,80,0.1)', border: '1px solid rgba(63,185,80,0.2)' }}>
+          <span style={{ fontSize: 12, filter: 'drop-shadow(0 0 3px rgba(63,185,80,0.5))' }}>&#128274;</span> F.R.A.M.E. E2EE
         </div>
       </div>
     );
@@ -2120,7 +2128,7 @@ const styles: Record<string, React.CSSProperties> = {
   optimisticFailed: { opacity: 0.8, backgroundColor: '#4a3040', borderRight: '3px solid #f85149' },
   senderName: { fontSize: 11, fontWeight: 600, marginBottom: 2 },
   messageBody: { display: 'flex', alignItems: 'flex-start', gap: 3, overflowWrap: 'break-word' as const, wordBreak: 'break-word' as const },
-  encryptionLock: { fontSize: 10, flexShrink: 0, marginTop: 2, opacity: 0.6 },
+  encryptionLock: { fontSize: 10, flexShrink: 0, marginTop: 2, opacity: 0.6, filter: 'drop-shadow(0 0 3px rgba(63,185,80,0.4))', color: '#3fb950' },
   encryptionWarning: { fontSize: 14, color: '#8b949e', flexShrink: 0, marginTop: -1 },
   decryptErrorInline: { display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'help' },
   errorText: { fontStyle: 'italic', opacity: 0.8, fontSize: 13, color: '#8b949e' },

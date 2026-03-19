@@ -37,6 +37,12 @@ input::placeholder { color: #8b949e; }
   to { opacity: 1; transform: scale(1); }
 }
 
+/* Subtle scan-line effect for sidebar HUD feel */
+@keyframes frame-scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
 /* Smooth transitions */
 * { box-sizing: border-box; }
 

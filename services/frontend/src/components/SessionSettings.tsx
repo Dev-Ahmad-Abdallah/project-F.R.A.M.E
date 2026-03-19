@@ -18,6 +18,7 @@ import {
 } from '../hooks/useSessionTimeout';
 import { setSessionTimeout } from '../api/client';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { isSoundEnabled, setSoundEnabled } from '../sounds';
 
 // ── Keyframes (injected once) ──
 
@@ -66,6 +67,7 @@ const SessionSettings: React.FC = () => {
   const isMobile = useIsMobile();
   const [timeoutMs, setTimeoutMs] = useState<number>(getSavedTimeout);
   const [autoLock, setAutoLockState] = useState<boolean>(getAutoLock);
+  const [soundsOn, setSoundsOn] = useState<boolean>(isSoundEnabled);
   const [showDropdown, setShowDropdown] = useState(false);
   const [remainingMs, setRemainingMs] = useState<number>(timeoutMs);
   const sessionStartRef = useRef<number>(Date.now());
@@ -116,6 +118,14 @@ const SessionSettings: React.FC = () => {
     setAutoLockState((prev) => {
       const next = !prev;
       setAutoLock(next);
+      return next;
+    });
+  }, []);
+
+  const handleSoundsToggle = useCallback(() => {
+    setSoundsOn((prev) => {
+      const next = !prev;
+      setSoundEnabled(next);
       return next;
     });
   }, []);
@@ -292,6 +302,44 @@ const SessionSettings: React.FC = () => {
         {autoLock
           ? 'The app will lock after inactivity and require your passphrase to unlock.'
           : 'The app will not lock automatically. Toggle on for added security.'}
+      </p>
+
+      {/* Notification Sounds toggle */}
+      <div style={{
+        ...styles.row,
+        ...(isMobile ? { minHeight: 48, padding: '4px 0' } : {}),
+      }}>
+        <label htmlFor="notification-sounds" style={styles.label}>
+          Notification Sounds
+        </label>
+        <button
+          id="notification-sounds"
+          type="button"
+          role="switch"
+          aria-checked={soundsOn}
+          onClick={handleSoundsToggle}
+          style={{
+            ...styles.toggle,
+            backgroundColor: soundsOn ? '#238636' : '#30363d',
+            ...(isMobile ? { width: 52, height: 30, borderRadius: 15 } : {}),
+          }}
+        >
+          <span
+            style={{
+              ...styles.toggleKnob,
+              ...(isMobile ? { width: 24, height: 24, top: 3 } : {}),
+              transform: soundsOn
+                ? `translateX(${isMobile ? 22 : 18}px)`
+                : `translateX(${isMobile ? 3 : 2}px)`,
+            }}
+          />
+        </button>
+      </div>
+
+      <p style={styles.hint}>
+        {soundsOn
+          ? 'Play sounds for incoming messages, sent messages, and notifications.'
+          : 'All notification sounds are muted.'}
       </p>
     </div>
   );

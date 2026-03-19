@@ -6,6 +6,7 @@
  */
 
 import { apiRequest } from './api/client';
+import { playNotificationSound } from './sounds';
 
 // ── Service Worker Registration ──
 
@@ -224,6 +225,9 @@ export async function sendLocalNotification(
   body = 'New message',
 ): Promise<void> {
   if (!isNotificationPermissionGranted()) return;
+
+  // Play an audible notification sound alongside the visual notification
+  playNotificationSound();
 
   // Prefer going through the service worker so the notification is
   // managed by the SW lifecycle (click handling, etc.).

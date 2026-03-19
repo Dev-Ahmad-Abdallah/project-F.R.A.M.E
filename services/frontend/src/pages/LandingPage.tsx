@@ -104,10 +104,10 @@ const ShieldIcon = () => (
 
 const LockIcon = () => (
   <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
-    <rect x="10" y="20" width="28" height="22" rx="4" stroke={C.accent} strokeWidth="2" fill="rgba(88,166,255,0.06)" />
-    <path d="M16 20v-6a8 8 0 1116 0v6" stroke={C.accent} strokeWidth="2" fill="none" strokeLinecap="round" />
-    <circle cx="24" cy="31" r="3" fill={C.accent} />
-    <path d="M24 34v4" stroke={C.accent} strokeWidth="2" strokeLinecap="round" />
+    <rect x="10" y="20" width="28" height="22" rx="4" stroke={C.success} strokeWidth="2" fill="rgba(63,185,80,0.06)" />
+    <path d="M16 20v-6a8 8 0 1116 0v6" stroke={C.success} strokeWidth="2" fill="none" strokeLinecap="round" />
+    <circle cx="24" cy="31" r="3" fill={C.success} />
+    <path d="M24 34v4" stroke={C.success} strokeWidth="2" strokeLinecap="round" />
   </svg>
 );
 
@@ -457,7 +457,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
     const el = e.currentTarget;
     el.style.borderColor = C.accent + '60';
     el.style.transform = 'translateY(-4px)';
-    el.style.boxShadow = `0 0 24px 4px rgba(88,166,255,0.12), 0 4px 16px rgba(0,0,0,0.3)`;
+    el.style.boxShadow = `0 0 24px 4px rgba(88,166,255,0.08), 0 0 16px 2px rgba(63,185,80,0.06), 0 4px 16px rgba(0,0,0,0.3)`;
   }, []);
 
   const handleCardLeave = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -810,7 +810,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
                     <svg width="40" height="2" viewBox="0 0 40 2">
                       <line
                         x1="0" y1="1" x2="40" y2="1"
-                        stroke={C.accent}
+                        stroke={C.success}
                         strokeWidth="2"
                         strokeDasharray="6 4"
                         style={{ animation: 'frame-data-flow 1.5s linear infinite' }}
@@ -871,10 +871,10 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
 
                 {/* Animated flow arrow */}
                 <div className="frame-arch-arrow">
-                  <span style={{ fontSize: 10, color: C.accent, fontWeight: 600, marginBottom: 4 }}>ENCRYPTED</span>
+                  <span style={{ fontSize: 10, color: C.success, fontWeight: 600, marginBottom: 4 }}>ENCRYPTED</span>
                   <svg width="60" height="6" viewBox="0 0 60 6" style={{ overflow: 'visible' }}>
-                    <line x1="0" y1="3" x2="60" y2="3" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
-                    <polygon points="55,0 60,3 55,6" fill={C.accent} opacity="0.7" />
+                    <line x1="0" y1="3" x2="60" y2="3" stroke={C.success} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
+                    <polygon points="55,0 60,3 55,6" fill={C.success} opacity="0.7" />
                   </svg>
                 </div>
 
@@ -890,10 +890,10 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
 
                 {/* Animated flow arrow */}
                 <div className="frame-arch-arrow">
-                  <span style={{ fontSize: 10, color: C.accent, fontWeight: 600, marginBottom: 4 }}>ENCRYPTED</span>
+                  <span style={{ fontSize: 10, color: C.success, fontWeight: 600, marginBottom: 4 }}>ENCRYPTED</span>
                   <svg width="60" height="6" viewBox="0 0 60 6" style={{ overflow: 'visible' }}>
-                    <line x1="0" y1="3" x2="60" y2="3" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
-                    <polygon points="55,0 60,3 55,6" fill={C.accent} opacity="0.7" />
+                    <line x1="0" y1="3" x2="60" y2="3" stroke={C.success} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
+                    <polygon points="55,0 60,3 55,6" fill={C.success} opacity="0.7" />
                   </svg>
                 </div>
 
