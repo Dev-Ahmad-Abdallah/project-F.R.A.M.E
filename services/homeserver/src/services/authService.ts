@@ -145,7 +145,7 @@ export async function login(params: LoginParams): Promise<AuthResult> {
         `DELETE FROM devices WHERE device_id IN (
           SELECT device_id FROM devices
           WHERE user_id = $1
-          ORDER BY last_seen_at ASC NULLS FIRST, created_at ASC
+          ORDER BY last_seen ASC NULLS FIRST, created_at ASC
           LIMIT $2
         )`,
         [user.user_id, evictCount]
