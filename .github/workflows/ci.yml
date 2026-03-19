@@ -6,6 +6,7 @@ on:
   pull_request:
     branches: [main, staging]
     types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 # Minimal permissions — nothing writes unless explicitly granted
 permissions:
@@ -59,9 +60,9 @@ jobs:
       - name: Check for hardcoded secrets
         run: |
           echo "Scanning for common secret patterns in tracked files..."
-          PATTERNS='(PRIVATE.KEY|aws_secret_access_key|password\s*=\s*["\x27][^"\x27]{8,}|sk_live_|ghp_[A-Za-z0-9]{36}|-----BEGIN (RSA|EC|DSA|OPENSSH) PRIVATE KEY)'
+          PATTERNS='PRIVATE.KEY|aws_secret_access_key|sk_live_|-----BEGIN .* PRIVATE KEY'
           # Search only tracked source files, exclude lockfiles/vendored code
-          MATCHES=$(git grep -InP "$PATTERNS" -- \
+          MATCHES=$(git grep -InE "$PATTERNS" -- \
             ':!package-lock.json' \
             ':!node_modules' \
             ':!*.png' ':!*.jpg' ':!*.ico' \

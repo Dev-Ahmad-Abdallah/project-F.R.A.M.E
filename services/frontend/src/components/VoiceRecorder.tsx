@@ -8,8 +8,29 @@ interface VoiceRecorderProps {
 const MAX_DURATION_S = 60;
 const WARNING_THRESHOLD_S = 50;
 
+/**
+ * Maps getUserMedia errors to user-friendly messages with fix instructions.
+ */
+function getErrorMessage(err: unknown): string {
+  if (err instanceof DOMException) {
+    switch (err.name) {
+      case 'NotAllowedError':
+        return 'Microphone blocked \u2014 click the lock icon in your address bar to allow';
+      case 'NotFoundError':
+        return 'No microphone detected on this device';
+      case 'NotReadableError':
+        return 'Microphone is in use by another app';
+      case 'AbortError':
+        return 'Microphone request was interrupted \u2014 please try again';
+      default:
+        return 'Could not start recording';
+    }
+  }
+  return 'Could not start recording';
+}
+
 const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onCancel }) => {
-  const [state, setState] = useState<'idle' | 'requesting' | 'recording' | 'error'>('idle');
+  const [state, setState] = useState<'starting' | 'requesting' | 'recording' | 'error'>('starting');
   const [elapsed, setElapsed] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
   const [analyserData, setAnalyserData] = useState<number[]>(new Array(24).fill(0));
@@ -22,6 +43,7 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onCancel }) => {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number>(0);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const mountedRef = useRef(true);
 
   const cleanup = useCallback(() => {
     if (timerRef.current) {
@@ -44,14 +66,17 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onCancel }) => {
   }, []);
 
   useEffect(() => {
-    return cleanup;
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      cleanup();
+    };
   }, [cleanup]);
 
   const updateWaveform = useCallback(() => {
     if (!analyserRef.current) return;
     const data = new Uint8Array(analyserRef.current.frequencyBinCount);
     analyserRef.current.getByteFrequencyData(data);
-    // Sample 24 bars from the frequency data
     const bars: number[] = [];
     const step = Math.floor(data.length / 24);
     for (let i = 0; i < 24; i++) {
@@ -61,98 +86,120 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onCancel }) => {
     animFrameRef.current = requestAnimationFrame(updateWaveform);
   }, []);
 
-  const startRecording = useCallback(async () => {
+  const beginRecordingWithStream = useCallback((stream: MediaStream) => {
+    if (!mountedRef.current) {
+      stream.getTracks().forEach((t) => t.stop());
+      return;
+    }
+    streamRef.current = stream;
+
+    // Set up analyser for waveform
+    const audioCtx = new AudioContext();
+    audioContextRef.current = audioCtx;
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    analyserRef.current = analyser;
+
+    // Determine supported mime type
+    let mimeType = 'audio/webm;codecs=opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) {
+      mimeType = 'audio/webm';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = '';
+      }
+    }
+
+    const recorder = mimeType
+      ? new MediaRecorder(stream, { mimeType })
+      : new MediaRecorder(stream);
+
+    mediaRecorderRef.current = recorder;
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        chunksRef.current.push(e.data);
+      }
+    };
+
+    recorder.onstop = () => {
+      const durationMs = Date.now() - startTimeRef.current;
+      const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = (reader.result as string).split(',')[1];
+        if (base64) {
+          onSend(base64, durationMs);
+        }
+      };
+      reader.readAsDataURL(blob);
+      cleanup();
+    };
+
+    recorder.start(250);
+    startTimeRef.current = Date.now();
+    setState('recording');
+    setElapsed(0);
+
+    // Start waveform animation
+    updateWaveform();
+
+    // Start timer
+    timerRef.current = setInterval(() => {
+      const now = Date.now();
+      const sec = Math.floor((now - startTimeRef.current) / 1000);
+      setElapsed(sec);
+      if (sec >= MAX_DURATION_S) {
+        recorder.stop();
+      }
+    }, 200);
+  }, [onSend, cleanup, updateWaveform]);
+
+  const requestMicAccess = useCallback(async () => {
     setState('requesting');
     setErrorMsg('');
     chunksRef.current = [];
 
+    // Check permission state first if the API is available
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        const permResult = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        if (permResult.state === 'denied') {
+          setState('error');
+          setErrorMsg('Microphone is blocked. Click the lock icon in your address bar \u2192 Site settings \u2192 Allow Microphone');
+          return;
+        }
+        // 'granted' or 'prompt' — proceed to getUserMedia
+      }
+    } catch {
+      // permissions.query may not support 'microphone' in all browsers — continue anyway
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-
-      // Set up analyser for waveform
-      const audioCtx = new AudioContext();
-      audioContextRef.current = audioCtx;
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
-      analyserRef.current = analyser;
-
-      // Determine supported mime type
-      let mimeType = 'audio/webm;codecs=opus';
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'audio/webm';
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = '';
-        }
-      }
-
-      const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream);
-
-      mediaRecorderRef.current = recorder;
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
-      };
-
-      recorder.onstop = () => {
-        const durationMs = Date.now() - startTimeRef.current;
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64 = (reader.result as string).split(',')[1];
-          if (base64) {
-            onSend(base64, durationMs);
-          }
-        };
-        reader.readAsDataURL(blob);
-        cleanup();
-      };
-
-      recorder.start(250); // collect chunks every 250ms
-      startTimeRef.current = Date.now();
-      setState('recording');
-      setElapsed(0);
-
-      // Start waveform animation
-      updateWaveform();
-
-      // Start timer
-      timerRef.current = setInterval(() => {
-        const now = Date.now();
-        const sec = Math.floor((now - startTimeRef.current) / 1000);
-        setElapsed(sec);
-        if (sec >= MAX_DURATION_S) {
-          recorder.stop();
-        }
-      }, 200);
+      beginRecordingWithStream(stream);
     } catch (err: unknown) {
       cleanup();
+      if (!mountedRef.current) return;
       setState('error');
-      if (err instanceof DOMException && err.name === 'NotAllowedError') {
-        setErrorMsg('Microphone access denied. Please allow microphone permission in your browser settings.');
-      } else if (err instanceof DOMException && err.name === 'NotFoundError') {
-        setErrorMsg('No microphone found. Please connect a microphone and try again.');
-      } else {
-        setErrorMsg('Could not access microphone. Please check your browser permissions.');
-      }
+      setErrorMsg(getErrorMessage(err));
     }
-  }, [onSend, cleanup, updateWaveform]);
+  }, [cleanup, beginRecordingWithStream]);
 
-  // Auto-start recording on mount
+  // On mount: show a brief "starting" state, then request mic access.
+  // The component is rendered in response to a user gesture (mic button click),
+  // so getUserMedia is allowed by the browser.
   useEffect(() => {
-    void startRecording();
+    const timer = setTimeout(() => {
+      void requestMicAccess();
+    }, 100);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleCancel = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      // Remove onstop handler so it doesn't trigger onSend
       mediaRecorderRef.current.onstop = null;
       mediaRecorderRef.current.stop();
     }
@@ -175,33 +222,46 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSend, onCancel }) => {
   const showWarning = elapsed >= WARNING_THRESHOLD_S && elapsed < MAX_DURATION_S;
   const remaining = MAX_DURATION_S - elapsed;
 
+  // ── Error state ──
   if (state === 'error') {
     return (
       <div style={recStyles.container}>
         <div style={recStyles.errorContainer}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f85149" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="15" y1="9" x2="9" y2="15" />
-            <line x1="9" y1="9" x2="15" y2="15" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
           </svg>
           <span style={recStyles.errorText}>{errorMsg}</span>
+          <button
+            type="button"
+            onClick={() => void requestMicAccess()}
+            style={recStyles.tryAgainBtn}
+          >
+            Try Again
+          </button>
           <button type="button" onClick={onCancel} style={recStyles.dismissBtn}>Dismiss</button>
         </div>
       </div>
     );
   }
 
-  if (state === 'idle' || state === 'requesting') {
+  // ── Starting / Requesting state ──
+  if (state === 'starting' || state === 'requesting') {
     return (
       <div style={recStyles.container}>
         <div style={recStyles.requestingContainer}>
           <div style={recStyles.spinner} />
-          <span style={{ color: '#8b949e', fontSize: 13 }}>Requesting microphone access...</span>
+          <span style={{ color: '#8b949e', fontSize: 13 }}>
+            {state === 'starting' ? 'Starting...' : 'Requesting microphone access...'}
+          </span>
         </div>
       </div>
     );
   }
 
+  // ── Recording state ──
   return (
     <div style={recStyles.container}>
       <div style={recStyles.recordingRow}>
@@ -301,9 +361,22 @@ const recStyles: Record<string, React.CSSProperties> = {
     width: '100%',
   },
   errorText: {
-    color: '#f85149',
-    fontSize: 13,
+    color: '#8b949e',
+    fontSize: 12,
     flex: 1,
+    lineHeight: '1.4',
+  },
+  tryAgainBtn: {
+    background: 'none',
+    border: '1px solid #30363d',
+    color: '#58a6ff',
+    fontSize: 12,
+    padding: '4px 10px',
+    borderRadius: 6,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    flexShrink: 0,
+    whiteSpace: 'nowrap' as const,
   },
   dismissBtn: {
     background: 'none',

@@ -22,6 +22,8 @@ const ALLOWED_MIME_TYPES = new Set([
   'text/plain',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/json',
+  'text/csv',
 ]);
 
 // ── Multer setup (memory storage — encrypted blob goes straight to PG) ──

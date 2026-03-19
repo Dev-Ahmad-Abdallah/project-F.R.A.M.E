@@ -14,11 +14,19 @@ export const ALLOWED_FILE_TYPES = new Set([
   'application/pdf', 'text/plain',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/zip', 'application/x-zip-compressed',
+  'application/json',
+  'text/csv',
 ]);
 
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
-export const FRIENDLY_FILE_TYPES = 'Images (JPEG, PNG, GIF, WebP), PDF, TXT, DOC/DOCX';
+/** Maximum size for inline (base64) file sending — larger files need server upload */
+export const MAX_INLINE_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+export const FRIENDLY_FILE_TYPES = 'Images, PDF, TXT, DOC/DOCX, ZIP, JSON, CSV';
+
+export const FILE_ACCEPT_STRING = 'image/*,.pdf,.doc,.docx,.txt,.zip,.json,.csv';
 
 export interface FileUploadResult {
   fileId: string;

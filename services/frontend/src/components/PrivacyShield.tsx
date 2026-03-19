@@ -62,7 +62,10 @@ const PrivacyShield: React.FC<PrivacyShieldProps> = ({
     }
   }, [captureDetected, onDismissCaptureWarning]);
 
-  const watermarkText = userId || 'PROTECTED';
+  // Extract short username (strip @user:server format)
+  const shortLabel = userId
+    ? userId.replace(/^@/, '').replace(/:.*$/, '')
+    : 'PROTECTED';
 
   return (
     <>
@@ -94,22 +97,23 @@ const PrivacyShield: React.FC<PrivacyShieldProps> = ({
         />
       )}
 
-      {/* 3. Watermark overlay — ALWAYS ON when viewing messages */}
-      {/* privacyMode prop kept for interface compat but watermark always renders */}
-      {(privacyMode || !privacyMode) && !isHidden && (
+      {/* 3. Forensic watermark — subtle horizontal grid over message area only */}
+      {!isHidden && (
         <div
           style={overlayStyles.watermarkOverlay}
           aria-hidden="true"
           data-testid="privacy-watermark-overlay"
         >
-          <div style={overlayStyles.watermarkInner}>
-            {/* Generate a grid of watermark text */}
-            {Array.from({ length: 80 }, (_, i) => (
-              <span key={i} style={overlayStyles.watermarkText}>
-                {watermarkText}
-              </span>
-            ))}
-          </div>
+          {/* Rows of subtle forensic ID text in a horizontal grid */}
+          {Array.from({ length: 24 }, (_, row) => (
+            <div key={row} style={overlayStyles.watermarkRow}>
+              {Array.from({ length: 6 }, (_, col) => (
+                <span key={col} style={overlayStyles.watermarkText}>
+                  {shortLabel}
+                </span>
+              ))}
+            </div>
+          ))}
         </div>
       )}
 
@@ -194,42 +198,38 @@ const overlayStyles: Record<string, React.CSSProperties> = {
     // No transition — must be instant
   },
 
-  // Watermark overlay: barely visible repeating diagonal text
+  // Forensic watermark: subtle horizontal grid, message area only
   watermarkOverlay: {
     position: 'fixed',
-    top: 0,
-    left: 0,
+    // Offset to cover only the message area (skip sidebar ~320px left, header ~50px top, input ~60px bottom)
+    top: 50,
+    left: 320,
     right: 0,
-    bottom: 0,
+    bottom: 60,
     zIndex: 999990,
     pointerEvents: 'none',
     overflow: 'hidden',
     userSelect: 'none',
-  },
-  watermarkInner: {
-    position: 'absolute',
-    top: '-50%',
-    left: '-50%',
-    right: '-50%',
-    bottom: '-50%',
     display: 'flex',
-    flexWrap: 'wrap',
-    gap: '50px',
-    transform: 'rotate(-35deg)',
-    transformOrigin: 'center center',
-    alignContent: 'center',
-    justifyContent: 'center',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
+  },
+  watermarkRow: {
+    display: 'flex',
+    justifyContent: 'space-around',
+    width: '100%',
   },
   watermarkText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: 600,
+    color: '#141a22',
+    fontSize: 8,
+    fontWeight: 400,
     fontFamily: 'monospace',
-    opacity: 0.04,
+    opacity: 0.015,
     whiteSpace: 'nowrap',
-    letterSpacing: '0.15em',
+    letterSpacing: '0.2em',
     userSelect: 'none',
     pointerEvents: 'none',
+    lineHeight: 1,
   },
 
   // Fade-in mask when returning from hidden
