@@ -101,13 +101,27 @@ export async function syncMessages(
   limit: number,
   timeout: number
 ): Promise<{ events: Record<string, unknown>[]; nextBatch: string; hasMore: boolean; to_device?: unknown[] }> {
-  // Fetch pending to-device messages (Megolm key shares, etc.)
-  const toDeviceResult = await pool.query(
+  // Clean up stale claimed messages (client disconnected mid-response more than 5 min ago)
+  await pool.query(
     `DELETE FROM to_device_messages
-     WHERE recipient_user_id = $1 AND recipient_device_id = $2
-     RETURNING sender_user_id, sender_device_id, event_type, content`,
+     WHERE claimed_at IS NOT NULL AND claimed_at < NOW() - INTERVAL '5 minutes'`
+  );
+
+  // Fetch unclaimed to-device messages and mark them as claimed atomically
+  const toDeviceResult = await pool.query(
+    `UPDATE to_device_messages
+     SET claimed_at = NOW()
+     WHERE id IN (
+       SELECT id FROM to_device_messages
+       WHERE recipient_user_id = $1 AND recipient_device_id = $2
+         AND claimed_at IS NULL
+       FOR UPDATE
+     )
+     RETURNING id, sender_user_id, sender_device_id, event_type, content`,
     [userId, deviceId]
   );
+
+  const claimedToDeviceIds = toDeviceResult.rows.map((row: { id: string }) => row.id);
 
   const toDeviceEvents = toDeviceResult.rows.map((row: { sender_user_id: string; sender_device_id: string; event_type: string; content: unknown }) => ({
     sender: row.sender_user_id,
@@ -131,6 +145,14 @@ export async function syncMessages(
       `UPDATE delivery_state SET status = 'delivered', updated_at = NOW()
        WHERE event_id = ANY($1::text[]) AND device_id = $2`,
       [eventIds, deviceId]
+    );
+  }
+
+  // Delete claimed to-device messages now that the response is fully built
+  if (claimedToDeviceIds.length > 0) {
+    await pool.query(
+      `DELETE FROM to_device_messages WHERE id = ANY($1::bigint[])`,
+      [claimedToDeviceIds]
     );
   }
 

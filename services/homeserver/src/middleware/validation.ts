@@ -82,3 +82,11 @@ export const createRoomSchema = z.object({
   roomType: z.enum(['direct', 'group']),
   inviteUserIds: z.array(z.string()).min(1).max(50),
 });
+
+export const keysQuerySchema = z.object({
+  device_keys: z.record(z.string(), z.record(z.string(), z.string())),
+});
+
+export const keysClaimSchema = z.object({
+  one_time_keys: z.record(z.string(), z.record(z.string(), z.string())),
+});

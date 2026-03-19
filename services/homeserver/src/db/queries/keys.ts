@@ -45,14 +45,22 @@ export async function claimOneTimePrekey(
   userId: string,
   deviceId: string
 ): Promise<string | null> {
-  // Atomically pop one key from the JSONB array
+  // Atomically pop one key using CTE with FOR UPDATE SKIP LOCKED to prevent race conditions
   const result = await pool.query(
-    `UPDATE key_bundles
+    `WITH claimed AS (
+       SELECT ctid, one_time_prekeys->0 AS claimed_key
+       FROM key_bundles
+       WHERE user_id = $1 AND device_id = $2
+         AND jsonb_array_length(one_time_prekeys) > 0
+       FOR UPDATE SKIP LOCKED
+       LIMIT 1
+     )
+     UPDATE key_bundles
      SET one_time_prekeys = one_time_prekeys - 0,
          updated_at = NOW()
-     WHERE user_id = $1 AND device_id = $2
-       AND jsonb_array_length(one_time_prekeys) > 0
-     RETURNING one_time_prekeys->0 AS claimed_key`,
+     FROM claimed
+     WHERE key_bundles.ctid = claimed.ctid
+     RETURNING claimed.claimed_key`,
     [userId, deviceId]
   );
 
@@ -65,13 +73,33 @@ export async function addOneTimePrekeys(
   deviceId: string,
   newKeys: string[]
 ): Promise<number> {
+  const MAX_OTK_COUNT = 200;
+
+  // First get current count to determine how many we can add
+  const countResult = await pool.query(
+    `SELECT jsonb_array_length(one_time_prekeys) AS count
+     FROM key_bundles
+     WHERE user_id = $1 AND device_id = $2`,
+    [userId, deviceId]
+  );
+
+  const currentCount = countResult.rows[0]?.count || 0;
+  const remaining = MAX_OTK_COUNT - currentCount;
+
+  if (remaining <= 0) {
+    return currentCount;
+  }
+
+  // Only add keys up to the limit
+  const keysToAdd = newKeys.slice(0, remaining);
+
   const result = await pool.query(
     `UPDATE key_bundles
      SET one_time_prekeys = one_time_prekeys || $3::jsonb,
          updated_at = NOW()
      WHERE user_id = $1 AND device_id = $2
      RETURNING jsonb_array_length(one_time_prekeys) AS total`,
-    [userId, deviceId, JSON.stringify(newKeys)]
+    [userId, deviceId, JSON.stringify(keysToAdd)]
   );
   return result.rows[0]?.total || 0;
 }

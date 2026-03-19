@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { asyncHandler } from '../middleware/errorHandler';
-import { loginLimiter, registerLimiter, apiLimiter } from '../middleware/rateLimit';
+import { loginLimiter, registerLimiter, apiLimiter, refreshLimiter } from '../middleware/rateLimit';
 import { validateBody } from '../middleware/validation';
 import { registerSchema, loginSchema, refreshSchema } from '../middleware/validation';
 import { requireAuth } from '../middleware/auth';
@@ -41,10 +41,10 @@ authRouter.post(
   })
 );
 
-// POST /auth/refresh — Refresh access token (rate limited — Security Finding 6)
+// POST /auth/refresh — Refresh access token (dedicated limiter — Security Finding 6)
 authRouter.post(
   '/refresh',
-  apiLimiter,
+  refreshLimiter,
   validateBody(refreshSchema),
   asyncHandler(async (req, res) => {
     const result = await refreshAccessToken(req.body.refreshToken);

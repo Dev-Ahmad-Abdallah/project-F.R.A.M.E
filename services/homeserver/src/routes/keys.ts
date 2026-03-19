@@ -2,8 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { apiLimiter } from '../middleware/rateLimit';
 import { asyncHandler } from '../middleware/errorHandler';
-import { validateBody } from '../middleware/validation';
-import { keyUploadSchema } from '../middleware/validation';
+import { validateBody, keyUploadSchema, keysQuerySchema, keysClaimSchema } from '../middleware/validation';
 import { fetchKeyBundle, uploadPrekeys, getKeyCount, queryDeviceKeys, claimKeys } from '../services/keyService';
 import { getProofForUser } from '../services/merkleTree';
 
@@ -32,6 +31,7 @@ keysRouter.post(
   '/query',
   requireAuth,
   apiLimiter,
+  validateBody(keysQuerySchema),
   asyncHandler(async (req, res) => {
     const userIds: string[] = req.body.device_keys ? Object.keys(req.body.device_keys) : [];
     const result = await queryDeviceKeys(userIds);
@@ -44,8 +44,9 @@ keysRouter.post(
   '/claim',
   requireAuth,
   apiLimiter,
+  validateBody(keysClaimSchema),
   asyncHandler(async (req, res) => {
-    const result = await claimKeys(req.body.one_time_keys || {});
+    const result = await claimKeys(req.body.one_time_keys);
     res.json(result);
   })
 );

@@ -13,6 +13,7 @@ services:
       REDIS_URL: redis://redis-a:6379
       PORT: 3000
       NODE_ENV: development
+      # SECURITY: Change all secrets below before deploying to production
       JWT_SECRET: dev-secret-homeserver-a-change-in-production-xxxxxxxxxxxxxxxxx
       BCRYPT_SALT_ROUNDS: 12
       HOMESERVER_DOMAIN: localhost:3000
@@ -20,8 +21,10 @@ services:
       FEDERATION_PEERS: localhost:3001
       CORS_ORIGINS: http://localhost:3000
     depends_on:
-      - postgres-a
-      - redis-a
+      postgres-a:
+        condition: service_healthy
+      redis-a:
+        condition: service_healthy
 
   # ── Homeserver B (Federation peer) ──
   homeserver-b:
@@ -35,6 +38,7 @@ services:
       REDIS_URL: redis://redis-b:6379
       PORT: 3000
       NODE_ENV: development
+      # SECURITY: Change all secrets below before deploying to production
       JWT_SECRET: dev-secret-homeserver-b-change-in-production-xxxxxxxxxxxxxxxxx
       BCRYPT_SALT_ROUNDS: 12
       HOMESERVER_DOMAIN: localhost:3001
@@ -42,44 +46,72 @@ services:
       FEDERATION_PEERS: localhost:3000
       CORS_ORIGINS: http://localhost:3000
     depends_on:
-      - postgres-b
-      - redis-b
+      postgres-b:
+        condition: service_healthy
+      redis-b:
+        condition: service_healthy
 
   # ── PostgreSQL A ──
   postgres-a:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: frame_a
+      # SECURITY: Change credentials before deploying to production
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pg_a_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d frame_a"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # ── PostgreSQL B ──
   postgres-b:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: frame_b
+      # SECURITY: Change credentials before deploying to production
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - pg_b_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d frame_b"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # ── Redis A ──
   redis-a:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
   # ── Redis B ──
   redis-b:
     image: redis:7-alpine
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
 volumes:
   pg_a_data:

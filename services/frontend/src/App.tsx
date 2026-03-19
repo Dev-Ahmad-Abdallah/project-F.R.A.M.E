@@ -143,9 +143,19 @@ function App() {
         // 2. Register service worker for push notifications
         await registerServiceWorker();
 
-        // 3. Init encrypted IndexedDB storage
+        // 3. Init encrypted IndexedDB storage with a user-derived passphrase.
+        //    We hash `userId + ":frame-storage"` with SHA-256 to produce a
+        //    deterministic, per-user passphrase (never store the raw password).
         if (!cancelled) setInitPhase('storage');
-        await initStorage('frame-demo-passphrase');
+        const passphraseData = new TextEncoder().encode(
+          auth!.userId + ':frame-storage',
+        );
+        const hashBuffer = await crypto.subtle.digest('SHA-256', passphraseData);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const storagePassphrase = hashArray
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+        await initStorage(storagePassphrase);
 
         // 4. Fetch room list
         if (!cancelled) {

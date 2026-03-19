@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { getConfig, getFederationPeers } from '../config';
 import { insertEvent, createDeliveryEntries } from '../db/queries/events';
-import { getRoomMembers } from '../db/queries/rooms';
+import { getRoomMembers, isRoomMember } from '../db/queries/rooms';
 import { pool } from '../db/pool';
 import { redisClient } from '../redis/client';
 import { ApiError } from '../middleware/errorHandler';
@@ -73,18 +73,26 @@ function getKeyId(): string {
 function canonicalJson(obj: unknown): string {
   if (obj === null || obj === undefined) return 'null';
   if (typeof obj === 'string') return JSON.stringify(obj);
-  if (typeof obj === 'number' || typeof obj === 'boolean') return String(obj);
+  if (typeof obj === 'number') {
+    // NaN and Infinity are not valid JSON — coerce to null for safety
+    if (!Number.isFinite(obj)) return 'null';
+    return String(obj);
+  }
+  if (typeof obj === 'boolean') return String(obj);
   if (Array.isArray(obj)) {
+    // Arrays preserve undefined elements as null (matching JSON.stringify behaviour)
     return '[' + obj.map(canonicalJson).join(',') + ']';
   }
   if (typeof obj === 'object') {
-    const keys = Object.keys(obj as Record<string, unknown>).sort();
-    const pairs = keys.map(
-      (k) => `${JSON.stringify(k)}:${canonicalJson((obj as Record<string, unknown>)[k])}`
-    );
+    const record = obj as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    // Omit keys whose value is undefined (matching JSON.stringify behaviour)
+    const pairs = keys
+      .filter((k) => record[k] !== undefined)
+      .map((k) => `${JSON.stringify(k)}:${canonicalJson(record[k])}`);
     return '{' + pairs.join(',') + '}';
   }
-  return String(obj);
+  return 'null';
 }
 
 /**
@@ -286,7 +294,12 @@ export async function relayEventToPeer(
 }
 
 /**
- * Relay an event to all trusted peers (fire and forget with logging).
+ * Relay an event to all trusted peers with failure tracking.
+ *
+ * TODO: Implement a persistent retry queue — store failed relay attempts in
+ * a `federation_relay_queue` table and process them on a periodic timer
+ * (e.g., exponential backoff: 5s, 30s, 2m, 10m, 1h). This would prevent
+ * message loss when peers are temporarily unreachable.
  */
 export async function relayEventToAllPeers(event: FederationEvent): Promise<void> {
   const peers = getFederationPeers();
@@ -294,13 +307,29 @@ export async function relayEventToAllPeers(event: FederationEvent): Promise<void
     peers.map((peer) => relayEventToPeer(event, peer))
   );
 
+  const failedPeers: string[] = [];
+
   for (let i = 0; i < results.length; i++) {
     const result = results[i];
     if (result.status === 'rejected') {
-      console.error(`[Federation] Relay to ${peers[i]} threw:`, result.reason);
+      console.error(
+        `[Federation] Relay to ${peers[i]} threw (eventId=${event.eventId}, roomId=${event.roomId}):`,
+        result.reason
+      );
+      failedPeers.push(peers[i]);
     } else if (!result.value) {
-      console.warn(`[Federation] Relay to ${peers[i]} returned failure`);
+      console.warn(
+        `[Federation] Relay to ${peers[i]} returned failure (eventId=${event.eventId}, roomId=${event.roomId})`
+      );
+      failedPeers.push(peers[i]);
     }
+  }
+
+  if (failedPeers.length > 0) {
+    // TODO: Persist to federation_relay_queue table for retry instead of just logging
+    console.error(
+      `[Federation] Failed to relay event ${event.eventId} to ${failedPeers.length}/${peers.length} peers: ${failedPeers.join(', ')}`
+    );
   }
 }
 
@@ -326,7 +355,17 @@ export async function handleIncomingFederationEvent(
     throw new ApiError(403, 'M_UNAUTHORIZED', `Invalid signature from origin server ${origin}`);
   }
 
-  // 3. Store event in local database
+  // 3. Validate that the sender is a member of the target room
+  const senderIsMember = await isRoomMember(event.roomId, event.sender);
+  if (!senderIsMember) {
+    throw new ApiError(
+      403,
+      'M_FORBIDDEN',
+      `Sender ${event.sender} is not a member of room ${event.roomId}`
+    );
+  }
+
+  // 4. Store event in local database
   const stored = await insertEvent(
     event.eventId,
     event.roomId,
@@ -338,7 +377,7 @@ export async function handleIncomingFederationEvent(
     new Date(event.originServerTs)
   );
 
-  // 4. Fan-out to local recipient devices (batch query instead of N+1)
+  // 5. Fan-out to local recipient devices (batch query instead of N+1)
   const members = await getRoomMembers(event.roomId);
   const localMemberIds = members
     .filter((m) => m.user_id.endsWith(`:${config.HOMESERVER_DOMAIN}`))

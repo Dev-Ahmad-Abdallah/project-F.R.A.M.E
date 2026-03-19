@@ -123,6 +123,7 @@ export async function ensureSessionsForRoom(
       new sdk.EncryptionSettings(),
     );
 
+    let shareFailureCount = 0;
     for (const request of shareRequests) {
       try {
         const reqBody = JSON.parse(request.body);
@@ -136,11 +137,18 @@ export async function ensureSessionsForRoom(
           JSON.stringify(response),
         );
       } catch (err) {
+        shareFailureCount++;
         console.error(
           '[F.R.A.M.E.] Failed to send room key to-device message:',
           err,
         );
       }
+    }
+
+    if (shareFailureCount > 0) {
+      console.warn(
+        `[F.R.A.M.E.] Key sharing completed with ${shareFailureCount}/${shareRequests.length} device(s) failing for room ${roomId}.`,
+      );
     }
   } finally {
     sessionMutex.release();

@@ -8,8 +8,12 @@ build/
 # Environment files (NEVER commit secrets)
 .env
 .env.local
+*.env.local
 .env.production
 .env.*.local
+services/frontend/.env
+services/frontend/.env.local
+services/homeserver/.env
 
 # IDE
 .vscode/

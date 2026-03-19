@@ -93,6 +93,8 @@ function teardownBroadcastChannel(): void {
 // ── Singleton state ──
 
 let machine: sdk.OlmMachine | null = null;
+let currentUserId: string | null = null;
+let currentDeviceId: string | null = null;
 let wasmInitialised = false;
 const mutex = new Mutex();
 
@@ -118,14 +120,23 @@ export async function initCrypto(
     wasmInitialised = true;
   }
 
-  // Don't re-create if already running for same identity
+  // If already running for a DIFFERENT identity, tear down first to avoid
+  // using wrong keys after an account switch.
   if (machine !== null) {
-    return;
+    if (currentUserId === userId && currentDeviceId === deviceId) {
+      return; // Same identity — no-op
+    }
+    console.warn(
+      `[F.R.A.M.E.] OlmMachine identity changed (${currentUserId}/${currentDeviceId} → ${userId}/${deviceId}). Destroying old machine.`,
+    );
+    destroyCrypto();
   }
 
   const uid = new sdk.UserId(userId);
   const did = new sdk.DeviceId(deviceId);
   machine = await sdk.OlmMachine.initialize(uid, did);
+  currentUserId = userId;
+  currentDeviceId = deviceId;
 
   setupBroadcastChannel();
 }
@@ -203,6 +214,8 @@ export async function processOutgoingRequests(): Promise<void> {
  */
 export function destroyCrypto(): void {
   machine = null;
+  currentUserId = null;
+  currentDeviceId = null;
   teardownBroadcastChannel();
 }
 

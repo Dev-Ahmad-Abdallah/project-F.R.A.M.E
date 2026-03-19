@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { getConfig } from '../config';
 import { createUser, findUserByUsername, userExists } from '../db/queries/users';
-import { createDevice, findDevice } from '../db/queries/devices';
+import { createDevice } from '../db/queries/devices';
 import { upsertKeyBundle } from '../db/queries/keys';
 import { addKeyToLog } from './merkleTree';
 import { pool } from '../db/pool';
@@ -136,11 +136,8 @@ export async function login(params: LoginParams): Promise<AuthResult> {
   const deviceId = existingDeviceId || generateDeviceId();
 
   // Ensure the device exists in the database (create if new login device)
-  const existingDevice = await findDevice(deviceId);
-  if (!existingDevice) {
-    // Create a placeholder device record — keys will be uploaded separately via /keys/upload
-    await createDevice(deviceId, user.user_id, 'pending', 'pending', `${username}'s device`);
-  }
+  // Uses INSERT ... ON CONFLICT DO NOTHING to prevent race conditions on concurrent logins
+  await createDevice(deviceId, user.user_id, 'pending', 'pending', `${username}'s device`);
 
   // Generate tokens
   const accessToken = signAccessToken(user.user_id, deviceId);

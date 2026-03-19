@@ -19,11 +19,27 @@ export function errorHandler(
   const statusCode = err.statusCode || 500;
   const code = err.code || 'M_UNKNOWN';
 
-  // Never expose internal errors in production
-  const message =
-    statusCode === 500 && process.env.NODE_ENV === 'production'
-      ? 'Internal server error'
-      : err.message;
+  // Never expose internal error details in production
+  let message: string;
+  if (process.env.NODE_ENV === 'production') {
+    if (statusCode >= 500) {
+      message = 'Internal server error';
+    } else if (statusCode === 400) {
+      message = 'Bad request';
+    } else if (statusCode === 401) {
+      message = 'Unauthorized';
+    } else if (statusCode === 403) {
+      message = 'Forbidden';
+    } else if (statusCode === 404) {
+      message = 'Not found';
+    } else if (statusCode === 429) {
+      message = 'Too many requests';
+    } else {
+      message = 'Request error';
+    }
+  } else {
+    message = err.message;
+  }
 
   // Log error server-side (no sensitive data)
   console.error(`[${statusCode}] ${code}: ${err.message}`);

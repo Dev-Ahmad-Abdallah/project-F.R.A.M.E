@@ -9,7 +9,10 @@ import {
   RoomMemberWithDeviceCount,
   RoomWithMembers,
 } from '../db/queries/rooms';
+import { findUserById } from '../db/queries/users';
 import { ApiError } from '../middleware/errorHandler';
+
+const USER_ID_REGEX = /^@[a-zA-Z0-9_-]+:.+$/;
 
 const config = getConfig();
 
@@ -54,6 +57,23 @@ export async function inviteToRoom(
 
   if (!targetUserId) {
     throw new ApiError(400, 'M_BAD_JSON', 'Missing userId in request body');
+  }
+
+  // Validate userId format (@username:server)
+  if (!USER_ID_REGEX.test(targetUserId)) {
+    throw new ApiError(400, 'M_INVALID_PARAM', 'Invalid userId format. Expected @username:server');
+  }
+
+  // Verify target user exists
+  const targetUser = await findUserById(targetUserId);
+  if (!targetUser) {
+    throw new ApiError(404, 'M_NOT_FOUND', 'Target user does not exist');
+  }
+
+  // Check for duplicate membership
+  const alreadyMember = await isRoomMember(roomId, targetUserId);
+  if (alreadyMember) {
+    throw new ApiError(409, 'M_ALREADY_JOINED', 'User is already a member of this room');
   }
 
   await addRoomMember(roomId, targetUserId, 'member');

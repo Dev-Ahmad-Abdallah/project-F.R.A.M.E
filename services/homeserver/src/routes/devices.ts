@@ -4,6 +4,8 @@ import { apiLimiter } from '../middleware/rateLimit';
 import { asyncHandler } from '../middleware/errorHandler';
 import { validateBody, deviceRegisterSchema } from '../middleware/validation';
 import { registerDevice, listDevices, removeDevice, heartbeat } from '../services/deviceService';
+import { usersShareRoom } from '../db/queries/rooms';
+import { ApiError } from '../middleware/errorHandler';
 
 export const devicesRouter = Router();
 
@@ -31,7 +33,18 @@ devicesRouter.get(
   requireAuth,
   apiLimiter,
   asyncHandler(async (req, res) => {
-    const result = await listDevices(req.params.userId);
+    const requestingUserId = req.auth!.sub;
+    const targetUserId = req.params.userId;
+
+    // Users can only list their own devices or devices of users they share a room with
+    if (requestingUserId !== targetUserId) {
+      const shared = await usersShareRoom(requestingUserId, targetUserId);
+      if (!shared) {
+        throw new ApiError(403, 'M_FORBIDDEN', 'You can only view devices of users you share a room with');
+      }
+    }
+
+    const result = await listDevices(targetUserId);
     res.json(result);
   })
 );

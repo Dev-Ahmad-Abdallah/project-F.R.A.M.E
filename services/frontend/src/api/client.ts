@@ -9,6 +9,11 @@
 
 import type { RefreshResponse, ApiError } from '@frame/shared';
 
+// ── Session timeout (30 minutes of inactivity) ──
+
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+let lastActivityTimestamp: number = Date.now();
+
 // ── Token storage (in-memory only — cleared on page reload) ──
 
 let accessToken: string | null = null;
@@ -60,6 +65,28 @@ export class FrameApiError extends Error {
     this.name = 'FrameApiError';
     this.code = body.error.code;
     this.status = status;
+  }
+}
+
+// ── Session timeout helpers ──
+
+/**
+ * Update the last activity timestamp. Called on every API request.
+ */
+function touchActivity(): void {
+  lastActivityTimestamp = Date.now();
+}
+
+/**
+ * Check whether the session has been idle longer than the timeout.
+ * If so, clear tokens and throw an auth error.
+ */
+function checkSessionTimeout(): void {
+  if (accessToken && Date.now() - lastActivityTimestamp > SESSION_TIMEOUT_MS) {
+    clearTokens();
+    throw new FrameApiError(401, {
+      error: { code: 'M_SESSION_EXPIRED', message: 'Session timed out due to inactivity' },
+    });
   }
 }
 
@@ -124,6 +151,13 @@ export async function apiRequest<T>(
   options: RequestOptions = {},
 ): Promise<T> {
   const { method = 'GET', body, headers = {}, noAuth = false } = options;
+
+  // Check for session timeout before making the request
+  if (!noAuth) {
+    checkSessionTimeout();
+    touchActivity();
+  }
+
   const baseUrl = getBaseUrl();
 
   const buildHeaders = (): Record<string, string> => {

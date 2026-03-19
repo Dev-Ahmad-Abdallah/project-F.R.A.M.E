@@ -22,9 +22,14 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   }
 
   try {
+    // Use PUBLIC_URL to resolve the service worker path correctly.
+    // In CRA production builds, the compiled service-worker.ts is output
+    // as service-worker.js at the public root. In development, the
+    // service worker may not be available (CRA serves it only in production).
+    const swUrl = `${process.env.PUBLIC_URL || ''}/service-worker.js`;
     const registration = await navigator.serviceWorker.register(
-      '/service-worker.js',
-      { scope: '/' },
+      swUrl,
+      { scope: `${process.env.PUBLIC_URL || ''}/` },
     );
 
     swRegistration = registration;

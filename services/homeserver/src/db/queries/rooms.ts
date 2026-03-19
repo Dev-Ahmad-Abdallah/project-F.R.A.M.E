@@ -134,6 +134,17 @@ export async function getUserRoomsWithMembers(userId: string): Promise<RoomWithM
   }));
 }
 
+export async function usersShareRoom(userIdA: string, userIdB: string): Promise<boolean> {
+  const result = await pool.query(
+    `SELECT 1 FROM room_members a
+     JOIN room_members b ON a.room_id = b.room_id
+     WHERE a.user_id = $1 AND b.user_id = $2
+     LIMIT 1`,
+    [userIdA, userIdB]
+  );
+  return result.rowCount !== null && result.rowCount > 0;
+}
+
 export async function isRoomMember(roomId: string, userId: string): Promise<boolean> {
   const result = await pool.query(
     'SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2',

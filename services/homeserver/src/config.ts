@@ -11,6 +11,7 @@ const envSchema = z.object({
   FEDERATION_SIGNING_KEY: z.string(),
   FEDERATION_PEERS: z.string().default(''),
   CORS_ORIGINS: z.string().default(''),
+  DB_SSL_REJECT_UNAUTHORIZED: z.coerce.boolean().default(true),
 });
 
 export type Config = z.infer<typeof envSchema>;

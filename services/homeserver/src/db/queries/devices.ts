@@ -20,9 +20,15 @@ export async function createDevice(
   const result = await pool.query(
     `INSERT INTO devices (device_id, user_id, device_public_key, device_signing_key, display_name)
      VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (device_id) DO NOTHING
      RETURNING *`,
     [deviceId, userId, publicKey, signingKey, displayName || null]
   );
+  // If conflict occurred, fetch the existing device
+  if (!result.rows[0]) {
+    const existing = await findDevice(deviceId);
+    return existing!;
+  }
   return result.rows[0];
 }
 
