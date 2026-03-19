@@ -18,6 +18,7 @@ import {
   RoomWithMembers,
 } from '../db/queries/rooms';
 import { findUserById } from '../db/queries/users';
+import { pool } from '../db/pool';
 import { ApiError } from '../middleware/errorHandler';
 
 /**
@@ -188,19 +189,33 @@ export async function inviteToRoom(
 
   await addRoomMember(roomId, targetUserId, 'member');
 
-  // If this is an anonymous room, assign an anonymous name to the invited member
-  const { pool: dbPool } = await import('../db/pool') as { pool: import('pg').Pool };
-  const roomRow = await dbPool.query<{ settings: Record<string, unknown> }>(
-    'SELECT settings FROM rooms WHERE room_id = $1',
-    [roomId],
-  );
-  const roomSettings = roomRow.rows[0]?.settings || {};
-  if (roomSettings.isAnonymous) {
-    const existingNames = (roomSettings.anonymousNames as Record<string, string>) || {};
-    if (!existingNames[targetUserId]) { // eslint-disable-line security/detect-object-injection
-      const updatedNames = buildAnonymousNames(existingNames, [targetUserId]);
-      await dbUpdateRoomSettings(roomId, { ...roomSettings, anonymousNames: updatedNames });
+  // If this is an anonymous room, assign an anonymous name to the invited member.
+  // Uses a transaction with SELECT ... FOR UPDATE to prevent concurrent joins from
+  // overwriting each other's anonymous name assignments.
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const roomRow = await client.query<{ settings: Record<string, unknown> }>(
+      'SELECT settings FROM rooms WHERE room_id = $1 FOR UPDATE',
+      [roomId],
+    );
+    const roomSettings = roomRow.rows[0]?.settings || {};
+    if (roomSettings.isAnonymous) {
+      const existingNames = (roomSettings.anonymousNames as Record<string, string>) || {};
+      if (!existingNames[targetUserId]) { // eslint-disable-line security/detect-object-injection
+        const updatedNames = buildAnonymousNames(existingNames, [targetUserId]);
+        await client.query(
+          'UPDATE rooms SET settings = $1 WHERE room_id = $2',
+          [JSON.stringify({ ...roomSettings, anonymousNames: updatedNames }), roomId],
+        );
+      }
     }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
 
   // Emit membership change event for the invited user
@@ -222,7 +237,6 @@ export async function joinRoom(
   userId: string,
 ): Promise<{ joined: boolean }> {
   // Verify the room exists
-  const { pool } = await import('../db/pool') as { pool: import('pg').Pool };
   const roomResult = await pool.query<{ room_id: string; settings: Record<string, unknown> }>(
     'SELECT room_id, settings FROM rooms WHERE room_id = $1',
     [roomId],
@@ -247,12 +261,32 @@ export async function joinRoom(
 
   await addRoomMember(roomId, userId, 'member');
 
-  // If this is an anonymous room, assign an anonymous name to the new member
+  // If this is an anonymous room, assign an anonymous name to the new member.
+  // Uses a transaction with SELECT ... FOR UPDATE to prevent concurrent joins from
+  // overwriting each other's anonymous name assignments.
   if (settings.isAnonymous) {
-    const existingNames = (settings.anonymousNames as Record<string, string>) || {};
-    if (!existingNames[userId]) { // eslint-disable-line security/detect-object-injection
-      const updatedNames = buildAnonymousNames(existingNames, [userId]);
-      await dbUpdateRoomSettings(roomId, { ...settings, anonymousNames: updatedNames });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const lockedRoom = await client.query<{ settings: Record<string, unknown> }>(
+        'SELECT settings FROM rooms WHERE room_id = $1 FOR UPDATE',
+        [roomId],
+      );
+      const lockedSettings = lockedRoom.rows[0]?.settings || {};
+      const existingNames = (lockedSettings.anonymousNames as Record<string, string>) || {};
+      if (!existingNames[userId]) { // eslint-disable-line security/detect-object-injection
+        const updatedNames = buildAnonymousNames(existingNames, [userId]);
+        await client.query(
+          'UPDATE rooms SET settings = $1 WHERE room_id = $2',
+          [JSON.stringify({ ...lockedSettings, anonymousNames: updatedNames }), roomId],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
   }
 
@@ -308,7 +342,6 @@ export async function getRoomSettings(
     throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
   }
 
-  const { pool } = await import('../db/pool') as { pool: import('pg').Pool };
   const result = await pool.query<RoomSettingsRow>(
     'SELECT settings FROM rooms WHERE room_id = $1',
     [roomId],
@@ -329,7 +362,6 @@ export async function joinRoomWithPassword(
   userId: string,
   password?: string,
 ): Promise<{ joined: boolean }> {
-  const { pool } = await import('../db/pool') as { pool: import('pg').Pool };
   const roomResult = await pool.query<RoomSettingsRow>(
     'SELECT settings FROM rooms WHERE room_id = $1',
     [roomId],
@@ -365,12 +397,32 @@ export async function joinRoomWithPassword(
 
   await addRoomMember(roomId, userId, 'member');
 
-  // If this is an anonymous room, assign an anonymous name to the new member
+  // If this is an anonymous room, assign an anonymous name to the new member.
+  // Uses a transaction with SELECT ... FOR UPDATE to prevent concurrent joins from
+  // overwriting each other's anonymous name assignments.
   if (settings.isAnonymous) {
-    const existingNames = (settings.anonymousNames as Record<string, string>) || {};
-    if (!existingNames[userId]) { // eslint-disable-line security/detect-object-injection
-      const updatedNames = buildAnonymousNames(existingNames, [userId]);
-      await dbUpdateRoomSettings(roomId, { ...settings, anonymousNames: updatedNames });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const lockedRoom = await client.query<{ settings: Record<string, unknown> }>(
+        'SELECT settings FROM rooms WHERE room_id = $1 FOR UPDATE',
+        [roomId],
+      );
+      const lockedSettings = lockedRoom.rows[0]?.settings || {};
+      const existingNames = (lockedSettings.anonymousNames as Record<string, string>) || {};
+      if (!existingNames[userId]) { // eslint-disable-line security/detect-object-injection
+        const updatedNames = buildAnonymousNames(existingNames, [userId]);
+        await client.query(
+          'UPDATE rooms SET settings = $1 WHERE room_id = $2',
+          [JSON.stringify({ ...lockedSettings, anonymousNames: updatedNames }), roomId],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
   }
 
@@ -401,7 +453,6 @@ export async function getRoomMemberList(
   const members = await getRoomMembersWithDeviceCounts(roomId);
 
   // For anonymous rooms, replace display names with anonymous pseudonyms
-  const { pool } = await import('../db/pool') as { pool: import('pg').Pool };
   const roomResult = await pool.query<{ settings: Record<string, unknown> }>(
     'SELECT settings FROM rooms WHERE room_id = $1',
     [roomId],
@@ -440,7 +491,6 @@ export async function updateSettings(
   }
 
   // Merge with existing settings
-  const { pool } = await import('../db/pool') as { pool: import('pg').Pool };
   const existing = await pool.query<RoomSettingsRow>('SELECT settings FROM rooms WHERE room_id = $1', [roomId]);
   const currentSettings = existing.rows[0]?.settings || {};
   const merged = { ...currentSettings, ...settingsToStore };
@@ -512,12 +562,32 @@ export async function joinRoomByCode(
 
   await addRoomMember(room.room_id, userId, 'member');
 
-  // If this is an anonymous room, assign an anonymous name to the new member
+  // If this is an anonymous room, assign an anonymous name to the new member.
+  // Uses a transaction with SELECT ... FOR UPDATE to prevent concurrent joins from
+  // overwriting each other's anonymous name assignments.
   if (settings.isAnonymous) {
-    const existingNames = (settings.anonymousNames as Record<string, string>) || {};
-    if (!existingNames[userId]) { // eslint-disable-line security/detect-object-injection
-      const updatedNames = buildAnonymousNames(existingNames, [userId]);
-      await dbUpdateRoomSettings(room.room_id, { ...settings, anonymousNames: updatedNames });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const lockedRoom = await client.query<{ settings: Record<string, unknown> }>(
+        'SELECT settings FROM rooms WHERE room_id = $1 FOR UPDATE',
+        [room.room_id],
+      );
+      const lockedSettings = lockedRoom.rows[0]?.settings || {};
+      const existingNames = (lockedSettings.anonymousNames as Record<string, string>) || {};
+      if (!existingNames[userId]) { // eslint-disable-line security/detect-object-injection
+        const updatedNames = buildAnonymousNames(existingNames, [userId]);
+        await client.query(
+          'UPDATE rooms SET settings = $1 WHERE room_id = $2',
+          [JSON.stringify({ ...lockedSettings, anonymousNames: updatedNames }), room.room_id],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
   }
 
