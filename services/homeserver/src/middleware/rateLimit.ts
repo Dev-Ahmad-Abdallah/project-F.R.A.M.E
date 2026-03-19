@@ -196,11 +196,12 @@ export const refreshLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Message sending: 120 per minute per user
+// Message sending: 300 per minute per user (~5 msg/sec burst capacity)
+// Chat apps generate lots of messages — groups, rapid replies, reactions.
 const messageWindowMs = 60 * 1000;
 export const messageLimiter = rateLimit({
   windowMs: messageWindowMs,
-  max: 120,
+  max: 300,
   store: new RedisStore('ratelimit:message', messageWindowMs) as unknown as Store,
   keyGenerator: (req: Request) => {
     return req.auth?.sub ?? String(req.ip);

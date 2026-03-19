@@ -995,6 +995,8 @@ function App() {
             <React.Suspense fallback={<div />}>
             <DeviceLinking
               devicePublicKey={ownPublicKey}
+              deviceId={auth.deviceId}
+              userId={auth.userId}
               onApprove={(fingerprint) => {
                 // Find and verify the device matching this fingerprint
                 void (async () => {
