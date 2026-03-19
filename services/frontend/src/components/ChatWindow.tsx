@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
-import { sendMessage, deleteMessage, syncMessages, SyncEvent, reactToMessage, markAsRead, ReactionData, setTyping, getTypingUsers } from '../api/messagesAPI';
+import { sendMessage, deleteMessage, syncMessages, SyncEvent, reactToMessage, markAsRead, getReadReceipts, ReactionData, setTyping, getTypingUsers } from '../api/messagesAPI';
 import { renameRoom, listRooms, getRoomMembers } from '../api/roomsAPI';
 import type { RoomSummary } from '../api/roomsAPI';
 import { formatDisplayName } from '../utils/displayName';
@@ -120,6 +120,183 @@ function isDifferentDay(a: Date | string, b: Date | string): boolean {
     da.getDate() !== db.getDate();
 }
 
+// ── URL & Markdown-lite formatting helpers ──
+
+const URL_REGEX = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
+
+/**
+ * Sanitize a URL — only allow http/https protocols.
+ */
+function sanitizeUrl(raw: string): string | null {
+  let url = raw;
+  if (url.startsWith('www.')) url = 'https://' + url;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Truncate a display URL: show first 40 chars + "..." for long URLs.
+ */
+function truncateUrl(url: string): string {
+  if (url.length <= 50) return url;
+  return url.slice(0, 40) + '\u2026';
+}
+
+/**
+ * Parse markdown-lite formatting tokens in a text segment into React elements.
+ * Supports: ```code blocks```, `inline code`, **bold** / *bold*, __italic__ / _italic_,
+ * ~~strikethrough~~ / ~strikethrough~.
+ */
+function parseMarkdownLite(text: string, isOwn: boolean): React.ReactNode[] {
+  const elements: React.ReactNode[] = [];
+  const codeBlockRegex = /```([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  // eslint-disable-next-line no-cond-assign
+  while ((match = codeBlockRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      elements.push(...parseInlineFormatting(text.slice(lastIndex, match.index), isOwn));
+    }
+    elements.push(
+      React.createElement('pre', {
+        key: `cb-${match.index}`,
+        style: {
+          backgroundColor: isOwn ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.3)',
+          color: '#e6edf3',
+          padding: '8px 10px',
+          borderRadius: 6,
+          fontSize: 13,
+          fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
+          overflowX: 'auto' as const,
+          margin: '4px 0',
+          whiteSpace: 'pre-wrap' as const,
+          wordBreak: 'break-word' as const,
+        },
+      }, match[1])
+    );
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    elements.push(...parseInlineFormatting(text.slice(lastIndex), isOwn));
+  }
+  return elements;
+}
+
+/**
+ * Parse inline formatting: `code`, **bold**, *bold*, __italic__, _italic_, ~~strike~~, ~strike~.
+ */
+function parseInlineFormatting(text: string, isOwn: boolean): React.ReactNode[] {
+  const inlineRegex = /(`([^`]+?)`|\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__|_(.+?)_|~~(.+?)~~|~(.+?)~)/g;
+  const elements: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  // eslint-disable-next-line no-cond-assign
+  while ((match = inlineRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      elements.push(text.slice(lastIndex, match.index));
+    }
+    const key = `fmt-${match.index}`;
+    if (match[2] !== undefined) {
+      elements.push(React.createElement('code', {
+        key,
+        style: {
+          backgroundColor: isOwn ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.3)',
+          color: '#e6edf3',
+          padding: '1px 5px',
+          borderRadius: 3,
+          fontSize: '0.9em',
+          fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
+        },
+      }, match[2]));
+    } else if (match[3] !== undefined) {
+      elements.push(React.createElement('strong', { key }, match[3]));
+    } else if (match[4] !== undefined) {
+      elements.push(React.createElement('strong', { key }, match[4]));
+    } else if (match[5] !== undefined) {
+      elements.push(React.createElement('em', { key }, match[5]));
+    } else if (match[6] !== undefined) {
+      elements.push(React.createElement('em', { key }, match[6]));
+    } else if (match[7] !== undefined) {
+      elements.push(React.createElement('s', { key }, match[7]));
+    } else if (match[8] !== undefined) {
+      elements.push(React.createElement('s', { key }, match[8]));
+    }
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    elements.push(text.slice(lastIndex));
+  }
+  return elements;
+}
+
+/**
+ * linkifyText: split text by URLs, apply markdown formatting to non-URL parts,
+ * and render URLs as clickable <a> tags. Returns React elements.
+ */
+function linkifyText(text: string, isOwn: boolean): React.ReactNode[] {
+  const sanitized = DOMPurify.sanitize(text, PURIFY_CONFIG);
+  const elements: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  const regex = new RegExp(URL_REGEX.source, 'gi');
+
+  // eslint-disable-next-line no-cond-assign
+  while ((match = regex.exec(sanitized)) !== null) {
+    if (match.index > lastIndex) {
+      elements.push(...parseMarkdownLite(sanitized.slice(lastIndex, match.index), isOwn));
+    }
+    const rawUrl = match[0];
+    const href = sanitizeUrl(rawUrl);
+    if (href) {
+      elements.push(
+        React.createElement('a', {
+          key: `link-${match.index}`,
+          href,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          style: {
+            color: isOwn ? 'rgba(255,255,255,0.95)' : '#58a6ff',
+            textDecoration: 'underline',
+            textUnderlineOffset: '2px',
+            wordBreak: 'break-all' as const,
+          },
+          onClick: (e: React.MouseEvent) => e.stopPropagation(),
+        }, truncateUrl(rawUrl))
+      );
+    } else {
+      elements.push(rawUrl);
+    }
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < sanitized.length) {
+    elements.push(...parseMarkdownLite(sanitized.slice(lastIndex), isOwn));
+  }
+  return elements;
+}
+
+/**
+ * Format full timestamp for tooltip display.
+ */
+function formatFullTimestamp(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return d.toLocaleString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
 // ── Types ──
 
 type MessageSendStatus = 'sending' | 'sent' | 'failed';
@@ -204,9 +381,24 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(new Set());
   const [viewOnceMode, setViewOnceMode] = useState(false);
-  const [viewedOnceIds, setViewedOnceIds] = useState<Set<string>>(new Set());
-  const [hiddenOnceIds, setHiddenOnceIds] = useState<Set<string>>(new Set());
-  const [consumedOnceIds, setConsumedOnceIds] = useState<Set<string>>(new Set());
+  const [viewedOnceIds, setViewedOnceIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('frame-viewed-once');
+      return stored ? new Set(JSON.parse(stored) as string[]) : new Set();
+    } catch { return new Set(); }
+  });
+  const [hiddenOnceIds, setHiddenOnceIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('frame-hidden-once');
+      return stored ? new Set(JSON.parse(stored) as string[]) : new Set();
+    } catch { return new Set(); }
+  });
+  const [consumedOnceIds, setConsumedOnceIds] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('frame-consumed-once');
+      return stored ? new Set(JSON.parse(stored) as string[]) : new Set();
+    } catch { return new Set(); }
+  });
   const [expiredEventIds, setExpiredEventIds] = useState<Set<string>>(new Set());
   const [disappearingSettings, setDisappearingSettings] = useState<{
     enabled: boolean;
@@ -235,6 +427,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTypingSentRef = useRef<number>(0);
+
+  // Read receipts map: eventId -> { readAt }
+  const [readReceiptMap, setReadReceiptMap] = useState<Record<string, { readAt: string }>>({});
 
   // Message forwarding state
   const [forwardEventId, setForwardEventId] = useState<string | null>(null);
@@ -536,6 +731,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         .frame-reaction-badge:hover {
           border-color: #58a6ff !important;
         }
+        .frame-msg-text-own a:hover, .frame-msg-text a:hover {
+          opacity: 0.8 !important;
+        }
+        .frame-msg-text-own a {
+          color: rgba(255,255,255,0.95) !important;
+          text-decoration: underline !important;
+        }
+        .frame-msg-text a {
+          color: #58a6ff !important;
+          text-decoration: underline !important;
+        }
         @keyframes frame-bottom-sheet-slide-up {
           from { transform: translateY(100%); }
           to { transform: translateY(0); }
@@ -548,6 +754,29 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       document.head.appendChild(style);
     }
   }, []);
+
+  // Fetch read receipts for the room
+  useEffect(() => {
+    let cancelled = false;
+    const fetchReceipts = async () => {
+      try {
+        const { receipts } = await getReadReceipts(roomId);
+        if (!cancelled && receipts && receipts.length > 0) {
+          const map: Record<string, { readAt: string }> = {};
+          for (const r of receipts) {
+            map[r.event_id] = { readAt: r.read_at };
+          }
+          setReadReceiptMap(map);
+        }
+      } catch {
+        // Read receipts are non-critical — silently ignore errors
+      }
+    };
+    void fetchReceipts();
+    // Refresh receipts periodically
+    const interval = setInterval(() => { void fetchReceipts(); }, 15000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [roomId]);
 
   // Fetch disappearing messages settings + pinned messages
   useEffect(() => {
@@ -599,9 +828,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       const isOwn = msg.event.senderId === currentUserId;
       const isViewOnce = msg.plaintext && msg.plaintext.viewOnce === true;
       if (isViewOnce && !isOwn && !viewedOnceIds.has(eventId) && !hiddenOnceIds.has(eventId)) {
-        setViewedOnceIds((prev) => new Set(prev).add(eventId));
+        setViewedOnceIds((prev) => {
+          const next = new Set(prev);
+          next.add(eventId);
+          try { localStorage.setItem('frame-viewed-once', JSON.stringify([...next])); } catch { /* ignore localStorage errors */ }
+          return next;
+        });
         const timer = setTimeout(() => {
-          setHiddenOnceIds((prev) => new Set(prev).add(eventId));
+          setHiddenOnceIds((prev) => {
+            const next = new Set(prev);
+            next.add(eventId);
+            try { localStorage.setItem('frame-hidden-once', JSON.stringify([...next])); } catch { /* ignore localStorage errors */ }
+            return next;
+          });
           setMessages((prev) =>
             prev.map((m) =>
               m.event.eventId === eventId
@@ -929,10 +1168,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         plaintext,
         memberUserIds,
       );
-
-      if (isViewOnce) {
-        encryptedContent.viewOnce = true;
-      }
 
       await sendMessage(roomId, 'm.room.encrypted', encryptedContent);
 
@@ -1847,7 +2082,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                             fileIv={fc.fileIv}
                             isSent={isOwn}
                             viewOnce={isViewOnce || undefined}
-                            onConsumed={isViewOnce ? () => setConsumedOnceIds((prev) => new Set(prev).add(event.eventId)) : undefined}
+                            onConsumed={isViewOnce ? () => setConsumedOnceIds((prev) => {
+                              const next = new Set(prev);
+                              next.add(event.eventId);
+                              try { localStorage.setItem('frame-consumed-once', JSON.stringify([...next])); } catch { /* ignore localStorage errors */ }
+                              return next;
+                            }) : undefined}
                           />
                         ) : null;
                       })()
@@ -1861,7 +2101,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                             isSent={isOwn}
                             mimeType={audio.mimeType}
                             viewOnce={isViewOnce || undefined}
-                            onConsumed={isViewOnce ? () => setConsumedOnceIds((prev) => new Set(prev).add(event.eventId)) : undefined}
+                            onConsumed={isViewOnce ? () => setConsumedOnceIds((prev) => {
+                              const next = new Set(prev);
+                              next.add(event.eventId);
+                              try { localStorage.setItem('frame-consumed-once', JSON.stringify([...next])); } catch { /* ignore localStorage errors */ }
+                              return next;
+                            }) : undefined}
                           />
                         ) : null;
                       })()
@@ -1872,10 +2117,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                       return {};
                     })()}>{(() => {
                       const text = renderMessageContent(decrypted);
-                      if (!searchQuery.trim()) return text;
+                      if (!searchQuery.trim()) return linkifyText(text, isOwn);
                       const q = searchQuery.toLowerCase();
                       const idx = text.toLowerCase().indexOf(q);
-                      if (idx === -1) return text;
+                      if (idx === -1) return linkifyText(text, isOwn);
                       return (
                         <>
                           {text.slice(0, idx)}
@@ -1890,8 +2135,18 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
             {isLastInGroup && (
               <div style={styles.timestampRow}>
-                <span style={styles.timestamp}>{formatRelativeTime(event.originServerTs)}</span>
-                {isOwn && <span style={styles.readReceiptIcon} title="Sent">{'\u2713'}</span>}
+                <span style={styles.timestamp} title={formatFullTimestamp(event.originServerTs)}>{formatRelativeTime(event.originServerTs)}</span>
+                {isOwn && (() => {
+                  const evId = event.eventId;
+                  // eslint-disable-next-line security/detect-object-injection
+                  const receipt = readReceiptMap[evId];
+                  if (receipt) {
+                    // Read — blue double check
+                    return <span style={{ ...styles.readReceiptIcon, color: '#58a6ff', opacity: 1 }} title={`Read${receipt.readAt ? ' at ' + formatFullTimestamp(receipt.readAt) : ''}`}>{'\u2713\u2713'}</span>;
+                  }
+                  // Sent — single check
+                  return <span style={styles.readReceiptIcon} title="Sent">{'\u2713'}</span>;
+                })()}
               </div>
             )}
             {(() => {
@@ -1970,7 +2225,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     return elements;
-  }, [messages, filteredMessages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, scrollToMessage, searchQuery, unreadDividerEventId, handleMessageClick, isMobile, handleTouchStart, handleTouchEnd, handleTouchMove]);
+  }, [messages, filteredMessages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, readReceiptMap, scrollToMessage, searchQuery, unreadDividerEventId, handleMessageClick, isMobile, handleTouchStart, handleTouchEnd, handleTouchMove]);
 
   const renderWelcome = () => {
     if (messages.length > 0 || optimisticMessages.length > 0) return null;
@@ -2329,10 +2584,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         {optimisticMessages.map((om) => (
           <div key={om.id} style={{ ...styles.messageBubble, ...(isMobile ? { maxWidth: '85%', padding: '10px 14px', fontSize: 'clamp(14px, 3.8vw, 16px)' } : { maxWidth: 'clamp(180px, 65%, 480px)' }), ...styles.ownMessage, ...(om.status === 'sending' ? styles.optimisticSending : {}), ...(om.status === 'failed' ? styles.optimisticFailed : {}), alignSelf: 'flex-end' as const, ...(recentlySentIds.has(om.id) ? { animation: 'frame-msg-slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}) }}>
             <div style={styles.messageBody}>
-              <span className="frame-msg-text-own">{DOMPurify.sanitize(om.body, PURIFY_CONFIG)}</span>
+              <span className="frame-msg-text-own">{linkifyText(om.body, true)}</span>
             </div>
             <div style={styles.timestampRow}>
-              <span style={styles.timestamp}>{formatRelativeTime(new Date(om.timestamp))}</span>
+              <span style={styles.timestamp} title={formatFullTimestamp(new Date(om.timestamp))}>{formatRelativeTime(new Date(om.timestamp))}</span>
               {renderSendStatus(om.status)}
               {om.status === 'failed' && (
                 <button type="button" style={styles.retryInlineButton} onClick={() => handleRetry(om)} title="Retry sending">Retry</button>

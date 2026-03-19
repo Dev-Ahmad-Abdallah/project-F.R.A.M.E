@@ -21,7 +21,11 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ stream, onCapture, onClos
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [currentStream, setCurrentStream] = useState<MediaStream>(stream);
+  const streamRef = useRef<MediaStream>(stream);
   const [isSwitching, setIsSwitching] = useState(false);
+
+  // Keep streamRef in sync with currentStream
+  useEffect(() => { streamRef.current = currentStream; }, [currentStream]);
 
   // Attach stream to video element
   useEffect(() => {
@@ -34,10 +38,8 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ stream, onCapture, onClos
   // Cleanup: stop all tracks when component unmounts
   useEffect(() => {
     return () => {
-      currentStream.getTracks().forEach((t) => t.stop());
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      streamRef.current.getTracks().forEach((t) => t.stop());
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Stop old stream and start new one when toggling cameras
