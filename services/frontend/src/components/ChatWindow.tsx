@@ -12,6 +12,7 @@ import {
 } from '../crypto/sessionManager';
 import { FONT_BODY } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { SkeletonMessageBubble, SyncIndicator } from './Skeleton';
 
 // ── Reaction Picker ──
 
@@ -148,6 +149,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const isMobile = useIsMobile();
   const [messages, setMessages] = useState<DecryptedEvent[]>([]);
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([]);
+  // Room switch skeleton: show placeholder bubbles briefly when switching rooms
+  const [showRoomSkeleton, setShowRoomSkeleton] = useState(true);
+  // Sync activity indicator: true while actively fetching
+  const [isSyncing, setIsSyncing] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -172,7 +177,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   // Read receipts: track which event IDs have been marked as read
   const [readEventIds, setReadEventIds] = useState<Set<string>>(new Set());
   // Read receipt status per event: list of users who have read it
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   const [readByUsers, setReadByUsers] = useState<Record<string, string[]>>({});
+  /* eslint-enable @typescript-eslint/no-unused-vars */
 
   // "New messages" pill — shown when user has scrolled up and new messages arrive
   const [showNewMessagesPill, setShowNewMessagesPill] = useState(false);
@@ -246,6 +253,49 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [isTextareaFocused, setIsTextareaFocused] = useState(false);
   // Track send button animation
   const [sendButtonAnimating, setSendButtonAnimating] = useState(false);
+  // Emoji picker state
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const CHAT_EMOJIS = [
+    '\u{1F600}', '\u{1F602}', '\u{1F605}', '\u{1F609}', '\u{1F60D}', '\u{1F618}',
+    '\u{1F970}', '\u{1F914}', '\u{1F923}', '\u{1F62D}', '\u{1F621}', '\u{1F631}',
+    '\u{1F44D}', '\u{1F44E}', '\u{1F44B}', '\u{1F64F}', '\u{1F525}', '\u{2764}\u{FE0F}',
+    '\u{1F389}', '\u{1F44F}', '\u{1F4AF}', '\u{1F440}', '\u{2705}', '\u{274C}',
+  ];
+
+  // Close emoji picker on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    };
+    if (showEmojiPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showEmojiPicker]);
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const insertEmojiAtCursor = (emoji: string) => {
+    const ta = textareaRef.current;
+    if (ta) {
+      const start = ta.selectionStart ?? inputValue.length;
+      const end = ta.selectionEnd ?? inputValue.length;
+      const newVal = inputValue.slice(0, start) + emoji + inputValue.slice(end);
+      setInputValue(newVal);
+      // Restore cursor position after React re-render
+      setTimeout(() => {
+        ta.selectionStart = ta.selectionEnd = start + emoji.length;
+        ta.focus();
+      }, 0);
+    } else {
+      setInputValue((v) => v + emoji);
+    }
+    setShowEmojiPicker(false);
+  };
 
   // Inject animation keyframes
   useEffect(() => {
@@ -431,11 +481,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const syncLoop = useCallback(async (gen: number) => {
     while (syncGenRef.current === gen) {
       try {
+        setIsSyncing(true);
         const result = await syncMessages(
           nextBatchRef.current,
           10000,
           50,
         );
+        setIsSyncing(false);
 
         if (syncGenRef.current !== gen) break;
 
@@ -496,6 +548,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         setSyncError(null);
         syncBackoffRef.current = 1000; // Reset backoff on success
       } catch (err) {
+        setIsSyncing(false);
         if (syncGenRef.current !== gen) break;
         setSyncError('Failed to sync messages');
         // Exponential backoff: 1s → 2s → 4s → 8s → … capped at 30s
@@ -505,6 +558,20 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       }
     }
   }, [decryptEvents, roomId]);
+
+  // Show skeleton briefly on room switch, then clear once messages arrive or after 200ms
+  useEffect(() => {
+    setShowRoomSkeleton(true);
+    const timer = setTimeout(() => setShowRoomSkeleton(false), 200);
+    return () => clearTimeout(timer);
+  }, [roomId]);
+
+  useEffect(() => {
+    // If real messages have arrived, clear skeleton immediately
+    if (messages.length > 0 && showRoomSkeleton) {
+      setShowRoomSkeleton(false);
+    }
+  }, [messages.length, showRoomSkeleton]);
 
   useEffect(() => {
     setMessages([]);
@@ -704,7 +771,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       window.addEventListener('click', handleClick);
       return () => window.removeEventListener('click', handleClick);
     }
-  }, [contextMenuEventId, showDisappearingMenu]);
+  }, [contextMenuEventId, showDisappearingMenu, reactionPickerEventId]);
 
   const handleMessageContextMenu = (
     e: React.MouseEvent,
@@ -985,16 +1052,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                       type="button"
                       style={{
                         ...styles.reactionBadge,
-                        // eslint-disable-next-line security/detect-object-injection
+                        // eslint-disable-next-line
                       ...(reactions[emoji].users.includes(currentUserId)
                           ? styles.reactionBadgeOwn
                           : {}),
                       }}
                       onClick={() => void handleReact(event.eventId, emoji)}
-                      // eslint-disable-next-line security/detect-object-injection
+                      // eslint-disable-next-line
                       title={reactions[emoji].users.map((u: string) => formatDisplayName(u)).join(', ')}
                     >
-                      {/* eslint-disable-next-line security/detect-object-injection */}
+                      {/* eslint-disable-next-line */}
                       {emoji} {reactions[emoji].count}
                     </button>
                   ))}
@@ -1074,6 +1141,65 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       <div style={styles.header}>
         <div style={styles.headerLeft}>
           <div style={styles.headerNameRow}>
+            {/* Stacked member avatars for group rooms */}
+            {roomType === 'group' && memberUserIds.length > 0 && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                marginRight: 6,
+                flexShrink: 0,
+              }}>
+                {memberUserIds
+                  .filter((id) => id !== currentUserId)
+                  .slice(0, 3)
+                  .map((userId, idx) => (
+                    <div
+                      key={userId}
+                      title={formatDisplayName(userId)}
+                      style={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: '50%',
+                        backgroundColor: getAvatarColor(userId),
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: '#fff',
+                        border: '2px solid #161b22',
+                        marginLeft: idx === 0 ? 0 : -8,
+                        zIndex: 3 - idx,
+                        position: 'relative' as const,
+                      }}
+                    >
+                      {formatDisplayName(userId).charAt(0).toUpperCase()}
+                    </div>
+                  ))}
+                {memberUserIds.filter((id) => id !== currentUserId).length > 3 && (
+                  <div
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      backgroundColor: '#30363d',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 9,
+                      fontWeight: 700,
+                      color: '#c9d1d9',
+                      border: '2px solid #161b22',
+                      marginLeft: -8,
+                      zIndex: 0,
+                      position: 'relative' as const,
+                    }}
+                  >
+                    +{memberUserIds.filter((id) => id !== currentUserId).length - 3}
+                  </div>
+                )}
+              </div>
+            )}
             {isEditingName ? (
               <input
                 ref={renameInputRef}

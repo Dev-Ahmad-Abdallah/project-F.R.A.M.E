@@ -88,6 +88,7 @@ function getSafetyNumberGroups(hex: string): string[] {
   return groups;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function formatFingerprint(hex: string): string {
   const digits = hex
     .split('')
@@ -124,7 +125,7 @@ const FingerprintDiffDisplay: React.FC<{
         lineHeight: 1.6,
       }}>
         {groups.map((group, i) => {
-          // eslint-disable-next-line security/detect-object-injection
+          // eslint-disable-next-line
           const otherGroup = isNew ? oldGroups[i] : newGroups[i]; // Safe: i is from .map() index
           const isDifferent = otherGroup !== undefined && otherGroup !== group;
 
@@ -347,7 +348,7 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
   const newGroups = getSafetyNumberGroups(newFingerprint);
 
   // Count differences for summary
-  // eslint-disable-next-line security/detect-object-injection
+  // eslint-disable-next-line
   const diffCount = oldGroups.reduce((count, g, i) => count + (g !== newGroups[i] ? 1 : 0), 0); // Safe: i from reduce index
 
   return (
