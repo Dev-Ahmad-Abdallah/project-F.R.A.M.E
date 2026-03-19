@@ -23,7 +23,8 @@ ENV REACT_APP_HOMESERVER_URL=$REACT_APP_HOMESERVER_URL
 
 RUN npm run build --workspace=@frame/shared
 # CI=false prevents CRA from treating the WASM precache size warning as error
-RUN CI=false cd services/frontend && npm run build
+ENV CI=false
+RUN cd services/frontend && npm run build
 
 # ── Stage 2: nginx static server ─────────────────────────────
 # nginx:alpine — not `serve` — so we can set all security headers
