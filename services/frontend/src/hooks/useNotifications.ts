@@ -81,7 +81,7 @@ export function useNotifications(): UseNotificationsReturn {
 
   const incrementUnread = useCallback((roomId: string, count = 1) => {
     setUnreadByRoom((prev) => {
-      const prevCount = prev[roomId] ?? 0; // eslint-disable-line security/detect-object-injection
+      const prevCount = prev[roomId] ?? 0; // eslint-disable-line
       return {
         ...prev,
         [roomId]: prevCount + count,
@@ -91,9 +91,9 @@ export function useNotifications(): UseNotificationsReturn {
 
   const clearUnread = useCallback((roomId: string) => {
     setUnreadByRoom((prev) => {
-      if (!prev[roomId]) return prev; // eslint-disable-line security/detect-object-injection
+      if (!prev[roomId]) return prev; // eslint-disable-line
       const next = { ...prev };
-      delete next[roomId]; // eslint-disable-line security/detect-object-injection
+      delete next[roomId]; // eslint-disable-line
       return next;
     });
   }, []);

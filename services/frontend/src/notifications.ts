@@ -170,7 +170,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const raw = atob(base64);
   const output = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) {
-    output[i] = raw.charCodeAt(i); // eslint-disable-line security/detect-object-injection
+    output[i] = raw.charCodeAt(i); // eslint-disable-line
   }
   return output;
 }
@@ -183,7 +183,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer | null): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]); // eslint-disable-line security/detect-object-injection
+    binary += String.fromCharCode(bytes[i]); // eslint-disable-line
   }
   return btoa(binary);
 }
