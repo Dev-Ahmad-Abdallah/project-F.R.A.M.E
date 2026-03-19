@@ -827,6 +827,8 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
           marginBottom: 20,
           width: '100%',
           border: '1px solid #21262d',
+          flexWrap: 'nowrap' as const,
+          overflow: 'hidden',
         }}>
           {tabs.map((tab) => {
             const isActive = activeTab === tab.key;
@@ -836,8 +838,9 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 type="button"
                 style={{
                   flex: 1,
-                  padding: isMobile ? '10px 4px' : '10px 12px',
-                  fontSize: isMobile ? 11 : 12,
+                  minWidth: 0,
+                  padding: isMobile ? '10px 6px' : '10px 12px',
+                  fontSize: isMobile ? 12 : 12,
                   fontWeight: isActive ? 600 : 500,
                   color: isActive ? '#f0f6fc' : '#8b949e',
                   backgroundColor: isActive ? '#21262d' : 'transparent',
@@ -857,7 +860,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 disabled={isLoading}
               >
                 {tab.icon}
-                {tab.label}
+                {isMobile ? tab.label.split(' ')[0] : tab.label}
               </button>
             );
           })}

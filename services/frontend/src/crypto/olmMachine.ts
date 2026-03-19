@@ -255,9 +255,7 @@ export async function processOutgoingRequests(): Promise<void> {
   }
 }
 
-// TODO: Implement backup key export/import for device recovery.
-// When all devices are lost, users currently cannot recover message history.
-// Future: export encrypted backup key to user, import on new device.
+// Backup key export/import for device recovery is a planned future feature.
 
 // ── Prekey replenishment ──
 
@@ -278,11 +276,7 @@ export async function checkAndReplenishPrekeys(): Promise<void> {
     });
 
     if (response.count < PREKEY_REPLENISH_THRESHOLD) {
-      console.log(
-        `[F.R.A.M.E.] OTK count is ${response.count} (threshold: ${PREKEY_REPLENISH_THRESHOLD}). Replenishing prekeys...`,
-      );
       await processOutgoingRequests();
-      console.log('[F.R.A.M.E.] Prekey replenishment complete.');
     }
   } catch (err) {
     console.error('[F.R.A.M.E.] Failed to check/replenish prekeys:', err);

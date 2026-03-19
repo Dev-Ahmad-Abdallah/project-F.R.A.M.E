@@ -1014,6 +1014,18 @@ body {
 }
 
 /* ══════════════════════════════════════════════════
+   NEW CHAT DIALOG MOBILE TABS
+   ══════════════════════════════════════════════════ */
+@media (max-width: 600px) {
+  /* Ensure bottom-sheet tab labels don't truncate */
+  [role="dialog"] button {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* ══════════════════════════════════════════════════
    TOAST & FEEDBACK VISIBILITY
    ══════════════════════════════════════════════════ */
 
