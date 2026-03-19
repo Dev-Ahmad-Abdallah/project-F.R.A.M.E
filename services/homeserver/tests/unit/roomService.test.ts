@@ -28,7 +28,13 @@ jest.mock('../../src/db/queries/rooms', () => ({
 }));
 
 jest.mock('../../src/db/pool', () => ({
-  pool: { query: (...args: any[]) => mockPoolQuery(...args) },
+  pool: {
+    query: (...args: any[]) => mockPoolQuery(...args),
+    connect: () => Promise.resolve({
+      query: (...args: any[]) => mockPoolQuery(...args),
+      release: () => {},
+    }),
+  },
 }));
 
 jest.mock('../../src/db/queries/users', () => ({

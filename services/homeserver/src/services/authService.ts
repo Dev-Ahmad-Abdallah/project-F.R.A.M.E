@@ -133,36 +133,59 @@ export async function login(params: LoginParams): Promise<AuthResult> {
   const deviceId = existingDeviceId || generateDeviceId();
 
   // Ensure the device exists in the database (create if new login device)
-  // Enforce device limit before creating a new device (skip if device already exists)
+  // Enforce device limit atomically using a transaction with row-level locking
+  // to prevent concurrent logins from bypassing the 10-device limit.
   const existingDevice = await findDevice(deviceId);
-  if (!existingDevice) {
-    const deviceCount = await countDevicesByUser(user.user_id);
-    if (deviceCount >= 10) {
-      // Auto-evict oldest devices instead of blocking login
-      // This prevents users from being permanently locked out after testing/multi-device usage
-      const evictCount = deviceCount - 8; // Keep 8, make room for 2 new
-      // Find oldest devices to evict
-      const staleDevices = await pool.query<{ device_id: string }>(
-        `SELECT device_id FROM devices
-         WHERE user_id = $1
-         ORDER BY last_seen ASC NULLS FIRST, created_at ASC
-         LIMIT $2`,
-        [user.user_id, evictCount]
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    if (!existingDevice) {
+      // Lock the user's device rows and count atomically
+      const countResult = await client.query<{ count: number }>(
+        'SELECT COUNT(*)::int as count FROM devices WHERE user_id = $1 FOR UPDATE',
+        [user.user_id]
       );
-      const staleIds = staleDevices.rows.map((r) => r.device_id);
-      if (staleIds.length > 0) {
-        // Clean up ALL foreign key references before deleting devices
-        await pool.query(`DELETE FROM delivery_state WHERE device_id = ANY($1::text[])`, [staleIds]);
-        await pool.query(`DELETE FROM key_bundles WHERE device_id = ANY($1::text[])`, [staleIds]);
-        await pool.query(`DELETE FROM refresh_tokens WHERE device_id = ANY($1::text[])`, [staleIds]);
-        await pool.query(`DELETE FROM to_device_messages WHERE recipient_device_id = ANY($1::text[])`, [staleIds]);
-        await pool.query(`DELETE FROM devices WHERE device_id = ANY($1::text[])`, [staleIds]);
+      const deviceCount = countResult.rows[0].count;
+
+      if (deviceCount >= 10) {
+        // Auto-evict oldest devices instead of blocking login
+        // This prevents users from being permanently locked out after testing/multi-device usage
+        const evictCount = deviceCount - 8; // Keep 8, make room for 2 new
+        // Find oldest devices to evict
+        const staleDevices = await client.query<{ device_id: string }>(
+          `SELECT device_id FROM devices
+           WHERE user_id = $1
+           ORDER BY last_seen ASC NULLS FIRST, created_at ASC
+           LIMIT $2`,
+          [user.user_id, evictCount]
+        );
+        const staleIds = staleDevices.rows.map((r) => r.device_id);
+        if (staleIds.length > 0) {
+          // Clean up ALL foreign key references before deleting devices
+          await client.query(`DELETE FROM delivery_state WHERE device_id = ANY($1::text[])`, [staleIds]);
+          await client.query(`DELETE FROM key_bundles WHERE device_id = ANY($1::text[])`, [staleIds]);
+          await client.query(`DELETE FROM refresh_tokens WHERE device_id = ANY($1::text[])`, [staleIds]);
+          await client.query(`DELETE FROM to_device_messages WHERE recipient_device_id = ANY($1::text[])`, [staleIds]);
+          await client.query(`DELETE FROM devices WHERE device_id = ANY($1::text[])`, [staleIds]);
+        }
+        logger.info(`Auto-evicted ${evictCount} stale device(s) for ${user.user_id}`);
       }
-      logger.info(`Auto-evicted ${evictCount} stale device(s) for ${user.user_id}`);
     }
+
+    // Create device within same transaction — uses ON CONFLICT DO NOTHING for idempotency
+    await client.query(
+      'INSERT INTO devices (device_id, user_id, device_public_key, device_signing_key, display_name) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (device_id) DO NOTHING',
+      [deviceId, user.user_id, 'pending', 'pending', `${username}'s device`]
+    );
+
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
-  // Uses INSERT ... ON CONFLICT DO NOTHING to prevent race conditions on concurrent logins
-  await createDevice(deviceId, user.user_id, 'pending', 'pending', `${username}'s device`);
 
   // Generate tokens
   const accessToken = signAccessToken(user.user_id, deviceId);
