@@ -75,11 +75,13 @@ export function useSessionTimeout(
   const [timeRemaining, setTimeRemaining] = useState<number>(Infinity);
   const [isWarning, setIsWarning] = useState(false);
   const lastActivityRef = useRef<number>(Date.now());
+  const hasFiredRef = useRef(false);
   const onTimeoutRef = useRef(onTimeout);
   onTimeoutRef.current = onTimeout;
 
   const resetTimer = useCallback(() => {
     lastActivityRef.current = Date.now();
+    hasFiredRef.current = false;
     setIsWarning(false);
   }, []);
 
@@ -104,6 +106,8 @@ export function useSessionTimeout(
   // Tick every second to update remaining time
   useEffect(() => {
     const interval = setInterval(() => {
+      if (hasFiredRef.current) return;
+
       const timeoutMs = getSavedTimeout();
       const autoLock = getAutoLock();
 
@@ -121,6 +125,7 @@ export function useSessionTimeout(
       setIsWarning(remaining > 0 && remaining <= WARNING_THRESHOLD_MS);
 
       if (remaining === 0) {
+        hasFiredRef.current = true;
         onTimeoutRef.current();
       }
     }, 1000);

@@ -37,6 +37,7 @@ import type { KeyChangeAction } from './verification/keyChangeAlert';
 import { clearTokens, getAccessToken } from './api/client';
 import { formatDisplayName } from './utils/displayName';
 import { listRooms, leaveRoom } from './api/roomsAPI';
+import { getKnownDevices, verifyDevice } from './devices/deviceManager';
 import type { RoomSummary } from './api/roomsAPI';
 import { generateAndUploadKeys } from './crypto/keyManager';
 import { initCrypto, getIdentityKeys } from './crypto/olmMachine';
@@ -546,7 +547,19 @@ function App() {
           <div style={styles.centeredContainer}>
             <DeviceLinking
               devicePublicKey={ownPublicKey}
-              onApprove={() => {
+              onApprove={async (fingerprint) => {
+                // Find and verify the device matching this fingerprint
+                try {
+                  const knownDevices = await getKnownDevices(auth.userId);
+                  const matched = knownDevices.find(
+                    (d) => d.fingerprint === fingerprint,
+                  );
+                  if (matched) {
+                    await verifyDevice(auth.userId, matched.deviceId);
+                  }
+                } catch (err) {
+                  console.error('Failed to verify linked device:', err);
+                }
                 setActiveView('settings');
               }}
               onReject={() => {

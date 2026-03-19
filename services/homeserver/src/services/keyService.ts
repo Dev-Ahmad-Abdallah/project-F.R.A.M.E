@@ -110,8 +110,13 @@ export async function claimKeys(
     for (const [deviceId, _algorithm] of Object.entries(devices)) {
       const claimed = await claimOneTimePrekey(userId, deviceId);
       if (claimed) {
+        // OTKs may be stored as JSON strings — parse if needed
+        let parsedOtk = claimed;
+        if (typeof claimed === 'string') {
+          try { parsedOtk = JSON.parse(claimed); } catch { /* use as-is */ }
+        }
         claimedKeys[userId][deviceId] = {
-          [`signed_curve25519:${deviceId}`]: claimed,
+          [`signed_curve25519:${deviceId}`]: parsedOtk,
         };
       }
     }

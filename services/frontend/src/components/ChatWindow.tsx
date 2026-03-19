@@ -172,7 +172,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   }, [handleConfirmRename, handleCancelRename]);
 
   const nextBatchRef = useRef<string | undefined>(undefined);
-  const abortRef = useRef(false);
+  const syncGenRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Tick relative timestamps every 30s so "just now" updates to "1 min ago"
@@ -273,9 +273,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Long-polling sync loop
   const syncLoop = useCallback(async () => {
-    abortRef.current = false;
+    const gen = syncGenRef.current;
 
-    while (!abortRef.current) {
+    while (syncGenRef.current === gen) {
       try {
         const result = await syncMessages(
           nextBatchRef.current,
@@ -283,7 +283,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           50,
         );
 
-        if (abortRef.current) break;
+        if (syncGenRef.current !== gen) break;
 
         // Feed sync data through the crypto machine for to-device events
         await processSyncResponse(result);
@@ -292,7 +292,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           // Decrypt all incoming events
           const decryptedEvents = await decryptEvents(result.events);
 
-          if (abortRef.current) break;
+          if (syncGenRef.current !== gen) break;
 
           setMessages((prev) => [...prev, ...decryptedEvents]);
 
@@ -306,7 +306,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
         setSyncError(null);
       } catch (err) {
-        if (abortRef.current) break;
+        if (syncGenRef.current !== gen) break;
         setSyncError('Failed to sync messages');
         // Back off before retrying on error
         await new Promise((r) => setTimeout(r, 5000));
@@ -319,15 +319,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     setMessages([]);
     setOptimisticMessages([]);
     nextBatchRef.current = undefined;
-    abortRef.current = true;
+    syncGenRef.current++;
 
-    // Start sync loop after a tick to let abort take effect
+    // Start sync loop immediately — the generation counter
+    // ensures the previous loop exits on its next check.
     const timer = setTimeout(() => {
       syncLoop();
     }, 0);
 
     return () => {
-      abortRef.current = true;
+      syncGenRef.current++;
       clearTimeout(timer);
     };
   }, [roomId, syncLoop]);
