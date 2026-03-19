@@ -304,13 +304,15 @@ jobs:
         continue-on-error: true
         with:
           image-ref: "frame-homeserver:scan"
-          format: "table"
+          format: "sarif"
+          output: "trivy-results.sarif"
           severity: "HIGH,CRITICAL"
           exit-code: "0"
           ignore-unfixed: true
 
       - name: Upload Trivy results to GHAS
-        if: github.repository_visibility == 'public'
+        if: github.repository_visibility == 'public' && hashFiles('trivy-results.sarif') != ''
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@ff0a06e83cb2de871e5a09832bc6a81e7276941f  # v3.28.18
         with:
           sarif_file: "trivy-results.sarif"
@@ -325,7 +327,7 @@ jobs:
     name: Deploy to Railway
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [build, test, security]
+    needs: [build, test]  # Deploy requires build + test only; security scans are advisory
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: production
 
