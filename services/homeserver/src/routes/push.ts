@@ -23,7 +23,8 @@ pushRouter.get(
   '/vapid-key',
   requireAuth,
   apiLimiter,
-  asyncHandler((_req, res) => {
+  // eslint-disable-next-line @typescript-eslint/require-await
+  asyncHandler(async (_req, res) => {
     const config = getConfig();
     const publicKey = config.VAPID_PUBLIC_KEY;
 
