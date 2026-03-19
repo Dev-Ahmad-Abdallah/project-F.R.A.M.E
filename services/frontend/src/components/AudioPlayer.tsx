@@ -149,7 +149,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
   };
 
   const progress = duration > 0 ? currentTime / duration : 0;
-  const activeColor = isSent ? 'rgba(255,255,255,0.85)' : '#58a6ff';
+  const activeColor = isSent ? 'rgba(255,255,255,0.95)' : '#79b8ff';
   const inactiveColor = isSent ? 'rgba(255,255,255,0.25)' : '#484f58';
   const btnBg = isSent ? 'rgba(255,255,255,0.15)' : 'rgba(88, 166, 255, 0.12)';
   const btnColor = isSent ? '#ffffff' : '#e6edf3';
@@ -219,6 +219,9 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
         }}
         title={isPlaying ? 'Pause' : 'Play'}
         aria-label={isPlaying ? 'Pause voice message' : 'Play voice message'}
+        onMouseDown={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(0.92)'; }}
+        onMouseUp={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'; }}
       >
         {isPlaying ? (
           <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -262,9 +265,9 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
               style={{
                 width: 3,
                 height: Math.max(4, height * 28),
-                borderRadius: 2,
+                borderRadius: 1.5,
                 backgroundColor: isActive ? activeColor : inactiveColor,
-                transition: 'background-color 0.12s',
+                transition: 'background-color 0.15s ease',
                 flexShrink: 1,
               }}
             />
