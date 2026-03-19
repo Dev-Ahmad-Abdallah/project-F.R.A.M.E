@@ -161,6 +161,82 @@ const keyframesCSS = `
 html { scroll-behavior: smooth; }
 `;
 
+// ── Mobile hamburger menu ──
+
+function MobileMenu({ scrollTo }: { scrollTo: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+
+  const handleNav = (id: string) => {
+    scrollTo(id);
+    setOpen(false);
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-label="Menu"
+        style={{
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          padding: 8,
+          minWidth: 44,
+          minHeight: 44,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M3 6h18M3 12h18M3 18h18" stroke={C.text} strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute',
+          top: '100%',
+          right: 0,
+          marginTop: 8,
+          backgroundColor: C.cardBg,
+          border: `1px solid ${C.border}`,
+          borderRadius: 8,
+          padding: 8,
+          minWidth: 180,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 4,
+          zIndex: 200,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+        }}>
+          {['features', 'how-it-works', 'security'].map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => handleNav(id)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: C.text,
+                fontSize: 14,
+                padding: '10px 16px',
+                textAlign: 'left',
+                cursor: 'pointer',
+                fontFamily: C.font,
+                borderRadius: 6,
+                minHeight: 44,
+              }}
+            >
+              {id === 'how-it-works' ? 'How It Works' : id.charAt(0).toUpperCase() + id.slice(1)}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Component ──
 
 export default function LandingPage({ onGetStarted }: LandingPageProps) {
@@ -289,15 +365,17 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             F.R.A.M.E.
           </span>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            {!isMobile && (
+            {!isMobile ? (
               <>
                 <button type="button" onClick={() => scrollTo('features')} style={navLink}>Features</button>
                 <button type="button" onClick={() => scrollTo('how-it-works')} style={navLink}>How It Works</button>
                 <button type="button" onClick={() => scrollTo('security')} style={navLink}>Security</button>
               </>
+            ) : (
+              <MobileMenu scrollTo={scrollTo} />
             )}
             <button type="button" onClick={onGetStarted} style={{
-              padding: '8px 20px',
+              padding: isMobile ? '10px 20px' : '8px 20px',
               fontSize: 14,
               fontWeight: 600,
               backgroundColor: C.accent,
@@ -306,6 +384,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               borderRadius: 6,
               cursor: 'pointer',
               fontFamily: C.font,
+              minHeight: 44,
             }}>
               Sign In
             </button>
@@ -377,6 +456,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
 
           <div style={{
             display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
             gap: 16,
             marginTop: 36,
             position: 'relative',
@@ -384,6 +464,7 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             animation: 'frame-fade-in 0.8s ease-out 0.3s both',
             flexWrap: 'wrap',
             justifyContent: 'center',
+            width: isMobile ? '100%' : 'auto',
           }}>
             <button type="button" onClick={onGetStarted} style={{
               padding: '14px 36px',
@@ -397,6 +478,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               fontFamily: C.font,
               transition: 'transform 0.15s, box-shadow 0.15s',
               boxShadow: '0 0 20px rgba(88,166,255,0.25)',
+              width: isMobile ? '100%' : 'auto',
+              minHeight: 48,
             }}>
               Get Started
             </button>
@@ -411,6 +494,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
               cursor: 'pointer',
               fontFamily: C.font,
               transition: 'background-color 0.15s',
+              width: isMobile ? '100%' : 'auto',
+              minHeight: 48,
             }}>
               Learn More
             </button>
@@ -730,6 +815,8 @@ export default function LandingPage({ onGetStarted }: LandingPageProps) {
             cursor: 'pointer',
             fontFamily: C.font,
             boxShadow: '0 0 24px rgba(88,166,255,0.2)',
+            width: isMobile ? '100%' : 'auto',
+            minHeight: 48,
           }}>
             Get Started
           </button>

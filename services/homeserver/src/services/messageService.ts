@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { getConfig } from '../config';
-import { insertEvent, getEventsByUser, createDeliveryEntries, getPendingDeliveries, markDelivered } from '../db/queries/events';
+import { insertEvent, getEventsByUser, createDeliveryEntries, getPendingDeliveries, markDelivered, softDeleteEvent } from '../db/queries/events';
 import { isRoomMember, getRoomMembers } from '../db/queries/rooms';
 import { findDevicesByUser } from '../db/queries/devices';
 import { pool } from '../db/pool';
@@ -92,6 +92,36 @@ export async function sendMessage(params: SendMessageParams) {
     eventId,
     sequenceId: event.sequence_id,
   };
+}
+
+/**
+ * Soft-delete a message. Only the original sender may delete their own message.
+ * The row is not removed; instead a deleted_at timestamp is set and the content
+ * is replaced with a tombstone so the ciphertext is no longer available.
+ */
+export async function deleteMessage(eventId: string, userId: string): Promise<void> {
+  // Verify the event exists and the user is the sender
+  const result = await pool.query(
+    'SELECT sender_id FROM events WHERE event_id = $1',
+    [eventId],
+  );
+
+  if (result.rows.length === 0) {
+    throw new ApiError(404, 'M_NOT_FOUND', 'Message not found');
+  }
+
+  if (result.rows[0].sender_id !== userId) {
+    throw new ApiError(403, 'M_FORBIDDEN', 'You can only delete your own messages');
+  }
+
+  // Soft-delete: set deleted_at and clear content
+  await pool.query(
+    `UPDATE events
+     SET content = '{"deleted": true}'::jsonb,
+         deleted_at = NOW()
+     WHERE event_id = $1`,
+    [eventId],
+  );
 }
 
 export async function syncMessages(
@@ -216,3 +246,4 @@ async function waitForEvents(
     });
   });
 }
+

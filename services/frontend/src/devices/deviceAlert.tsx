@@ -9,6 +9,7 @@
 
 import React from 'react';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // ── Types ──
 
@@ -36,9 +37,26 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
   onRemove,
   onIgnore,
 }) => {
+  const isMobile = useIsMobile();
+
   return (
-    <div style={styles.overlay}>
-      <div style={styles.modal} role="alertdialog" aria-labelledby="device-alert-title" aria-describedby="device-alert-desc">
+    <div style={{
+      ...styles.overlay,
+      ...(isMobile ? { padding: 0 } : {}),
+    }}>
+      <div style={{
+        ...styles.modal,
+        ...(isMobile ? {
+          maxWidth: '100%',
+          width: '100%',
+          height: '100%',
+          borderRadius: 0,
+          padding: '24px 20px',
+          display: 'flex',
+          flexDirection: 'column' as const,
+          justifyContent: 'center',
+        } : {}),
+      }} role="alertdialog" aria-labelledby="device-alert-title" aria-describedby="device-alert-desc">
         {/* Warning header */}
         <div style={styles.header}>
           <span style={styles.warningIcon} aria-hidden="true">
@@ -61,7 +79,10 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
         <div style={styles.detailsBox}>
           <div style={styles.detailRow}>
             <span style={styles.detailLabel}>Device ID</span>
-            <code style={styles.detailValue}>{device.deviceId}</code>
+            <code style={{
+              ...styles.detailValue,
+              ...(isMobile ? { fontSize: 13 } : {}),
+            }}>{device.deviceId}</code>
           </div>
           {device.deviceDisplayName && (
             <div style={styles.detailRow}>
@@ -71,7 +92,10 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
           )}
           <div style={styles.detailRow}>
             <span style={styles.detailLabel}>Public Key Fingerprint</span>
-            <code style={styles.fingerprintValue}>
+            <code style={{
+              ...styles.fingerprintValue,
+              ...(isMobile ? { fontSize: 11, lineHeight: 1.5 } : {}),
+            }}>
               {formatFingerprint(device.fingerprint)}
             </code>
           </div>
@@ -203,7 +227,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10,
   },
   verifyButton: {
-    padding: '10px 16px',
+    padding: '12px 16px',
     fontSize: 14,
     fontWeight: 600,
     backgroundColor: '#238636',
@@ -212,9 +236,10 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     cursor: 'pointer',
     width: '100%',
+    minHeight: 44,
   },
   removeButton: {
-    padding: '10px 16px',
+    padding: '12px 16px',
     fontSize: 14,
     fontWeight: 600,
     backgroundColor: '#da3633',
@@ -223,9 +248,10 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     cursor: 'pointer',
     width: '100%',
+    minHeight: 44,
   },
   ignoreButton: {
-    padding: '10px 16px',
+    padding: '12px 16px',
     fontSize: 14,
     fontWeight: 500,
     backgroundColor: 'transparent',
@@ -234,6 +260,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     cursor: 'pointer',
     width: '100%',
+    minHeight: 44,
   },
 };
 

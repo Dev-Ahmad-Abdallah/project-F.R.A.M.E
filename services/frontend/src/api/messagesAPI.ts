@@ -57,6 +57,15 @@ export async function sendMessage(
 }
 
 /**
+ * Delete (soft-delete) a message by event ID.
+ */
+export async function deleteMessage(eventId: string): Promise<void> {
+  return apiRequest<void>(`/messages/${encodeURIComponent(eventId)}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
  * Long-poll for new messages since a given sequence ID.
  */
 export async function syncMessages(

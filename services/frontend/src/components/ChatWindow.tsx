@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import DOMPurify from 'dompurify';
-import { sendMessage, syncMessages, SyncEvent } from '../api/messagesAPI';
+import { sendMessage, deleteMessage, syncMessages, SyncEvent } from '../api/messagesAPI';
+import { renameRoom } from '../api/roomsAPI';
+import { formatDisplayName } from '../utils/displayName';
 import {
   encryptForRoom,
   decryptEvent,
@@ -8,6 +10,7 @@ import {
   DecryptedEvent,
 } from '../crypto/sessionManager';
 import { FONT_BODY } from '../globalStyles';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // ── Helpers ──
 
@@ -72,6 +75,12 @@ interface ChatWindowProps {
   roomType?: 'direct' | 'group';
   /** Number of members in the room */
   memberCount?: number;
+  /** Callback when the info button is clicked to open room settings */
+  onOpenSettings?: () => void;
+  /** Callback when the room is renamed via inline edit */
+  onRoomRenamed?: (roomId: string, newName: string) => void;
+  /** Callback when the user wants to leave the conversation */
+  onLeave?: () => void;
   // E2EE is always enabled — no plaintext bypass allowed (Security Finding 1)
 }
 
@@ -94,12 +103,63 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   roomDisplayName,
   roomType,
   memberCount,
+  onOpenSettings,
+  onRoomRenamed,
+  onLeave,
 }) => {
+  const isMobile = useIsMobile();
   const [messages, setMessages] = useState<DecryptedEvent[]>([]);
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [contextMenuEventId, setContextMenuEventId] = useState<string | null>(null);
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(new Set());
+
+  // Inline rename state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editNameValue, setEditNameValue] = useState('');
+  const [isRenaming, setIsRenaming] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  const handleStartRename = useCallback(() => {
+    setEditNameValue(roomDisplayName || '');
+    setIsEditingName(true);
+    setTimeout(() => renameInputRef.current?.focus(), 0);
+  }, [roomDisplayName]);
+
+  const handleCancelRename = useCallback(() => {
+    setIsEditingName(false);
+    setEditNameValue('');
+  }, []);
+
+  const handleConfirmRename = useCallback(async () => {
+    const trimmed = editNameValue.trim();
+    if (!trimmed || trimmed === roomDisplayName) {
+      handleCancelRename();
+      return;
+    }
+    setIsRenaming(true);
+    try {
+      await renameRoom(roomId, trimmed);
+      onRoomRenamed?.(roomId, trimmed);
+      setIsEditingName(false);
+    } catch (err) {
+      console.error('Failed to rename room:', err);
+    } finally {
+      setIsRenaming(false);
+    }
+  }, [editNameValue, roomDisplayName, roomId, onRoomRenamed, handleCancelRename]);
+
+  const handleRenameKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleConfirmRename();
+    } else if (e.key === 'Escape') {
+      handleCancelRename();
+    }
+  }, [handleConfirmRename, handleCancelRename]);
 
   const nextBatchRef = useRef<string | undefined>(undefined);
   const abortRef = useRef(false);
@@ -259,6 +319,41 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
+  // Close context menu on click anywhere
+  useEffect(() => {
+    const handleClick = () => {
+      setContextMenuEventId(null);
+      setContextMenuPos(null);
+    };
+    if (contextMenuEventId) {
+      window.addEventListener('click', handleClick);
+      return () => window.removeEventListener('click', handleClick);
+    }
+  }, [contextMenuEventId]);
+
+  const handleMessageContextMenu = (
+    e: React.MouseEvent,
+    eventId: string,
+    senderId: string,
+  ) => {
+    if (senderId !== currentUserId) return;
+    if (deletedEventIds.has(eventId)) return;
+    e.preventDefault();
+    setContextMenuEventId(eventId);
+    setContextMenuPos({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleDeleteMessage = async (eventId: string) => {
+    setContextMenuEventId(null);
+    setContextMenuPos(null);
+    try {
+      await deleteMessage(eventId);
+      setDeletedEventIds((prev) => new Set(prev).add(eventId));
+    } catch (err) {
+      console.error('Failed to delete message:', err);
+    }
+  };
+
   /**
    * Render the message body for a decrypted event.
    * All content is sanitized via DOMPurify before display.
@@ -347,13 +442,38 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     : DOMPurify.sanitize(roomId);
 
   return (
-    <div style={styles.container}>
+    <div style={{ ...styles.container, ...(isMobile ? { borderRadius: 0, border: 'none' } : {}) }}>
       {/* Room header with name, member info, encryption badge, and info button */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
           <div style={styles.headerNameRow}>
-            <span style={styles.headerName}>{headerName}</span>
-            {roomType === 'direct' && (
+            {isEditingName ? (
+              <input
+                ref={renameInputRef}
+                type="text"
+                style={styles.renameInput}
+                value={editNameValue}
+                onChange={(e) => setEditNameValue(e.target.value)}
+                onKeyDown={handleRenameKeyDown}
+                onBlur={handleCancelRename}
+                disabled={isRenaming}
+                maxLength={128}
+                aria-label="Rename room"
+              />
+            ) : (
+              <span
+                style={{
+                  ...styles.headerName,
+                  ...(isMobile ? { maxWidth: '60vw' } : {}),
+                  cursor: 'pointer',
+                }}
+                onClick={handleStartRename}
+                title="Click to rename"
+              >
+                {headerName}
+              </span>
+            )}
+            {roomType === 'direct' && !isEditingName && (
               <span style={styles.verifiedBadge} title="Verified contact">
                 &#10003;
               </span>
@@ -373,16 +493,26 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             )}
           </div>
         </div>
-        <button
-          type="button"
-          style={styles.infoButton}
-          title="Room info"
-          onClick={() => {
-            /* placeholder for future room settings */
-          }}
-        >
-          i
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {onLeave && (
+            <button
+              type="button"
+              style={styles.leaveButton}
+              title="Leave conversation"
+              onClick={onLeave}
+            >
+              Leave
+            </button>
+          )}
+          <button
+            type="button"
+            style={styles.infoButton}
+            title="Room info"
+            onClick={() => onOpenSettings?.()}
+          >
+            i
+          </button>
+        </div>
       </div>
 
       {/* Sync error banner */}
@@ -400,27 +530,39 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           const isOwn = event.senderId === currentUserId;
           const hasError = decrypted.decryptionError !== null;
 
+          const isDeleted = deletedEventIds.has(event.eventId);
+
           return (
             <div
               key={event.eventId}
               style={{
                 ...styles.messageBubble,
+                ...(isMobile ? { maxWidth: '85%' } : {}),
                 ...(isOwn ? styles.ownMessage : styles.otherMessage),
                 ...(hasError ? styles.errorMessage : {}),
               }}
+              onContextMenu={(e) =>
+                handleMessageContextMenu(e, event.eventId, event.senderId)
+              }
             >
               {!isOwn && (
                 <div style={styles.senderName}>
-                  {DOMPurify.sanitize(event.senderId)}
+                  {DOMPurify.sanitize(formatDisplayName(event.senderId))}
                 </div>
               )}
               <div style={styles.messageBody}>
-                {renderEncryptionIcon(decrypted)}
-                <span
-                  style={hasError ? styles.errorText : undefined}
-                >
-                  {renderMessageContent(decrypted)}
-                </span>
+                {isDeleted ? (
+                  <span style={styles.deletedText}>This message was deleted</span>
+                ) : (
+                  <>
+                    {renderEncryptionIcon(decrypted)}
+                    <span
+                      style={hasError ? styles.errorText : undefined}
+                    >
+                      {renderMessageContent(decrypted)}
+                    </span>
+                  </>
+                )}
               </div>
               <div style={styles.timestamp}>
                 {formatRelativeTime(event.originServerTs)}
@@ -435,6 +577,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             key={om.id}
             style={{
               ...styles.messageBubble,
+              ...(isMobile ? { maxWidth: '85%' } : {}),
               ...styles.ownMessage,
               ...(om.status === 'sending' ? styles.optimisticSending : {}),
               ...(om.status === 'failed' ? styles.optimisticFailed : {}),
@@ -466,10 +609,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       </div>
 
       {/* Input area */}
-      <div style={styles.inputArea}>
+      <div style={{ ...styles.inputArea, ...(isMobile ? { padding: '8px 10px', gap: 6 } : {}) }}>
         <input
           type="text"
-          style={styles.input}
+          style={{ ...styles.input, ...(isMobile ? { padding: '10px 12px', fontSize: 16 } : {}) }}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -480,15 +623,47 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         <button
           style={{
             ...styles.sendButton,
+            ...(isMobile ? { padding: '10px 12px', minWidth: 44, minHeight: 44 } : {}),
             ...((isSending || !inputValue.trim()) ? { opacity: 0.4, cursor: 'not-allowed' } : {}),
           }}
           onClick={() => handleSend()}
           disabled={isSending || !inputValue.trim()}
           aria-label="Send message"
         >
-          {isSending ? 'Sending...' : 'Send'}
+          {isMobile ? (
+            isSending ? (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 14" />
+              </svg>
+            ) : (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )
+          ) : (
+            isSending ? 'Sending...' : 'Send'
+          )}
         </button>
       </div>
+
+      {/* Context menu for deleting own messages */}
+      {contextMenuEventId && contextMenuPos && (
+        <div
+          style={{
+            ...styles.contextMenu,
+            top: contextMenuPos.y,
+            left: contextMenuPos.x,
+          }}
+        >
+          <button
+            type="button"
+            style={styles.contextMenuItem}
+            onClick={() => handleDeleteMessage(contextMenuEventId)}
+          >
+            Delete
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -573,6 +748,19 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     flexShrink: 0,
     transition: 'border-color 0.15s, color 0.15s',
+  },
+  renameInput: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: '#e6edf3',
+    backgroundColor: '#0d1117',
+    border: '1px solid #58a6ff',
+    borderRadius: 4,
+    padding: '2px 6px',
+    fontFamily: 'inherit',
+    outline: 'none',
+    width: '100%',
+    maxWidth: 240,
   },
   encryptionBadge: {
     fontSize: 10,
@@ -729,6 +917,50 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontFamily: 'inherit',
     transition: 'background-color 0.15s',
+  },
+  deletedText: {
+    fontStyle: 'italic',
+    color: '#8b949e',
+    opacity: 0.7,
+  },
+  contextMenu: {
+    position: 'fixed' as const,
+    zIndex: 9999,
+    backgroundColor: '#21262d',
+    border: '1px solid #30363d',
+    borderRadius: 6,
+    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+    padding: 4,
+    minWidth: 120,
+  },
+  contextMenuItem: {
+    display: 'block',
+    width: '100%',
+    padding: '6px 12px',
+    fontSize: 13,
+    color: '#f85149',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderRadius: 4,
+    cursor: 'pointer',
+    textAlign: 'left' as const,
+    fontFamily: 'inherit',
+  },
+  expiredText: {
+    fontStyle: 'italic',
+    color: '#8b949e',
+    opacity: 0.6,
+  },
+  leaveButton: {
+    padding: '4px 10px',
+    fontSize: 11,
+    fontWeight: 600,
+    backgroundColor: 'rgba(248, 81, 73, 0.1)',
+    color: '#f85149',
+    border: '1px solid rgba(248, 81, 73, 0.3)',
+    borderRadius: 6,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
   },
 };
 

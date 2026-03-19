@@ -4,6 +4,8 @@ import crypto from 'crypto';
 export interface RoomRow {
   room_id: string;
   room_type: 'direct' | 'group';
+  name: string | null;
+  settings: Record<string, unknown>;
   created_by: string;
   created_at: Date;
 }
@@ -22,7 +24,8 @@ export interface RoomMemberWithDeviceCount extends RoomMemberRow {
 export async function createRoom(
   roomType: 'direct' | 'group',
   createdBy: string,
-  homeserver: string
+  homeserver: string,
+  name?: string
 ): Promise<RoomRow> {
   const roomId = `!${crypto.randomBytes(12).toString('hex')}:${homeserver}`;
 
@@ -31,10 +34,10 @@ export async function createRoom(
     await client.query('BEGIN');
 
     const roomResult = await client.query(
-      `INSERT INTO rooms (room_id, room_type, created_by)
-       VALUES ($1, $2, $3)
+      `INSERT INTO rooms (room_id, room_type, created_by, name)
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [roomId, roomType, createdBy]
+      [roomId, roomType, createdBy, name || null]
     );
 
     // Creator is automatically an admin member
@@ -141,6 +144,36 @@ export async function usersShareRoom(userIdA: string, userIdB: string): Promise<
      WHERE a.user_id = $1 AND b.user_id = $2
      LIMIT 1`,
     [userIdA, userIdB]
+  );
+  return result.rowCount !== null && result.rowCount > 0;
+}
+
+export async function updateRoomName(roomId: string, name: string): Promise<RoomRow> {
+  const result = await pool.query(
+    `UPDATE rooms SET name = $2 WHERE room_id = $1 RETURNING *`,
+    [roomId, name]
+  );
+  if (result.rows.length === 0) {
+    throw new Error('Room not found');
+  }
+  return result.rows[0];
+}
+
+export async function updateRoomSettings(roomId: string, settings: Record<string, unknown>): Promise<RoomRow> {
+  const result = await pool.query(
+    `UPDATE rooms SET settings = $2::jsonb WHERE room_id = $1 RETURNING *`,
+    [roomId, JSON.stringify(settings)]
+  );
+  if (result.rows.length === 0) {
+    throw new Error('Room not found');
+  }
+  return result.rows[0];
+}
+
+export async function removeRoomMember(roomId: string, userId: string): Promise<boolean> {
+  const result = await pool.query(
+    'DELETE FROM room_members WHERE room_id = $1 AND user_id = $2',
+    [roomId, userId]
   );
   return result.rowCount !== null && result.rowCount > 0;
 }

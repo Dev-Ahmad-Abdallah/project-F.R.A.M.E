@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { generateFingerprint } from '../crypto/cryptoUtils';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // ── Types ──
 
@@ -28,6 +29,7 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
   onApprove,
   onReject,
 }) => {
+  const isMobile = useIsMobile();
   const [fingerprint, setFingerprint] = useState<string>('');
   const [scannedFingerprint, setScannedFingerprint] = useState<string>('');
   const [showScanner, setShowScanner] = useState(false);
@@ -51,7 +53,10 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
   }, [scannedFingerprint, onApprove]);
 
   return (
-    <div style={styles.container}>
+    <div style={{
+      ...styles.container,
+      ...(isMobile ? { maxWidth: '100%', padding: 16 } : {}),
+    }}>
       <h2 style={styles.heading}>Link a New Device</h2>
 
       {/* QR Code Section */}
@@ -65,7 +70,10 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
         {/* QR Code — rendered as a text-based placeholder.
             In production, use a library like `qrcode.react` to generate
             a real QR code from the fingerprint string. */}
-        <div style={styles.qrPlaceholder}>
+        <div style={{
+          ...styles.qrPlaceholder,
+          ...(isMobile ? { width: 140, height: 140 } : {}),
+        }}>
           <div style={styles.qrInner}>
             <span style={styles.qrLabel}>QR Code</span>
             <span style={styles.qrData}>
@@ -129,12 +137,16 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
       </div>
 
       {/* Actions */}
-      <div style={styles.actions}>
+      <div style={{
+        ...styles.actions,
+        ...(isMobile ? { flexDirection: 'column' as const } : {}),
+      }}>
         <button
           type="button"
           style={{
             ...styles.approveButton,
             ...(!scannedFingerprint.trim() ? styles.buttonDisabled : {}),
+            minHeight: 44,
           }}
           onClick={handleApprove}
           disabled={!scannedFingerprint.trim()}
@@ -143,7 +155,7 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
         </button>
         <button
           type="button"
-          style={styles.rejectButton}
+          style={{ ...styles.rejectButton, minHeight: 44 }}
           onClick={onReject}
         >
           Reject Device
@@ -268,7 +280,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#8b949e',
   },
   input: {
-    padding: '8px 12px',
+    padding: '10px 12px',
     fontSize: 14,
     backgroundColor: '#0d1117',
     border: '1px solid #30363d',
@@ -276,6 +288,9 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#c9d1d9',
     outline: 'none',
     fontFamily: FONT_MONO,
+    width: '100%',
+    boxSizing: 'border-box' as const,
+    minHeight: 44,
   },
   actions: {
     display: 'flex',

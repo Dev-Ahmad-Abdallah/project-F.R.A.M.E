@@ -27,6 +27,7 @@ import ChatWindow from './components/ChatWindow';
 import DeviceList from './components/DeviceList';
 import RoomList from './components/RoomList';
 import NewChatDialog from './components/NewChatDialog';
+import RoomSettings from './components/RoomSettings';
 import FingerprintUI from './verification/fingerprintUI';
 import DeviceLinking from './devices/deviceLinking';
 import DeviceAlert from './devices/deviceAlert';
@@ -34,12 +35,16 @@ import type { UnknownDeviceInfo } from './devices/deviceAlert';
 import KeyChangeAlert from './verification/keyChangeAlert';
 import type { KeyChangeAction } from './verification/keyChangeAlert';
 import { clearTokens, getAccessToken } from './api/client';
-import { listRooms } from './api/roomsAPI';
+import { formatDisplayName } from './utils/displayName';
+import { listRooms, leaveRoom } from './api/roomsAPI';
 import type { RoomSummary } from './api/roomsAPI';
 import { generateAndUploadKeys } from './crypto/keyManager';
 import { initCrypto, getIdentityKeys } from './crypto/olmMachine';
 import { registerServiceWorker } from './notifications';
 import { initStorage } from './storage/secureStorage';
+import { useNotifications } from './hooks/useNotifications';
+import SessionSettings from './components/SessionSettings';
+import { useSessionTimeout, getAutoLock } from './hooks/useSessionTimeout';
 
 // ── Types ──
 
@@ -68,6 +73,26 @@ function App() {
   const [initPhase, setInitPhase] = useState<'keys' | 'storage' | 'rooms' | 'done'>('keys');
   const [roomFetchError, setRoomFetchError] = useState<string | null>(null);
   const [connectionLost, setConnectionLost] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+
+  const [showRoomSettings, setShowRoomSettings] = useState(false);
+
+  // Lock screen state (auto-lock on inactivity)
+  const [isLocked, setIsLocked] = useState(false);
+  const [lockPassphrase, setLockPassphrase] = useState('');
+  const [lockError, setLockError] = useState<string | null>(null);
+
+  // Notification state
+  const {
+    isEnabled: notificationsEnabled,
+    requestPermission: requestNotifPermission,
+    unreadCount,
+    unreadByRoom,
+    incrementUnread,
+    clearUnread,
+    notifyIfHidden,
+    setInitialUnread,
+  } = useNotifications();
 
   // Modal overlay state
   const [deviceAlertInfo, setDeviceAlertInfo] =
@@ -77,6 +102,38 @@ function App() {
     oldPublicKey: string;
     newPublicKey: string;
   } | null>(null);
+
+  // ── Session timeout ──
+
+  const handleSessionTimeout = useCallback(() => {
+    if (getAutoLock()) {
+      setIsLocked(true);
+    } else {
+      clearTokens();
+      setAuth(null);
+      setCurrentPage('landing');
+      setActiveView('empty');
+      setSelectedRoomId(null);
+      setRooms([]);
+      setInitError(null);
+      setInitPhase('keys');
+      setRoomFetchError(null);
+    }
+  }, []);
+
+  const { timeRemaining, isWarning, resetTimer } = useSessionTimeout(handleSessionTimeout);
+
+  const handleUnlock = useCallback(async () => {
+    if (!auth) return;
+    if (lockPassphrase === auth.userId) {
+      setIsLocked(false);
+      setLockPassphrase('');
+      setLockError(null);
+      resetTimer();
+    } else {
+      setLockError('Invalid credentials — enter your full user ID');
+    }
+  }, [auth, lockPassphrase, resetTimer]);
 
   // Online/offline detection (Fix 5)
   useEffect(() => {
@@ -164,6 +221,16 @@ function App() {
             const roomList = await listRooms();
             setRooms(roomList);
             setRoomFetchError(null);
+
+            // Seed unread counts from server data
+            const initialUnread: Record<string, number> = {};
+            for (const r of roomList) {
+              if (r.unreadCount > 0) initialUnread[r.roomId] = r.unreadCount;
+            }
+            setInitialUnread(initialUnread);
+
+            // Request notification permission after successful init
+            requestNotifPermission();
           } catch {
             console.warn('Failed to fetch rooms — API may not be ready.');
             setRoomFetchError('Failed to load conversations. Check your connection.');
@@ -185,7 +252,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [auth]);
+  }, [auth, setInitialUnread, requestNotifPermission]);
 
   // ── Handlers ──
 
@@ -199,17 +266,19 @@ function App() {
     setInitError(null);
     setInitPhase('keys');
     setRoomFetchError(null);
+    setIsLocked(false);
   }, []);
 
   const handleSelectRoom = useCallback(
     (roomId: string) => {
       setSelectedRoomId(roomId);
       setActiveView('chat');
+      clearUnread(roomId);
       if (isMobile) {
         setSidebarOpen(false);
       }
     },
-    [isMobile],
+    [isMobile, clearUnread],
   );
 
   const handleNewChatCreated = useCallback(
@@ -254,15 +323,52 @@ function App() {
     setSidebarOpen(true);
   }, []);
 
+  const handleOpenRoomSettings = useCallback(() => {
+    setShowRoomSettings(true);
+  }, []);
+
+  const handleRoomRenamed = useCallback((roomId: string, newName: string) => {
+    setRooms((prev) =>
+      prev.map((r) => (r.roomId === roomId ? { ...r, name: newName } : r)),
+    );
+  }, []);
+
+  const handleLeaveRoomFromSettings = useCallback((roomId: string) => {
+    setRooms((prev) => prev.filter((r) => r.roomId !== roomId));
+    setShowRoomSettings(false);
+    if (selectedRoomId === roomId) {
+      setSelectedRoomId(null);
+      setActiveView('empty');
+    }
+  }, [selectedRoomId]);
+
   const handleRetryRoomFetch = useCallback(async () => {
     setRoomFetchError(null);
     try {
       const roomList = await listRooms();
       setRooms(roomList);
+      const initialUnread: Record<string, number> = {};
+      for (const r of roomList) {
+        if (r.unreadCount > 0) initialUnread[r.roomId] = r.unreadCount;
+      }
+      setInitialUnread(initialUnread);
     } catch {
       setRoomFetchError('Failed to load conversations. Check your connection.');
     }
-  }, []);
+  }, [setInitialUnread]);
+
+  const handleLeaveRoom = useCallback(async () => {
+    if (!selectedRoomId) return;
+    try {
+      await leaveRoom(selectedRoomId);
+      setRooms((prev) => prev.filter((r) => r.roomId !== selectedRoomId));
+      setSelectedRoomId(null);
+      setActiveView('empty');
+      setShowLeaveConfirm(false);
+    } catch (err) {
+      console.error('Failed to leave room:', err);
+    }
+  }, [selectedRoomId]);
 
   // ── Page: Landing ──
   if (currentPage === 'landing') {
@@ -282,6 +388,37 @@ function App() {
   // ── Page: App (not authenticated yet — shouldn't normally happen) ──
   if (!auth) {
     return <SignInPage onAuthenticated={handleAuthenticated} onBack={() => setCurrentPage('landing')} />;
+  }
+
+  // ── Lock screen (auto-lock on inactivity) ──
+  if (isLocked) {
+    return (
+      <div style={styles.lockOverlay}>
+        <div style={styles.lockCard}>
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style={{ marginBottom: 16 }}>
+            <rect x="10" y="22" width="28" height="20" rx="4" stroke="#58a6ff" strokeWidth="2" fill="rgba(88,166,255,0.06)" />
+            <path d="M16 22v-6a8 8 0 0116 0v6" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" />
+            <circle cx="24" cy="33" r="2" fill="#58a6ff" />
+          </svg>
+          <h2 style={styles.lockTitle}>Session Locked</h2>
+          <p style={styles.lockSubtitle}>Enter your user ID to unlock</p>
+          {lockError && <div style={styles.lockErrorBanner}>{lockError}</div>}
+          <input
+            type="password"
+            style={styles.lockInput}
+            value={lockPassphrase}
+            onChange={(e) => setLockPassphrase(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleUnlock(); }}
+            placeholder="User ID (e.g. @alice:example.com)"
+            autoFocus
+          />
+          <div style={styles.lockActions}>
+            <button type="button" style={styles.lockUnlockButton} onClick={handleUnlock}>Unlock</button>
+            <button type="button" style={styles.lockLogoutButton} onClick={handleLogout}>Log out</button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // ── Initialization overlay ──
@@ -327,13 +464,13 @@ function App() {
           let chatDisplayName = selectedRoom?.name;
           if (!chatDisplayName && selectedRoom?.roomType === 'direct') {
             const other = selectedRoom.members.find((m) => m.userId !== auth.userId);
-            chatDisplayName = other?.displayName || other?.userId;
+            chatDisplayName = other?.displayName || (other ? formatDisplayName(other.userId) : undefined);
           }
           if (!chatDisplayName && selectedRoom) {
             const names = selectedRoom.members
               .filter((m) => m.userId !== auth.userId)
               .slice(0, 3)
-              .map((m) => m.displayName || m.userId);
+              .map((m) => m.displayName || formatDisplayName(m.userId));
             chatDisplayName = names.length > 0 ? names.join(', ') : 'Empty Room';
           }
           return (
@@ -345,6 +482,9 @@ function App() {
               roomDisplayName={chatDisplayName}
               roomType={selectedRoom?.roomType}
               memberCount={selectedRoom?.members.length}
+              onOpenSettings={handleOpenRoomSettings}
+              onRoomRenamed={handleRoomRenamed}
+              onLeave={() => setShowLeaveConfirm(true)}
             />
           );
         }
@@ -436,6 +576,12 @@ function App() {
 
   return (
     <div style={styles.appWrapper}>
+      {/* Session timeout warning */}
+      {isWarning && timeRemaining < Infinity && (
+        <div style={styles.sessionWarningBanner} onClick={() => resetTimer()} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') resetTimer(); }}>
+          Session expires in {Math.ceil(timeRemaining / 1000)} seconds — click to stay active
+        </div>
+      )}
       {/* Connection lost banner (Fix 5) */}
       {connectionLost && (
         <div style={styles.connectionBanner}>
@@ -458,11 +604,16 @@ function App() {
                 : auth.userId.charAt(0).toUpperCase()}
             </div>
             <div style={styles.userDetails}>
-              <span style={styles.userName}>{auth.userId}</span>
+              <span style={styles.userName}>{formatDisplayName(auth.userId)}</span>
               <span style={styles.userDevice}>
                 Device: {auth.deviceId.slice(0, 8)}...
               </span>
             </div>
+            {unreadCount > 0 && (
+              <span style={styles.totalUnreadBadge}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
           </div>
 
           {/* Init error */}
@@ -491,6 +642,7 @@ function App() {
               selectedRoomId={selectedRoomId}
               currentUserId={auth.userId}
               onSelectRoom={handleSelectRoom}
+              unreadByRoom={unreadByRoom}
             />
           </div>
 
@@ -579,6 +731,34 @@ function App() {
           onClose={() => setShowNewChatDialog(false)}
         />
       )}
+
+      {/* Leave conversation confirm */}
+      {showLeaveConfirm && (
+        <div style={styles.leaveOverlay} onClick={() => setShowLeaveConfirm(false)}>
+          <div style={styles.leaveModal} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 600, color: '#f0f6fc' }}>Leave Conversation?</h3>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#8b949e', lineHeight: 1.5 }}>
+              You will no longer receive messages from this conversation. This cannot be undone.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button type="button" style={styles.leaveCancelBtn} onClick={() => setShowLeaveConfirm(false)}>Cancel</button>
+              <button type="button" style={styles.leaveConfirmBtn} onClick={handleLeaveRoom}>Leave</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Room settings panel */}
+      {showRoomSettings && selectedRoom && (
+        <RoomSettings
+          room={selectedRoom}
+          currentUserId={auth.userId}
+          onClose={() => setShowRoomSettings(false)}
+          onLeaveRoom={handleLeaveRoomFromSettings}
+          onRoomRenamed={handleRoomRenamed}
+          onMemberInvited={() => handleRetryRoomFetch()}
+        />
+      )}
       </div>
     </div>
   );
@@ -660,6 +840,18 @@ const styles: Record<string, React.CSSProperties> = {
   userDevice: {
     fontSize: 11,
     color: '#484f58',
+  },
+  totalUnreadBadge: {
+    backgroundColor: '#58a6ff',
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: 700,
+    borderRadius: 10,
+    padding: '2px 8px',
+    minWidth: 20,
+    textAlign: 'center',
+    flexShrink: 0,
+    marginLeft: 'auto',
   },
 
   // ── Connection banner (Fix 5) ──
@@ -883,6 +1075,151 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     padding: 32,
     overflowY: 'auto',
+  },
+  leaveOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9998,
+  },
+  leaveModal: {
+    backgroundColor: '#161b22',
+    border: '1px solid #30363d',
+    borderRadius: 12,
+    padding: 24,
+    maxWidth: 380,
+    width: '100%',
+    boxShadow: '0 16px 48px rgba(0, 0, 0, 0.4)',
+  },
+  leaveCancelBtn: {
+    padding: '8px 18px',
+    fontSize: 13,
+    fontWeight: 500,
+    backgroundColor: '#21262d',
+    color: '#c9d1d9',
+    border: '1px solid #30363d',
+    borderRadius: 6,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+  },
+  leaveConfirmBtn: {
+    padding: '8px 18px',
+    fontSize: 13,
+    fontWeight: 600,
+    backgroundColor: '#da3633',
+    color: '#ffffff',
+    border: 'none',
+    borderRadius: 6,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+  },
+
+  // ── Session warning banner ──
+  sessionWarningBanner: {
+    padding: '6px 12px',
+    backgroundColor: 'rgba(210, 153, 34, 0.2)',
+    color: '#d29922',
+    fontSize: 13,
+    fontWeight: 600,
+    textAlign: 'center' as const,
+    cursor: 'pointer',
+    flexShrink: 0,
+    width: '100%',
+    userSelect: 'none' as const,
+  },
+
+  // ── Lock screen ──
+  lockOverlay: {
+    position: 'fixed' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0d1117',
+    zIndex: 10000,
+  },
+  lockCard: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    padding: 40,
+    backgroundColor: '#161b22',
+    border: '1px solid #30363d',
+    borderRadius: 12,
+    maxWidth: 380,
+    width: '90%',
+  },
+  lockTitle: {
+    margin: 0,
+    fontSize: 20,
+    fontWeight: 600,
+    color: '#e6edf3',
+  },
+  lockSubtitle: {
+    margin: '8px 0 16px',
+    fontSize: 14,
+    color: '#8b949e',
+    textAlign: 'center' as const,
+  },
+  lockErrorBanner: {
+    padding: '6px 12px',
+    marginBottom: 12,
+    backgroundColor: '#3d1f28',
+    border: '1px solid #6e3630',
+    borderRadius: 6,
+    fontSize: 12,
+    color: '#f85149',
+    width: '100%',
+    textAlign: 'center' as const,
+  },
+  lockInput: {
+    width: '100%',
+    padding: '10px 14px',
+    fontSize: 14,
+    borderRadius: 8,
+    border: '1px solid #30363d',
+    backgroundColor: '#0d1117',
+    color: '#c9d1d9',
+    fontFamily: 'inherit',
+    marginBottom: 16,
+    boxSizing: 'border-box' as const,
+  },
+  lockActions: {
+    display: 'flex',
+    gap: 10,
+    width: '100%',
+  },
+  lockUnlockButton: {
+    flex: 1,
+    padding: '10px 16px',
+    fontSize: 14,
+    fontWeight: 600,
+    backgroundColor: '#238636',
+    color: '#ffffff',
+    border: 'none',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+  },
+  lockLogoutButton: {
+    padding: '10px 16px',
+    fontSize: 14,
+    fontWeight: 600,
+    backgroundColor: 'transparent',
+    color: '#f85149',
+    border: '1px solid #6e3630',
+    borderRadius: 8,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
   },
 };
 

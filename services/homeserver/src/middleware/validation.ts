@@ -81,6 +81,9 @@ export const deviceRegisterSchema = z.object({
 export const createRoomSchema = z.object({
   roomType: z.enum(['direct', 'group']),
   inviteUserIds: z.array(z.string()).min(1).max(50),
+  name: z.string().max(128).optional(),
+  isPrivate: z.boolean().optional(),
+  password: z.string().max(128).optional(),
 });
 
 export const keysQuerySchema = z.object({
@@ -92,4 +95,21 @@ export const keysQuerySchema = z.object({
 
 export const keysClaimSchema = z.object({
   one_time_keys: z.record(z.string(), z.record(z.string(), z.string())),
+});
+
+export const roomRenameSchema = z.object({
+  name: z.string().min(1).max(64),
+});
+
+export const roomSettingsSchema = z.object({
+  disappearingMessages: z.object({
+    enabled: z.boolean(),
+    timeoutSeconds: z.number().min(30).max(604800),
+  }).optional(),
+  isPrivate: z.boolean().optional(),
+  password: z.string().max(128).optional(),
+}).passthrough();
+
+export const roomInviteSchema = z.object({
+  userId: z.string().min(1),
 });

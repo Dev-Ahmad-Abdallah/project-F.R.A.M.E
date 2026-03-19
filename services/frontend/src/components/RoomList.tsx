@@ -1,14 +1,19 @@
 /**
  * RoomList — Sidebar list of conversations for F.R.A.M.E.
  *
- * Displays the user's rooms with room name, last message preview,
- * and unread indicator. Highlights the currently selected room.
- * All rendered content is sanitized via DOMPurify.
+ * Displays the user's rooms organized into sections:
+ * - Starred (pinned to top, stored in localStorage)
+ * - All Conversations (non-archived rooms)
+ * - Archived (collapsed by default, stored in localStorage)
+ *
+ * Each room shows name, last message preview, unread indicator,
+ * star button, and archive action. All rendered content is sanitized via DOMPurify.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import DOMPurify from 'dompurify';
 import type { RoomSummary } from '../api/roomsAPI';
+import { formatDisplayName } from '../utils/displayName';
 
 // ── Types ──
 
@@ -17,6 +22,31 @@ interface RoomListProps {
   selectedRoomId: string | null;
   currentUserId: string;
   onSelectRoom: (roomId: string) => void;
+  /**
+   * Optional override for per-room unread counts provided by the
+   * notification hook. When supplied, these take precedence over
+   * `room.unreadCount` from the API response.
+   */
+  unreadByRoom?: Record<string, number>;
+}
+
+// ── localStorage helpers ──
+
+const STARRED_KEY = 'frame:starred-rooms';
+const ARCHIVED_KEY = 'frame:archived-rooms';
+
+function getStoredSet(key: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return new Set(JSON.parse(raw));
+  } catch { /* ignore */ }
+  return new Set();
+}
+
+function saveStoredSet(key: string, set: Set<string>): void {
+  try {
+    localStorage.setItem(key, JSON.stringify([...set]));
+  } catch { /* ignore */ }
 }
 
 // ── Helpers ──
@@ -36,7 +66,7 @@ function getRoomDisplayName(
   if (room.roomType === 'direct') {
     const other = room.members.find((m) => m.userId !== currentUserId);
     if (other) {
-      return DOMPurify.sanitize(other.displayName || other.userId);
+      return DOMPurify.sanitize(other.displayName || formatDisplayName(other.userId));
     }
   }
 
@@ -44,7 +74,7 @@ function getRoomDisplayName(
   const names = room.members
     .filter((m) => m.userId !== currentUserId)
     .slice(0, 3)
-    .map((m) => DOMPurify.sanitize(m.displayName || m.userId));
+    .map((m) => DOMPurify.sanitize(m.displayName || formatDisplayName(m.userId)));
 
   if (names.length === 0) return 'Empty Room';
   return names.join(', ');
@@ -104,8 +134,48 @@ const RoomList: React.FC<RoomListProps> = ({
   selectedRoomId,
   currentUserId,
   onSelectRoom,
+  unreadByRoom,
 }) => {
   const [hoveredRoomId, setHoveredRoomId] = useState<string | null>(null);
+  const [starredIds, setStarredIds] = useState<Set<string>>(() => getStoredSet(STARRED_KEY));
+  const [archivedIds, setArchivedIds] = useState<Set<string>>(() => getStoredSet(ARCHIVED_KEY));
+  const [showArchived, setShowArchived] = useState(false);
+
+  const toggleStar = useCallback((roomId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setStarredIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(roomId)) {
+        next.delete(roomId);
+      } else {
+        next.add(roomId);
+      }
+      saveStoredSet(STARRED_KEY, next);
+      return next;
+    });
+  }, []);
+
+  const toggleArchive = useCallback((roomId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setArchivedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(roomId)) {
+        next.delete(roomId);
+      } else {
+        next.add(roomId);
+        // Unstar if archiving
+        setStarredIds((prevStarred) => {
+          const nextStarred = new Set(prevStarred);
+          nextStarred.delete(roomId);
+          saveStoredSet(STARRED_KEY, nextStarred);
+          return nextStarred;
+        });
+      }
+      saveStoredSet(ARCHIVED_KEY, next);
+      return next;
+    });
+  }, []);
+
   if (rooms.length === 0) {
     return (
       <div style={styles.emptyContainer}>
@@ -117,62 +187,146 @@ const RoomList: React.FC<RoomListProps> = ({
     );
   }
 
-  return (
-    <div style={styles.container}>
-      {rooms.map((room) => {
-        const isSelected = room.roomId === selectedRoomId;
-        const displayName = getRoomDisplayName(room, currentUserId);
+  // Partition rooms into sections
+  const starredRooms: RoomSummary[] = [];
+  const normalRooms: RoomSummary[] = [];
+  const archivedRooms: RoomSummary[] = [];
 
-        return (
+  for (const room of rooms) {
+    if (archivedIds.has(room.roomId)) {
+      archivedRooms.push(room);
+    } else if (starredIds.has(room.roomId)) {
+      starredRooms.push(room);
+    } else {
+      normalRooms.push(room);
+    }
+  }
+
+  const renderRoomItem = (room: RoomSummary) => {
+    const isSelected = room.roomId === selectedRoomId;
+    const isHovered = hoveredRoomId === room.roomId;
+    const isStarred = starredIds.has(room.roomId);
+    const isArchived = archivedIds.has(room.roomId);
+    const displayName = getRoomDisplayName(room, currentUserId);
+    const unread = unreadByRoom?.[room.roomId] ?? room.unreadCount;
+
+    return (
+      <button
+        key={room.roomId}
+        type="button"
+        style={{
+          ...styles.roomItem,
+          ...(isSelected ? styles.roomItemSelected : {}),
+          ...(isHovered && !isSelected ? { backgroundColor: '#161b22' } : {}),
+        }}
+        onClick={() => onSelectRoom(room.roomId)}
+        onMouseEnter={() => setHoveredRoomId(room.roomId)}
+        onMouseLeave={() => setHoveredRoomId(null)}
+        aria-current={isSelected ? 'true' : undefined}
+      >
+        {/* Avatar placeholder */}
+        <div style={{ ...styles.avatar, backgroundColor: getAvatarColor(room.roomId || displayName) }}>
+          {displayName.charAt(0).toUpperCase()}
+        </div>
+
+        {/* Room info */}
+        <div style={styles.roomInfo}>
+          <div style={styles.roomHeader}>
+            <span style={styles.roomName}>{displayName}</span>
+            {room.lastMessage && (
+              <span style={styles.timestamp}>
+                {formatTimestamp(room.lastMessage.timestamp)}
+              </span>
+            )}
+          </div>
+          {room.roomType === 'group' && (
+            <div style={styles.memberCount}>
+              {room.members.length} member{room.members.length !== 1 ? 's' : ''}
+            </div>
+          )}
+          <div style={styles.roomPreview}>
+            <span style={styles.previewText}>
+              {room.lastMessage
+                ? truncate(room.lastMessage.body, 40)
+                : 'No messages yet'}
+            </span>
+            {unread > 0 && (
+              <span style={styles.unreadBadge}>
+                {unread > 99 ? '99+' : unread}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Action buttons (star + archive) */}
+        <div style={styles.actionButtons}>
+          {/* Star button: always visible if starred, visible on hover otherwise */}
           <button
-            key={room.roomId}
             type="button"
             style={{
-              ...styles.roomItem,
-              ...(isSelected ? styles.roomItemSelected : {}),
-              ...(hoveredRoomId === room.roomId && !isSelected ? { backgroundColor: '#161b22' } : {}),
+              ...styles.starButton,
+              ...(isStarred
+                ? { color: '#d29922', opacity: 1 }
+                : { opacity: isHovered ? 0.7 : 0 }),
             }}
-            onClick={() => onSelectRoom(room.roomId)}
-            onMouseEnter={() => setHoveredRoomId(room.roomId)}
-            onMouseLeave={() => setHoveredRoomId(null)}
-            aria-current={isSelected ? 'true' : undefined}
+            onClick={(e) => toggleStar(room.roomId, e)}
+            title={isStarred ? 'Unstar' : 'Star'}
+            aria-label={isStarred ? 'Unstar conversation' : 'Star conversation'}
           >
-            {/* Avatar placeholder */}
-            <div style={{ ...styles.avatar, backgroundColor: getAvatarColor(room.roomId || displayName) }}>
-              {displayName.charAt(0).toUpperCase()}
-            </div>
-
-            {/* Room info */}
-            <div style={styles.roomInfo}>
-              <div style={styles.roomHeader}>
-                <span style={styles.roomName}>{displayName}</span>
-                {room.lastMessage && (
-                  <span style={styles.timestamp}>
-                    {formatTimestamp(room.lastMessage.timestamp)}
-                  </span>
-                )}
-              </div>
-              {room.roomType === 'group' && (
-                <div style={styles.memberCount}>
-                  {room.members.length} member{room.members.length !== 1 ? 's' : ''}
-                </div>
-              )}
-              <div style={styles.roomPreview}>
-                <span style={styles.previewText}>
-                  {room.lastMessage
-                    ? truncate(room.lastMessage.body, 40)
-                    : 'No messages yet'}
-                </span>
-                {room.unreadCount > 0 && (
-                  <span style={styles.unreadBadge}>
-                    {room.unreadCount > 99 ? '99+' : room.unreadCount}
-                  </span>
-                )}
-              </div>
-            </div>
+            {isStarred ? '\u2605' : '\u2606'}
           </button>
-        );
-      })}
+          {/* Archive button: visible on hover */}
+          <button
+            type="button"
+            style={{
+              ...styles.archiveButton,
+              opacity: isHovered ? 0.7 : 0,
+            }}
+            onClick={(e) => toggleArchive(room.roomId, e)}
+            title={isArchived ? 'Unarchive' : 'Archive'}
+            aria-label={isArchived ? 'Unarchive conversation' : 'Archive conversation'}
+          >
+            {isArchived ? '\u21A9' : '\u2193'}
+          </button>
+        </div>
+      </button>
+    );
+  };
+
+  return (
+    <div style={styles.container}>
+      {/* Starred section */}
+      {starredRooms.length > 0 && (
+        <>
+          <div style={styles.sectionHeader}>Starred</div>
+          {starredRooms.map(renderRoomItem)}
+        </>
+      )}
+
+      {/* All Conversations section */}
+      {normalRooms.length > 0 && (
+        <>
+          <div style={styles.sectionHeader}>
+            {starredRooms.length > 0 ? 'All Conversations' : 'Conversations'}
+          </div>
+          {normalRooms.map(renderRoomItem)}
+        </>
+      )}
+
+      {/* Archived section */}
+      {archivedRooms.length > 0 && (
+        <>
+          <button
+            type="button"
+            style={styles.archivedToggle}
+            onClick={() => setShowArchived((prev) => !prev)}
+          >
+            <span>{showArchived ? '\u25BC' : '\u25B6'}</span>
+            <span>Show archived ({archivedRooms.length})</span>
+          </button>
+          {showArchived && archivedRooms.map(renderRoomItem)}
+        </>
+      )}
     </div>
   );
 };
@@ -203,6 +357,14 @@ const styles: Record<string, React.CSSProperties> = {
     margin: '8px 0 0',
     fontSize: 12,
     color: '#484f58',
+  },
+  sectionHeader: {
+    padding: '10px 16px 4px',
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#484f58',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.05em',
   },
   roomItem: {
     display: 'flex',
@@ -290,6 +452,51 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: 'center',
     flexShrink: 0,
     marginLeft: 8,
+  },
+  actionButtons: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 2,
+    flexShrink: 0,
+  },
+  starButton: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: 16,
+    padding: '2px 4px',
+    lineHeight: 1,
+    color: '#8b949e',
+    transition: 'opacity 0.15s, color 0.15s',
+    fontFamily: 'inherit',
+  },
+  archiveButton: {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    fontSize: 12,
+    padding: '2px 4px',
+    lineHeight: 1,
+    color: '#8b949e',
+    transition: 'opacity 0.15s',
+    fontFamily: 'inherit',
+  },
+  archivedToggle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '10px 16px',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderTop: '1px solid #21262d',
+    cursor: 'pointer',
+    fontSize: 12,
+    color: '#484f58',
+    fontFamily: 'inherit',
+    width: '100%',
+    textAlign: 'left',
+    transition: 'color 0.15s',
   },
 };
 

@@ -5,19 +5,35 @@
  * - Auto-attaches Bearer token to authenticated requests
  * - Enforces HTTPS in production
  * - Handles 401 → refresh → retry once
+ * - Coalesces concurrent refresh requests into a single network call
  */
 
 import type { RefreshResponse, ApiError } from '@frame/shared';
 
-// ── Session timeout (30 minutes of inactivity) ──
+// ── Session timeout (configurable, default 30 minutes) ──
 
-const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+let sessionTimeoutMs: number = DEFAULT_SESSION_TIMEOUT_MS;
 let lastActivityTimestamp: number = Date.now();
+
+/**
+ * Update the session timeout duration. Pass 0 or Infinity for "never".
+ */
+export function setSessionTimeout(ms: number): void {
+  sessionTimeoutMs = ms <= 0 ? Infinity : ms;
+}
+
+export function getSessionTimeout(): number {
+  return sessionTimeoutMs;
+}
 
 // ── Token storage (in-memory only — cleared on page reload) ──
 
 let accessToken: string | null = null;
 let refreshTokenValue: string | null = null;
+
+/** True while a token refresh is in progress — prevents timeout-clearing tokens mid-refresh */
+let isRefreshing = false;
 
 export function setTokens(access: string, refresh: string): void {
   accessToken = access;
@@ -80,9 +96,14 @@ function touchActivity(): void {
 /**
  * Check whether the session has been idle longer than the timeout.
  * If so, clear tokens and throw an auth error.
+ *
+ * Skipped when a token refresh is in progress to avoid clearing
+ * tokens mid-rotation (the root cause of the 401 refresh bug).
  */
 function checkSessionTimeout(): void {
-  if (accessToken && Date.now() - lastActivityTimestamp > SESSION_TIMEOUT_MS) {
+  if (isRefreshing) return;
+  if (sessionTimeoutMs === Infinity) return;
+  if (accessToken && Date.now() - lastActivityTimestamp > sessionTimeoutMs) {
     clearTokens();
     throw new FrameApiError(401, {
       error: { code: 'M_SESSION_EXPIRED', message: 'Session timed out due to inactivity' },
@@ -100,25 +121,60 @@ async function performRefresh(): Promise<void> {
     throw new Error('No refresh token available');
   }
 
+  isRefreshing = true;
+
+  // Capture the token before the request so we can detect if it was
+  // already rotated by another tab / concurrent call.
+  const tokenToSend = refreshTokenValue;
+
   const baseUrl = getBaseUrl();
-  const res = await fetch(`${baseUrl}/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken: refreshTokenValue }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken: tokenToSend }),
+    });
+  } catch (networkErr) {
+    // Network failure — do NOT clear tokens so the user can retry later.
+    isRefreshing = false;
+    throw new Error('Token refresh failed — network error');
+  }
 
   if (!res.ok) {
+    isRefreshing = false;
     clearTokens();
     throw new Error('Token refresh failed');
   }
 
-  const data: RefreshResponse = await res.json();
+  let data: RefreshResponse;
+  try {
+    data = await res.json();
+  } catch {
+    // Response parse failed — the server already rotated the token,
+    // so the old one is invalid. Clear everything.
+    isRefreshing = false;
+    clearTokens();
+    throw new Error('Token refresh failed — invalid response');
+  }
+
+  // Validate that the response contains the expected token fields
+  if (!data.accessToken || !data.refreshToken) {
+    isRefreshing = false;
+    clearTokens();
+    throw new Error('Token refresh failed — missing tokens in response');
+  }
+
   accessToken = data.accessToken;
   refreshTokenValue = data.refreshToken;
+  // Reset activity timestamp so the session timeout restarts from now
+  lastActivityTimestamp = Date.now();
+  isRefreshing = false;
 }
 
 /**
  * Ensures only one refresh request is in flight at a time.
+ * Concurrent callers share the same in-flight promise.
  */
 async function refreshAccessToken(): Promise<void> {
   if (!refreshPromise) {

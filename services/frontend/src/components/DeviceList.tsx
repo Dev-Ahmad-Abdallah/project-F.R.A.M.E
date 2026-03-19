@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import VerificationBadge from './VerificationBadge';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
+import { useIsMobile } from '../hooks/useIsMobile';
 import {
   getKnownDevices,
   getDeviceList,
@@ -35,6 +36,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
   currentDeviceId,
   onUnknownDevice,
 }) => {
+  const isMobile = useIsMobile();
   const [devices, setDevices] = useState<KnownDevice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +117,10 @@ const DeviceList: React.FC<DeviceListProps> = ({
   }
 
   return (
-    <div style={styles.container}>
+    <div style={{
+      ...styles.container,
+      ...(isMobile ? { maxWidth: '100%', padding: 16, borderRadius: 0 } : {}),
+    }}>
       <h2 style={styles.heading}>Linked Devices</h2>
 
       {error && <div style={styles.errorBanner}>{error}</div>}
@@ -134,10 +139,19 @@ const DeviceList: React.FC<DeviceListProps> = ({
                 style={{
                   ...styles.deviceRow,
                   ...(isCurrent ? styles.currentDeviceRow : {}),
+                  ...(isMobile ? {
+                    flexDirection: 'column' as const,
+                    alignItems: 'stretch',
+                    gap: 10,
+                    padding: '12px 14px',
+                  } : {}),
                 }}
               >
                 <div style={styles.deviceInfo}>
-                  <div style={styles.deviceHeader}>
+                  <div style={{
+                    ...styles.deviceHeader,
+                    ...(isMobile ? { flexWrap: 'wrap' as const } : {}),
+                  }}>
                     <VerificationBadge verified={device.verified} size="small" />
                     <span style={styles.deviceName}>
                       {device.deviceDisplayName || 'Unnamed Device'}
@@ -146,7 +160,10 @@ const DeviceList: React.FC<DeviceListProps> = ({
                       <span style={styles.currentBadge}>This device</span>
                     )}
                   </div>
-                  <div style={styles.deviceMeta}>
+                  <div style={{
+                    ...styles.deviceMeta,
+                    ...(isMobile ? { flexDirection: 'column' as const, gap: 2 } : {}),
+                  }}>
                     <span style={styles.deviceId}>
                       ID: {device.deviceId.slice(0, 12)}...
                     </span>
@@ -156,13 +173,17 @@ const DeviceList: React.FC<DeviceListProps> = ({
                   </div>
                 </div>
 
-                <div style={styles.deviceActions}>
+                <div style={{
+                  ...styles.deviceActions,
+                  ...(isMobile ? { alignSelf: 'stretch' } : {}),
+                }}>
                   {!isCurrent && (
                     <button
                       type="button"
                       style={{
                         ...styles.removeButton,
                         ...(isRemoving ? styles.buttonDisabled : {}),
+                        ...(isMobile ? { width: '100%', minHeight: 44 } : {}),
                       }}
                       onClick={() => handleRemove(device.deviceId)}
                       disabled={isRemoving}
@@ -179,7 +200,10 @@ const DeviceList: React.FC<DeviceListProps> = ({
 
       <button
         type="button"
-        style={styles.refreshButton}
+        style={{
+          ...styles.refreshButton,
+          ...(isMobile ? { alignSelf: 'stretch', minHeight: 44 } : {}),
+        }}
         onClick={loadDevices}
         disabled={loading}
       >

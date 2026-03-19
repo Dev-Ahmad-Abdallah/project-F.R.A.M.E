@@ -11,6 +11,7 @@ export interface EventRow {
   sequence_id: number;
   origin_server: string | null;
   origin_ts: Date;
+  deleted_at: Date | null;
   created_at: Date;
 }
 
@@ -40,7 +41,7 @@ export async function getEventsSince(
 ): Promise<EventRow[]> {
   const result = await pool.query(
     `SELECT * FROM events
-     WHERE room_id = $1 AND sequence_id > $2
+     WHERE room_id = $1 AND sequence_id > $2 AND deleted_at IS NULL
      ORDER BY sequence_id ASC
      LIMIT $3`,
     [roomId, sinceSequenceId, limit]
@@ -56,7 +57,7 @@ export async function getEventsByUser(
   const result = await pool.query(
     `SELECT e.* FROM events e
      JOIN room_members rm ON e.room_id = rm.room_id
-     WHERE rm.user_id = $1 AND e.sequence_id > $2
+     WHERE rm.user_id = $1 AND e.sequence_id > $2 AND e.deleted_at IS NULL
      ORDER BY e.sequence_id ASC
      LIMIT $3`,
     [userId, sinceSequenceId, limit]
@@ -100,4 +101,13 @@ export async function markDelivered(eventId: string, deviceId: string): Promise<
      WHERE event_id = $1 AND device_id = $2`,
     [eventId, deviceId]
   );
+}
+
+export async function softDeleteEvent(eventId: string, senderId: string): Promise<boolean> {
+  const result = await pool.query(
+    `UPDATE events SET deleted_at = NOW()
+     WHERE event_id = $1 AND sender_id = $2 AND deleted_at IS NULL`,
+    [eventId, senderId]
+  );
+  return result.rowCount !== null && result.rowCount > 0;
 }

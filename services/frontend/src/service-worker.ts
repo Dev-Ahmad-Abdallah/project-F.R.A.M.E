@@ -46,6 +46,47 @@ self.addEventListener('push', (event: PushEvent) => {
   event.waitUntil(notificationPromise);
 });
 
+// ── Message Handler (communication with main app) ──
+
+self.addEventListener('message', (event: ExtendableMessageEvent) => {
+  const { type, payload } = event.data || {};
+
+  switch (type) {
+    case 'SKIP_WAITING':
+      self.skipWaiting();
+      break;
+
+    case 'SHOW_NOTIFICATION':
+      // The main app can request a notification (e.g. when a sync finds new
+      // messages while the tab is hidden). We still enforce the generic
+      // "New message" body — no metadata is ever surfaced.
+      event.waitUntil(
+        self.registration.showNotification('F.R.A.M.E.', {
+          body: 'New message',
+          icon: '/icon-192.png',
+          badge: '/badge-72.png',
+          tag: 'frame-new-message',
+        } as NotificationOptions),
+      );
+      break;
+
+    case 'GET_CLIENTS_COUNT':
+      // Let the main app know how many controlled windows exist.
+      event.waitUntil(
+        self.clients.matchAll({ type: 'window' }).then((clients) => {
+          event.source?.postMessage({
+            type: 'CLIENTS_COUNT',
+            count: clients.length,
+          });
+        }),
+      );
+      break;
+
+    default:
+      break;
+  }
+});
+
 // ── Notification Click ──
 
 self.addEventListener('notificationclick', (event: NotificationEvent) => {

@@ -62,7 +62,7 @@ export async function queryDeviceKeys(userIds: string[]) {
     `SELECT d.user_id, d.device_id, d.device_signing_key,
             kb.identity_key, kb.signed_prekey, kb.signed_prekey_signature
      FROM devices d
-     LEFT JOIN key_bundles kb ON d.user_id = kb.user_id AND d.device_id = kb.device_id
+     JOIN key_bundles kb ON d.user_id = kb.user_id AND d.device_id = kb.device_id
      WHERE d.user_id = ANY($1::text[])
        AND d.device_public_key != 'pending'
        AND d.device_signing_key != 'pending'`,

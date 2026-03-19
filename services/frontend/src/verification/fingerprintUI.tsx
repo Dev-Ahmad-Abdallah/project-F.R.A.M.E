@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { generateFingerprint } from '../crypto/cryptoUtils';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // ── Types ──
 
@@ -147,6 +148,7 @@ const FingerprintUI: React.FC<FingerprintUIProps> = ({
   onVerified,
   isVerified = false,
 }) => {
+  const isMobile = useIsMobile();
   const [theirFingerprint, setTheirFingerprint] = useState<string>('');
   const [ourFingerprint, setOurFingerprint] = useState<string>('');
   const [verified, setVerified] = useState(isVerified);
@@ -199,7 +201,10 @@ const FingerprintUI: React.FC<FingerprintUIProps> = ({
   const ourSafetyNumber = formatSafetyNumber(ourFingerprint);
 
   return (
-    <div style={styles.container}>
+    <div style={{
+      ...styles.container,
+      ...(isMobile ? { maxWidth: '100%', padding: 16 } : {}),
+    }}>
       <h3 style={styles.title}>Verify Security</h3>
       <p style={styles.subtitle}>{userId}</p>
 
@@ -215,22 +220,31 @@ const FingerprintUI: React.FC<FingerprintUIProps> = ({
 
       {/* QR Code */}
       <div style={styles.qrContainer}>
-        <QRCodeSVG value={qrPayload} size={200} level="M" />
+        <QRCodeSVG value={qrPayload} size={isMobile ? 160 : 200} level="M" />
       </div>
 
       {/* Their safety number */}
       <p style={styles.safetyNumberLabel}>Their Safety Number</p>
-      <p style={styles.safetyNumber}>{theirSafetyNumber}</p>
+      <p style={{
+        ...styles.safetyNumber,
+        ...(isMobile ? { fontSize: 14, maxWidth: '100%' } : {}),
+      }}>{theirSafetyNumber}</p>
 
       {/* Our safety number */}
       <p style={styles.safetyNumberLabel}>Your Safety Number</p>
-      <p style={styles.safetyNumber}>{ourSafetyNumber}</p>
+      <p style={{
+        ...styles.safetyNumber,
+        ...(isMobile ? { fontSize: 14, maxWidth: '100%' } : {}),
+      }}>{ourSafetyNumber}</p>
 
       {/* Verify button */}
       {!verified && (
         <button
           type="button"
-          style={styles.verifyButton}
+          style={{
+            ...styles.verifyButton,
+            ...(isMobile ? { width: '100%', minHeight: 48 } : {}),
+          }}
           onClick={handleVerify}
         >
           Verify Contact

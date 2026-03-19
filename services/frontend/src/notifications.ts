@@ -108,14 +108,35 @@ export async function subscribeToPush(
       return existing;
     }
 
-    // Subscribe with a placeholder VAPID public key.
-    // In production the server provides its real VAPID public key.
+    // Fetch the VAPID public key from the server. The key MUST be served
+    // by the backend so that only operators control push subscriptions.
+    // Falls back to the build-time env var REACT_APP_VAPID_PUBLIC_KEY.
+    let vapidPublicKey: string | undefined;
+    try {
+      const resp = await fetch(`${homeserverUrl}/push/vapid-key`);
+      if (resp.ok) {
+        const data = await resp.json();
+        vapidPublicKey = data.publicKey;
+      }
+    } catch {
+      // Server may not support the endpoint yet — fall back.
+    }
+
+    if (!vapidPublicKey) {
+      vapidPublicKey = process.env.REACT_APP_VAPID_PUBLIC_KEY;
+    }
+
+    if (!vapidPublicKey) {
+      console.error(
+        'No VAPID public key available. Set REACT_APP_VAPID_PUBLIC_KEY ' +
+        'or ensure the server exposes /push/vapid-key.',
+      );
+      return null;
+    }
+
     const subscription = await swRegistration.pushManager.subscribe({
       userVisibleOnly: true,
-      // Placeholder: replace with server-provided VAPID public key
-      applicationServerKey: urlBase64ToUint8Array(
-        'BPlaceholderVAPIDKeyThatShouldBeReplacedWithRealKey00000000000000000000000000000000000000',
-      ) as BufferSource,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource,
     });
 
     // Send subscription to homeserver (placeholder endpoint)
@@ -165,4 +186,71 @@ function arrayBufferToBase64(buffer: ArrayBuffer | null): string {
     binary += String.fromCharCode(bytes[i]);
   }
   return btoa(binary);
+}
+
+// ── Permission Check ──
+
+/**
+ * Check whether the browser has already granted notification permission.
+ */
+export function isNotificationPermissionGranted(): boolean {
+  if (!('Notification' in window)) return false;
+  return Notification.permission === 'granted';
+}
+
+// ── Local (foreground) Notification ──
+
+/**
+ * Show a local browser notification when the tab is focused or visible.
+ * Falls back to a generic "New message" body if none is provided.
+ * This uses the SW registration when available, or the Notification
+ * constructor as a fallback.
+ *
+ * SECURITY NOTE: callers should NEVER pass message content or sender
+ * identity. Use only generic labels.
+ */
+export async function sendLocalNotification(
+  title: string = 'F.R.A.M.E.',
+  body: string = 'New message',
+): Promise<void> {
+  if (!isNotificationPermissionGranted()) return;
+
+  // Prefer going through the service worker so the notification is
+  // managed by the SW lifecycle (click handling, etc.).
+  if (swRegistration) {
+    await swRegistration.showNotification(title, {
+      body,
+      icon: '/icon-192.png',
+      badge: '/badge-72.png',
+      tag: 'frame-new-message',
+    });
+    return;
+  }
+
+  // Fallback: use the Notification constructor directly.
+  try {
+    new Notification(title, {
+      body,
+      icon: '/icon-192.png',
+      tag: 'frame-new-message',
+    });
+  } catch {
+    // Notification constructor may throw in insecure contexts.
+  }
+}
+
+// ── SW Message Helper ──
+
+/**
+ * Send a message to the active service worker.
+ */
+export function postMessageToSW(message: Record<string, unknown>): void {
+  navigator.serviceWorker?.controller?.postMessage(message);
+}
+
+/**
+ * Return the current ServiceWorkerRegistration (if registered).
+ */
+export function getServiceWorkerRegistration(): ServiceWorkerRegistration | null {
+  return swRegistration;
 }

@@ -16,6 +16,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { generateFingerprint } from '../crypto/cryptoUtils';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // ── Types ──
 
@@ -171,6 +172,7 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
   newPublicKey,
   onAction,
 }) => {
+  const isMobile = useIsMobile();
   const [oldFingerprint, setOldFingerprint] = useState<string>('');
   const [newFingerprint, setNewFingerprint] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -221,9 +223,24 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
   }
 
   return (
-    <div style={styles.overlay} onClick={handleOverlayClick}>
+    <div style={{
+      ...styles.overlay,
+      ...(isMobile ? { padding: 0 } : {}),
+    }} onClick={handleOverlayClick}>
       <div
-        style={styles.modal}
+        style={{
+          ...styles.modal,
+          ...(isMobile ? {
+            maxWidth: '100%',
+            width: '100%',
+            height: '100%',
+            borderRadius: 0,
+            padding: '24px 16px',
+            display: 'flex',
+            flexDirection: 'column' as const,
+            justifyContent: 'center',
+          } : {}),
+        }}
         role="alertdialog"
         aria-labelledby="key-change-title"
         aria-describedby="key-change-desc"
@@ -246,8 +263,11 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
           new fingerprint before continuing.
         </p>
 
-        {/* Side-by-side fingerprints */}
-        <div style={styles.fingerprintRow}>
+        {/* Side-by-side fingerprints (stacked on mobile) */}
+        <div style={{
+          ...styles.fingerprintRow,
+          ...(isMobile ? { flexDirection: 'column' as const, gap: 12 } : {}),
+        }}>
           <div style={styles.fingerprintColumn}>
             <p style={{ ...styles.fingerprintLabel, ...styles.oldKey }}>
               Previous Key
@@ -267,24 +287,39 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
         </div>
 
         {/* Actions — user MUST choose one */}
-        <div style={styles.actions}>
+        <div style={{
+          ...styles.actions,
+          ...(isMobile ? { flexDirection: 'column' as const, gap: 10 } : {}),
+        }}>
           <button
             type="button"
-            style={{ ...styles.buttonBase, ...styles.viewButton }}
+            style={{
+              ...styles.buttonBase,
+              ...styles.viewButton,
+              ...(isMobile ? { width: '100%', minHeight: 48 } : {}),
+            }}
             onClick={() => onAction('view-fingerprint')}
           >
             View Fingerprint
           </button>
           <button
             type="button"
-            style={{ ...styles.buttonBase, ...styles.acceptButton }}
+            style={{
+              ...styles.buttonBase,
+              ...styles.acceptButton,
+              ...(isMobile ? { width: '100%', minHeight: 48 } : {}),
+            }}
             onClick={() => onAction('accept')}
           >
             Accept New Key
           </button>
           <button
             type="button"
-            style={{ ...styles.buttonBase, ...styles.blockButton }}
+            style={{
+              ...styles.buttonBase,
+              ...styles.blockButton,
+              ...(isMobile ? { width: '100%', minHeight: 48 } : {}),
+            }}
             onClick={() => onAction('block')}
           >
             Block

@@ -3,7 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import { messageLimiter, apiLimiter } from '../middleware/rateLimit';
 import { asyncHandler } from '../middleware/errorHandler';
 import { validateBody, validateQuery, sendMessageSchema, syncQuerySchema } from '../middleware/validation';
-import { sendMessage, syncMessages } from '../services/messageService';
+import { sendMessage, deleteMessage, syncMessages } from '../services/messageService';
 
 export const messagesRouter = Router();
 
@@ -22,6 +22,17 @@ messagesRouter.post(
       content: req.body.content,
     });
     res.json(result);
+  })
+);
+
+// DELETE /messages/:eventId — Soft-delete a message (sender only)
+messagesRouter.delete(
+  '/:eventId',
+  requireAuth,
+  apiLimiter,
+  asyncHandler(async (req, res) => {
+    await deleteMessage(req.params.eventId, req.auth!.sub);
+    res.status(204).send();
   })
 );
 

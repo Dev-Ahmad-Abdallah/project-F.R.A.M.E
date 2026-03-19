@@ -44,10 +44,17 @@ export async function createRoom(
   roomType: 'direct' | 'group',
   inviteUserIds: string[],
   name?: string,
+  options?: { isPrivate?: boolean; password?: string },
 ): Promise<CreateRoomResponse> {
   return apiRequest<CreateRoomResponse>('/rooms/create', {
     method: 'POST',
-    body: { roomType, inviteUserIds, name },
+    body: {
+      roomType,
+      inviteUserIds,
+      name,
+      ...(options?.isPrivate ? { isPrivate: true } : {}),
+      ...(options?.password ? { password: options.password } : {}),
+    },
   });
 }
 
@@ -86,6 +93,25 @@ export async function listRooms(): Promise<RoomSummary[]> {
     })),
     unreadCount: 0,
   }));
+}
+
+/**
+ * Rename a room.
+ *
+ * @param roomId  The room to rename
+ * @param name    The new room name
+ */
+export async function renameRoom(
+  roomId: string,
+  name: string,
+): Promise<{ success: boolean; name: string }> {
+  return apiRequest<{ success: boolean; name: string }>(
+    `/rooms/${encodeURIComponent(roomId)}/name`,
+    {
+      method: 'PUT',
+      body: { name },
+    },
+  );
 }
 
 /**
@@ -128,5 +154,52 @@ export async function getRoomMembers(
 ): Promise<RoomMember[]> {
   return apiRequest<RoomMember[]>(
     `/rooms/${encodeURIComponent(roomId)}/members`,
+  );
+}
+
+/**
+ * Leave a room (removes the user from the room).
+ */
+export async function leaveRoom(roomId: string): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(
+    `/rooms/${encodeURIComponent(roomId)}/leave`,
+    { method: 'DELETE' },
+  );
+}
+
+/**
+ * Update room settings (e.g. disappearing messages, privacy).
+ */
+export async function updateRoomSettings(
+  roomId: string,
+  settings: Record<string, unknown>,
+): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(
+    `/rooms/${encodeURIComponent(roomId)}/settings`,
+    { method: 'PUT', body: settings },
+  );
+}
+
+/**
+ * Get room settings.
+ */
+export async function getRoomSettingsAPI(
+  roomId: string,
+): Promise<{ settings: Record<string, unknown> }> {
+  return apiRequest<{ settings: Record<string, unknown> }>(
+    `/rooms/${encodeURIComponent(roomId)}/settings`,
+  );
+}
+
+/**
+ * Join a room with a password.
+ */
+export async function joinRoomWithPassword(
+  roomId: string,
+  password?: string,
+): Promise<{ joined: boolean }> {
+  return apiRequest<{ joined: boolean }>(
+    `/rooms/${encodeURIComponent(roomId)}/join-with-password`,
+    { method: 'POST', body: { password } },
   );
 }

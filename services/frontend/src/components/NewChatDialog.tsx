@@ -13,6 +13,7 @@ import DOMPurify from 'dompurify';
 import { createRoom } from '../api/roomsAPI';
 import type { RoomSummary } from '../api/roomsAPI';
 import { FONT_BODY } from '../globalStyles';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 // ── Types ──
 
@@ -29,9 +30,13 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   onCreated,
   onClose,
 }) => {
+  const isMobile = useIsMobile();
+  const isNarrow = useIsMobile(400);
   const [username, setUsername] = useState('');
   const [roomType, setRoomType] = useState<'direct' | 'group'>('direct');
   const [roomName, setRoomName] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [roomPassword, setRoomPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -73,6 +78,10 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         roomType === 'group' && roomName.trim()
           ? roomName.trim()
           : undefined,
+        {
+          isPrivate: isPrivate || undefined,
+          password: roomPassword.trim() || undefined,
+        },
       );
 
       // Build a local RoomSummary for immediate UI update
@@ -119,9 +128,24 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   };
 
   return (
-    <div style={styles.overlay} onClick={handleOverlayClick}>
+    <div style={{
+      ...styles.overlay,
+      ...(isMobile ? { padding: 0 } : {}),
+    }} onClick={handleOverlayClick}>
       <div
-        style={styles.modal}
+        style={{
+          ...styles.modal,
+          ...(isMobile ? {
+            maxWidth: '100%',
+            width: '100%',
+            height: '100%',
+            borderRadius: 0,
+            border: 'none',
+            padding: '24px 20px',
+            display: 'flex',
+            flexDirection: 'column' as const,
+          } : {}),
+        }}
         role="dialog"
         aria-labelledby="new-chat-title"
         onKeyDown={handleKeyDown}
@@ -151,7 +175,10 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         {/* Room type selector */}
         <div style={styles.fieldGroup}>
           <label style={styles.label}>Type</label>
-          <div style={styles.typeSelector}>
+          <div style={{
+            ...styles.typeSelector,
+            ...(isNarrow ? { flexDirection: 'column' as const } : {}),
+          }}>
             <button
               type="button"
               style={{
@@ -197,6 +224,50 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
               placeholder="e.g. Project Team"
               disabled={loading}
             />
+          </div>
+        )}
+
+        {/* Private room toggle (group only) */}
+        {roomType === 'group' && (
+          <div style={styles.fieldGroup}>
+            <label style={styles.label}>Access Control</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                type="button"
+                style={{
+                  ...styles.toggleButton,
+                  ...(isPrivate ? styles.toggleButtonActive : {}),
+                }}
+                onClick={() => setIsPrivate(!isPrivate)}
+                disabled={loading}
+              >
+                {isPrivate ? 'Private' : 'Open'}
+              </button>
+              <span style={styles.fieldHint}>
+                {isPrivate ? 'Invite-only room' : 'Anyone can join'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Room password (group only) */}
+        {roomType === 'group' && (
+          <div style={styles.fieldGroup}>
+            <label style={styles.label} htmlFor="new-chat-password">
+              Room Password (optional)
+            </label>
+            <input
+              id="new-chat-password"
+              type="password"
+              style={styles.input}
+              value={roomPassword}
+              onChange={(e) => setRoomPassword(e.target.value)}
+              placeholder="Leave blank for no password"
+              disabled={loading}
+            />
+            <span style={styles.fieldHint}>
+              Users will need this password to join
+            </span>
           </div>
         )}
 
@@ -350,7 +421,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   typeButton: {
     flex: 1,
-    padding: '8px 12px',
+    padding: '10px 12px',
     fontSize: 13,
     fontWeight: 500,
     backgroundColor: '#21262d',
@@ -359,6 +430,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     cursor: 'pointer',
     fontFamily: 'inherit',
+    minHeight: 44,
   },
   typeButtonActive: {
     backgroundColor: '#1c2128',
@@ -399,7 +471,7 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 8,
   },
   cancelButton: {
-    padding: '8px 18px',
+    padding: '10px 18px',
     fontSize: 14,
     fontWeight: 500,
     backgroundColor: '#21262d',
@@ -408,9 +480,10 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     cursor: 'pointer',
     fontFamily: 'inherit',
+    minHeight: 44,
   },
   createButton: {
-    padding: '8px 18px',
+    padding: '10px 18px',
     fontSize: 14,
     fontWeight: 600,
     backgroundColor: '#238636',
@@ -419,10 +492,28 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     cursor: 'pointer',
     fontFamily: 'inherit',
+    minHeight: 44,
   },
   buttonDisabled: {
     opacity: 0.5,
     cursor: 'not-allowed',
+  },
+  toggleButton: {
+    padding: '6px 14px',
+    fontSize: 12,
+    fontWeight: 600,
+    backgroundColor: '#21262d',
+    color: '#8b949e',
+    border: '1px solid #30363d',
+    borderRadius: 20,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    minWidth: 70,
+  },
+  toggleButtonActive: {
+    backgroundColor: 'rgba(35, 134, 54, 0.15)',
+    color: '#3fb950',
+    borderColor: '#238636',
   },
 };
 

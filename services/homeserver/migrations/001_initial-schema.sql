@@ -27,6 +27,8 @@ CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);
 CREATE TABLE IF NOT EXISTS rooms (
   room_id TEXT PRIMARY KEY,
   room_type TEXT NOT NULL DEFAULT 'direct' CHECK (room_type IN ('direct', 'group')),
+  name TEXT,
+  settings JSONB DEFAULT '{}'::jsonb,
   created_by TEXT REFERENCES users(user_id),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -53,6 +55,7 @@ CREATE TABLE IF NOT EXISTS events (
   sequence_id BIGSERIAL,
   origin_server TEXT,
   origin_ts TIMESTAMP WITH TIME ZONE NOT NULL,
+  deleted_at TIMESTAMP WITH TIME ZONE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_events_room_seq ON events(room_id, sequence_id);
