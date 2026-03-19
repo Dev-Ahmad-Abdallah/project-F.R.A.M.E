@@ -294,7 +294,7 @@ export default FileAttachment;
 
 const containerStyle: React.CSSProperties = {
   border: 'none',
-  borderRadius: 12,
+  borderRadius: 8,
   padding: 8,
   width: '100%',
   maxWidth: '100%',

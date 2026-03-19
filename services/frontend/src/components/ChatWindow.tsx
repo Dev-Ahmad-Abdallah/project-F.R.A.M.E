@@ -17,12 +17,15 @@ import {
 import { FONT_BODY } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { SkeletonMessageBubble, SyncIndicator } from './Skeleton';
-import { playMessageSound, playSendSound, playErrorSound } from '../sounds';
+import { playMessageSound, playSendSound, playErrorSound, playDestructSound } from '../sounds';
 import { getSendReadReceipts, getSendTypingIndicators } from '../utils/privacyPreferences';
 import VoiceRecorder from './VoiceRecorder';
 import CameraCapture from './CameraCapture';
 import AudioPlayer from './AudioPlayer';
 import FileAttachment from './FileAttachment';
+import EncryptionVisualizer from './EncryptionVisualizer';
+import { generateCodename } from '../utils/codenames';
+import { unlockRank } from '../utils/rankSystem';
 import { encryptFile } from '../crypto/fileEncryption';
 import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE, FRIENDLY_FILE_TYPES, FILE_ACCEPT_STRING, uploadFile } from '../api/filesAPI';
 import { formatFileSize } from '../crypto/fileEncryption';
@@ -30,6 +33,105 @@ import { formatFileSize } from '../crypto/fileEncryption';
 // ── Reaction Picker ──
 
 const QUICK_REACTIONS = ['\u{1F44D}', '\u{2764}\u{FE0F}', '\u{1F602}', '\u{1F62E}', '\u{1F622}', '\u{1F44F}'];
+
+// ── Cipher Typing Indicator ──
+const CIPHER_CHARS = '!@#$%^&*()_+-=[]{}|;:<>?/~0123456789ABCDEFabcdef';
+
+function CipherTypingIndicator({ displayName }: { displayName: string }) {
+  const [text, setText] = useState('');
+  const [animKey, setAnimKey] = useState(0);
+  const target = `${displayName} is typing`;
+
+  // Restart animation when displayName changes
+  useEffect(() => {
+    setAnimKey((k) => k + 1);
+  }, [displayName]);
+
+  useEffect(() => {
+    let frame = 0;
+    const maxFrames = target.length * 3;
+    setText(''); // reset on restart
+    const interval = setInterval(() => {
+      frame++;
+      const resolved = Math.floor(frame / 3);
+      let result = '';
+      for (let i = 0; i < target.length; i++) {
+        if (i < resolved) {
+          result += target[i];
+        } else if (target[i] === ' ') {
+          result += ' ';
+        } else {
+          result += CIPHER_CHARS[Math.floor(Math.random() * CIPHER_CHARS.length)];
+        }
+      }
+      setText(result);
+      if (frame >= maxFrames) {
+        clearInterval(interval);
+      }
+    }, 40);
+    return () => clearInterval(interval);
+  }, [animKey, target]);
+
+  return (
+    <span style={{
+      display: 'inline-block',
+      fontFamily: 'monospace',
+      color: '#3fb950',
+      fontSize: 12,
+      letterSpacing: 1,
+      backgroundColor: 'rgba(63,185,80,0.08)',
+      border: '1px solid rgba(63,185,80,0.2)',
+      borderRadius: 12,
+      padding: '4px 10px',
+    }}>
+      {text}
+      <span style={{ animation: 'frame-cursor-blink 1s step-end infinite' }}>_</span>
+    </span>
+  );
+}
+
+// ── Self-Destruct Countdown Badge ──
+
+function DisappearingCountdownBadge({ msgTimestamp, timeoutSeconds, enabled, isExpired }: {
+  msgTimestamp: number;
+  timeoutSeconds: number;
+  enabled: boolean;
+  isExpired: boolean;
+}) {
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!enabled || isExpired) {
+      setSecondsLeft(null);
+      return;
+    }
+    const calc = () => {
+      const remaining = Math.max(0, Math.ceil((msgTimestamp + timeoutSeconds * 1000 - Date.now()) / 1000));
+      setSecondsLeft(remaining);
+    };
+    calc();
+    const timer = setInterval(calc, 1000);
+    return () => clearInterval(timer);
+  }, [msgTimestamp, timeoutSeconds, enabled, isExpired]);
+
+  if (secondsLeft === null || secondsLeft <= 0) return null;
+
+  const isUrgent = secondsLeft <= 10;
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+      padding: '1px 5px', fontSize: 9, fontWeight: 700,
+      fontFamily: 'monospace', letterSpacing: '0.05em',
+      borderRadius: 4,
+      backgroundColor: isUrgent ? 'rgba(248, 81, 73, 0.15)' : 'rgba(210, 153, 34, 0.12)',
+      color: isUrgent ? '#f85149' : '#d29922',
+      border: `1px solid ${isUrgent ? 'rgba(248, 81, 73, 0.3)' : 'rgba(210, 153, 34, 0.25)'}`,
+      marginLeft: 4,
+    }}>
+      {'\u{1F4A3}'} {secondsLeft}s
+    </span>
+  );
+}
 
 // ── Status helpers ──
 
@@ -46,6 +148,84 @@ const STATUS_LABELS: Record<UserStatus, string> = {
   busy: 'Busy',
   offline: 'Offline',
 };
+
+// ── DEFCON Threat Level Badge ──
+
+type ThreatLevel = 'secure' | 'caution' | 'alert';
+
+const THREAT_CONFIG: Record<ThreatLevel, { color: string; bg: string; border: string; label: string; sub: string }> = {
+  secure: { color: '#3fb950', bg: 'rgba(63,185,80,0.08)', border: '#3fb950', label: 'DEFCON 5', sub: 'SECURE' },
+  caution: { color: '#d29922', bg: 'rgba(210,153,34,0.08)', border: '#d29922', label: 'DEFCON 3', sub: 'CAUTION' },
+  alert: { color: '#f85149', bg: 'rgba(248,81,73,0.08)', border: '#f85149', label: 'DEFCON 1', sub: 'ALERT' },
+};
+
+function ThreatLevelBadge({ level }: { level: ThreatLevel }) {
+  const cfg = THREAT_CONFIG[level];
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '3px 10px 3px 8px',
+        borderRadius: 999,
+        backgroundColor: cfg.bg,
+        border: `1.5px solid ${cfg.border}`,
+        background: `linear-gradient(${cfg.bg}, ${cfg.bg}) padding-box, linear-gradient(135deg, ${cfg.color}, transparent 60%, ${cfg.color}) border-box`,
+        boxShadow: `0 0 8px ${cfg.bg}, inset 0 0 4px ${cfg.bg}`,
+        maxWidth: 120,
+        cursor: 'default',
+        lineHeight: 1,
+      }}
+      title={`${cfg.label} — ${cfg.sub}: ${level === 'secure' ? 'All devices verified, full E2EE' : level === 'caution' ? 'Encrypted but unverified devices present' : 'Key transparency warning or new unverified device'}`}
+    >
+      {/* Pulsing dot */}
+      <span
+        style={{
+          display: 'inline-block',
+          width: 7,
+          height: 7,
+          borderRadius: '50%',
+          backgroundColor: cfg.color,
+          boxShadow: `0 0 6px ${cfg.color}`,
+          animation: 'frame-defcon-pulse 2s ease-in-out infinite',
+          flexShrink: 0,
+        }}
+      />
+      {/* DEFCON label */}
+      <span
+        style={{
+          fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
+          fontSize: 11,
+          fontWeight: 700,
+          color: cfg.color,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase' as const,
+          whiteSpace: 'nowrap' as const,
+        }}
+      >
+        {cfg.label}
+      </span>
+      {/* Separator */}
+      <span style={{ color: cfg.color, opacity: 0.4, fontSize: 9 }}>{'\u2014'}</span>
+      {/* Sub-label */}
+      <span
+        style={{
+          fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
+          fontSize: 9,
+          fontWeight: 600,
+          color: cfg.color,
+          opacity: 0.85,
+          letterSpacing: '0.15em',
+          textTransform: 'uppercase' as const,
+          whiteSpace: 'nowrap' as const,
+        }}
+      >
+        {cfg.sub}
+      </span>
+    </span>
+  );
+}
 
 // ── Helpers ──
 
@@ -369,6 +549,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([]);
   // Room switch skeleton: show placeholder bubbles briefly when switching rooms
   const [showRoomSkeleton, setShowRoomSkeleton] = useState(true);
+  // E2EE handshake animation overlay — plays once per room per session
+  const [e2eeAnimDone, setE2eeAnimDone] = useState(false);
+  // Reset visualizer state when switching rooms so it can play for new rooms
+  useEffect(() => {
+    setE2eeAnimDone(false);
+  }, [roomId]);
   // Sync activity indicator: true while actively fetching
   const [isSyncing, setIsSyncing] = useState(false);
   const [inputValue, setInputValue] = useState('');
@@ -401,6 +587,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     } catch { return new Set(); }
   });
   const [expiredEventIds, setExpiredEventIds] = useState<Set<string>>(new Set());
+  const [selfDestructingIds, setSelfDestructingIds] = useState<Set<string>>(new Set());
+  const [destroyedIds, setDestroyedIds] = useState<Set<string>>(new Set());
+  const [showDestructFlash, setShowDestructFlash] = useState(false);
   const [disappearingSettings, setDisappearingSettings] = useState<{
     enabled: boolean;
     timeoutSeconds: number;
@@ -687,6 +876,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           40% { transform: translateY(-4px); opacity: 1; }
         }
         textarea::placeholder { color: #8b949e; }
+        @keyframes frame-cursor-blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
+        }
         @keyframes frame-msg-slide-up {
           0% { opacity: 0; transform: translateY(20px); }
           100% { opacity: 1; transform: translateY(0); }
@@ -766,6 +959,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           from { opacity: 0; }
           to { opacity: 1; }
         }
+        @keyframes frame-defcon-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.3); }
+        }
       `;
       document.head.appendChild(style);
     }
@@ -814,17 +1011,50 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     return () => { cancelled = true; };
   }, [roomId]);
 
-  // Expire messages client-side
+  // Expire messages client-side — with self-destruct burn animation
   useEffect(() => {
     if (!disappearingSettings?.enabled) return;
     const checkExpired = () => {
       const now = Date.now();
       const timeoutMs = disappearingSettings.timeoutSeconds * 1000;
       const newExpired = new Set(expiredEventIds);
+      const newDestructing = new Set(selfDestructingIds);
       let changed = false;
+      let destructChanged = false;
       for (const msg of messages) {
         const msgTime = new Date(msg.event.originServerTs).getTime();
-        if (now - msgTime > timeoutMs && !newExpired.has(msg.event.eventId)) {
+        if (now - msgTime > timeoutMs && !newExpired.has(msg.event.eventId) && !newDestructing.has(msg.event.eventId)) {
+          // Start self-destruct animation instead of instant expire
+          newDestructing.add(msg.event.eventId);
+          destructChanged = true;
+          playDestructSound();
+          // After animation completes (0.8s), mark as fully expired and show destroyed text
+          setTimeout(() => {
+            setShowDestructFlash(true);
+            setTimeout(() => setShowDestructFlash(false), 100);
+            setSelfDestructingIds((prev) => {
+              const next = new Set(prev);
+              next.delete(msg.event.eventId);
+              return next;
+            });
+            setDestroyedIds((prev) => new Set(prev).add(msg.event.eventId));
+            // After showing "MESSAGE DESTROYED" for 2s, mark as expired (fully hidden)
+            setTimeout(() => {
+              setDestroyedIds((prev) => {
+                const next = new Set(prev);
+                next.delete(msg.event.eventId);
+                return next;
+              });
+              setExpiredEventIds((prev) => new Set(prev).add(msg.event.eventId));
+            }, 2000);
+          }, 800);
+        }
+      }
+      if (destructChanged) setSelfDestructingIds(newDestructing);
+      // Also check for messages already past timeout on initial load
+      for (const msg of messages) {
+        const msgTime = new Date(msg.event.originServerTs).getTime();
+        if (now - msgTime > timeoutMs + 3000 && !newExpired.has(msg.event.eventId)) {
           newExpired.add(msg.event.eventId);
           changed = true;
         }
@@ -832,9 +1062,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       if (changed) setExpiredEventIds(newExpired);
     };
     checkExpired();
-    const disappearTimer = setInterval(checkExpired, 5000);
+    const disappearTimer = setInterval(checkExpired, 1000);
     return () => clearInterval(disappearTimer);
-  }, [disappearingSettings, messages, expiredEventIds]);
+  }, [disappearingSettings, messages, expiredEventIds, selfDestructingIds]);
 
   // View-once timer refs — keyed by eventId so we can clean up on unmount
   const viewOnceTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
@@ -1215,6 +1445,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       await sendMessage(roomId, 'm.room.encrypted', encryptedContent);
 
       playSendSound();
+      unlockRank('recruit');
       setOptimisticMessages((prev) =>
         prev.map((om) =>
           om.id === optimisticId ? { ...om, status: 'sent' as const } : om,
@@ -1839,11 +2070,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
    */
   const resolveDisplayName = useCallback((senderId: string, senderDisplayName?: string): string => {
     if (isAnonymous) {
-      return senderDisplayName || 'Anonymous';
+      // Use tactical codename derived from senderId + roomId for anonymous rooms
+      return generateCodename(senderId + roomId);
     }
     // Prefer the server-provided display name so renamed users are shown correctly
     return senderDisplayName || formatDisplayName(senderId);
-  }, [isAnonymous]);
+  }, [isAnonymous, roomId]);
 
   // Memoize message rendering — avoids recomputing grouping/date separators on
   // unrelated state changes (emoji picker, context menu, textarea focus, etc.)
@@ -1918,10 +2150,35 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       const msgDate = new Date(event.originServerTs);
       const isDeleted = deletedEventIds.has(event.eventId);
       const isExpired = expiredEventIds.has(event.eventId);
+      const isSelfDestructing = selfDestructingIds.has(event.eventId);
+      const isDestroyed = destroyedIds.has(event.eventId);
       const isViewOnce = decrypted.plaintext && decrypted.plaintext.viewOnce === true;
       const isHiddenOnce = hiddenOnceIds.has(event.eventId);
       // eslint-disable-next-line security/detect-object-injection
       const collapsedCount = undecryptableRunStart.has(i) ? undecryptableRunLength[i] : 0;
+
+      // Show "MESSAGE DESTROYED" placeholder for recently destroyed messages
+      if (isDestroyed) {
+        elements.push(
+          <div key={event.eventId} style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            alignSelf: isOwn ? 'flex-end' : 'flex-start',
+            padding: '8px 16px', marginTop: 4,
+            animation: 'frame-destruct-text-fade 2s ease-out forwards',
+          }}>
+            <span style={{
+              fontFamily: 'monospace', fontSize: 11, fontWeight: 700,
+              color: '#f85149', letterSpacing: '0.1em', textTransform: 'uppercase' as const,
+            }}>
+              {'\u{1F4A3}'} MESSAGE DESTROYED
+            </span>
+          </div>
+        );
+        lastSenderId = event.senderId;
+        lastTimestamp = msgDate;
+        lastDate = msgDate;
+        continue;
+      }
 
       if (!lastDate || isDifferentDay(lastDate, msgDate)) {
         elements.push(
@@ -2075,7 +2332,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             maxWidth: isMobile ? '85%' : 'clamp(180px, 65%, 480px)',
             marginTop: isFirstInGroup ? 8 : 2,
             position: 'relative' as const,
-            ...(hasPopIn ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}),
+            ...(isSelfDestructing ? { animation: 'frame-self-destruct 0.8s ease-in forwards', overflow: 'hidden' as const } : hasPopIn ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}),
             ...(searchQuery.trim() && filteredMessages.length > 0 && searchMatchIndex < filteredMessages.length && filteredMessages[searchMatchIndex]?.event.eventId === event.eventId ? { outline: '2px solid rgba(210, 153, 34, 0.7)', outlineOffset: 2, borderRadius: 12 } : {}),
           }}
           onTouchStart={isMobile ? () => handleTouchStart(event.eventId, event.senderId) : undefined}
@@ -2265,6 +2522,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                   // Sent — single check
                   return <span style={styles.readReceiptIcon} title="Sent">{'\u2713'}</span>;
                 })()}
+                {disappearingSettings?.enabled && !isDeleted && !isExpired && (
+                  <DisappearingCountdownBadge
+                    msgTimestamp={new Date(event.originServerTs).getTime()}
+                    timeoutSeconds={disappearingSettings.timeoutSeconds}
+                    enabled={true}
+                    isExpired={isExpired}
+                  />
+                )}
               </div>
             )}
             {(() => {
@@ -2343,7 +2608,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     return elements;
-  }, [messages, filteredMessages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, viewedOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, readReceiptMap, scrollToMessage, searchQuery, searchMatchIndex, unreadDividerEventId, handleMessageClick, isMobile, handleTouchStart, handleTouchEnd, handleTouchMove, revealViewOnce, getViewOnceType]);
+  }, [messages, filteredMessages, currentUserId, deletedEventIds, expiredEventIds, selfDestructingIds, destroyedIds, disappearingSettings, hiddenOnceIds, viewedOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, readReceiptMap, scrollToMessage, searchQuery, searchMatchIndex, unreadDividerEventId, handleMessageClick, isMobile, handleTouchStart, handleTouchEnd, handleTouchMove, revealViewOnce, getViewOnceType]);
 
   const renderWelcome = () => {
     if (messages.length > 0 || optimisticMessages.length > 0) return null;
@@ -2385,6 +2650,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
+      {/* E2EE handshake animation overlay — plays once per room per session */}
+      {!e2eeAnimDone && (
+        <EncryptionVisualizer roomId={roomId} onComplete={() => setE2eeAnimDone(true)} />
+      )}
       {/* Drag-and-drop overlay — covers message area only, smooth fade */}
       {isDragOver && (
         <div style={{
@@ -2478,6 +2747,25 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 Anonymous
               </span>
             )}
+            {roomType === 'group' && !isEditingName && (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 3,
+                fontSize: 9,
+                fontWeight: 700,
+                color: '#3fb950',
+                backgroundColor: 'rgba(63, 185, 80, 0.1)',
+                border: '1px solid rgba(63, 185, 80, 0.25)',
+                borderRadius: 4,
+                padding: '2px 6px',
+                marginLeft: 4,
+                fontFamily: '"SF Mono", "Fira Code", monospace',
+                letterSpacing: '0.05em',
+              }} title={`Mission codename: ${generateCodename(roomId)}`}>
+                MISSION: {generateCodename(roomId)}
+              </span>
+            )}
             {roomType === 'direct' && !isEditingName && (
               <span style={styles.verifiedBadge} title="Verified contact">&#10003;</span>
             )}
@@ -2527,7 +2815,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             )}
           </div>
           <div style={{ ...styles.headerSubRow, ...(isMobile ? { flexWrap: 'nowrap' as const, overflow: 'hidden', gap: 4 } : {}) }}>
-            <span style={styles.encryptionBadge} title="F.R.A.M.E. end-to-end encryption enabled">F.R.A.M.E. E2EE</span>
+            <ThreatLevelBadge level="secure" />
             {/* Password-protected badge */}
             {roomType === 'group' && (
               <span style={{
@@ -2705,6 +2993,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       <div style={{ position: 'absolute' as const, bottom: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(0deg, rgba(13,17,23,0.7) 0%, transparent 100%)', pointerEvents: 'none' as const, zIndex: 2 }} />
       <div className="frame-chat-vignette" />
 
+      {/* Self-destruct red flash overlay */}
+      {showDestructFlash && (
+        <div style={{
+          position: 'absolute' as const, inset: 0, zIndex: 50,
+          backgroundColor: 'rgba(248, 81, 73, 0.05)',
+          pointerEvents: 'none' as const,
+          animation: 'frame-destruct-flash 100ms ease-out forwards',
+        }} />
+      )}
+
       <div ref={messageListRef} style={{ ...styles.messageList, position: 'relative' as const }} onScroll={handleScroll}>
         {/* Subtle F.R.A.M.E. watermark */}
         <div style={{ position: 'fixed' as const, bottom: 80, right: 24, pointerEvents: 'none' as const, opacity: 0.05, zIndex: 0, display: 'flex', alignItems: 'center', gap: 6 }} aria-hidden="true">
@@ -2740,15 +3038,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         ))}
         {typingUsers.length > 0 && (
           <div className={isMobile ? 'frame-typing-compact' : ''} style={{ ...styles.typingIndicator, display: 'flex', ...(isMobile ? { padding: '2px 6px', minHeight: 16 } : {}) }} aria-label="Typing indicator">
-            <div style={{ ...styles.typingDot, ...(isMobile ? { width: 5, height: 5 } : {}) }} />
-            <div style={{ ...styles.typingDot, animationDelay: '0.2s', ...(isMobile ? { width: 5, height: 5 } : {}) }} />
-            <div style={{ ...styles.typingDot, animationDelay: '0.4s', ...(isMobile ? { width: 5, height: 5 } : {}) }} />
-            <span style={{ fontSize: isMobile ? 10 : 11, color: '#8b949e', marginLeft: 4 }}>
-              {isMobile
-                ? `${typingUsers.map((u) => formatDisplayName(u)).join(', ')} typing...`
-                : `${typingUsers.map((u) => formatDisplayName(u)).join(', ')} ${typingUsers.length === 1 ? 'is' : 'are'} typing...`
-              }
-            </span>
+            {typingUsers.map((u) => (
+              <CipherTypingIndicator key={u} displayName={formatDisplayName(u)} />
+            ))}
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -3143,7 +3435,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 // ── Inline styles ──
 
 const styles: Record<string, React.CSSProperties> = {
-  container: { display: 'flex', flexDirection: 'column', height: '100%', fontFamily: FONT_BODY, border: '1px solid #30363d', borderRadius: 3, overflow: 'hidden', backgroundColor: '#0d1117', position: 'relative' },
+  container: { display: 'flex', flexDirection: 'column', height: '100%', fontFamily: FONT_BODY, border: '1px solid #21262d', borderRadius: 0, overflow: 'hidden', backgroundColor: '#0d1117', position: 'relative' },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 14px', borderBottom: '1px solid #30363d', backgroundColor: '#161b22' },
   headerLeft: { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 },
   headerNameRow: { display: 'flex', alignItems: 'center', gap: 6 },
@@ -3217,7 +3509,7 @@ const styles: Record<string, React.CSSProperties> = {
   reactionPickerEmoji: { width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, backgroundColor: 'transparent', border: 'none', borderRadius: '50%', cursor: 'pointer', transition: 'background-color 0.12s, transform 0.12s', fontFamily: 'inherit' },
   readReceiptIcon: { fontSize: 12, color: 'rgba(255,255,255,0.5)', opacity: 0.9, marginLeft: 2 },
   forwardOverlay: { position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  forwardDialog: { backgroundColor: '#161b22', border: '1px solid #30363d', borderRadius: 3, width: 320, maxHeight: 420, display: 'flex', flexDirection: 'column' as const, boxShadow: '0 16px 48px rgba(0,0,0,0.5)', animation: 'frame-context-menu-in 0.15s ease-out' },
+  forwardDialog: { backgroundColor: '#161b22', border: '1px solid #30363d', borderRadius: 12, width: 320, maxHeight: 420, display: 'flex', flexDirection: 'column' as const, boxShadow: '0 16px 48px rgba(0,0,0,0.5)', animation: 'frame-context-menu-in 0.15s ease-out', overflow: 'hidden' },
   forwardTitle: { fontSize: 15, fontWeight: 600, color: '#e6edf3', padding: '16px 16px 12px', borderBottom: '1px solid #30363d' },
   forwardList: { flex: 1, overflowY: 'auto' as const, padding: '4px 0' },
   forwardRoomItem: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 16px', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' as const, transition: 'background-color 0.12s' },

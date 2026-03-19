@@ -119,6 +119,26 @@ input, textarea {
   100% { transform: translateY(100%); }
 }
 
+/* CRT glitch effect for security events */
+@keyframes frame-glitch {
+  0%, 100% { transform: translate(0); filter: none; clip-path: none; }
+  10% { transform: translate(-2px, 1px); filter: hue-rotate(90deg); }
+  20% { transform: translate(2px, -1px); filter: hue-rotate(-90deg) saturate(2); }
+  30% { transform: translate(-1px, 2px); clip-path: inset(30% 0 40% 0); }
+  40% { transform: translate(1px, -2px); clip-path: inset(60% 0 10% 0); }
+  50% { transform: translate(0); filter: none; clip-path: none; }
+}
+
+@keyframes frame-rec-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+@keyframes frame-scanline-sweep {
+  0% { top: -2px; }
+  100% { top: 100vh; }
+}
+
 /* Precision font weight for UI labels */
 button, label, [role="button"] {
   font-weight: 500;
@@ -1032,6 +1052,37 @@ body {
 /* Ensure toasts render above all overlays including dialogs */
 .frame-toast-container {
   z-index: 10001 !important;
+}
+
+/* ══════════════════════════════════════════════════
+   CIPHER TYPING INDICATOR
+   ══════════════════════════════════════════════════ */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ══════════════════════════════════════════════════
+   SELF-DESTRUCT MESSAGE ANIMATION
+   ══════════════════════════════════════════════════ */
+@keyframes frame-self-destruct {
+  0% { opacity: 1; filter: none; transform: scale(1); }
+  25% { opacity: 0.9; filter: brightness(1.3) sepia(0.3); }
+  50% { opacity: 0.5; filter: brightness(1.8) blur(2px) sepia(0.5); transform: scale(0.95); }
+  75% { opacity: 0.2; filter: brightness(2.5) blur(5px); transform: scale(0.85); }
+  100% { opacity: 0; filter: brightness(3) blur(8px); transform: scale(0.8); height: 0; padding: 0; margin: 0; }
+}
+
+@keyframes frame-destruct-flash {
+  0% { opacity: 0.05; }
+  100% { opacity: 0; }
+}
+
+@keyframes frame-destruct-text-fade {
+  0% { opacity: 0; transform: scale(0.9); }
+  20% { opacity: 1; transform: scale(1); }
+  80% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.95); }
 }
 `;
 
