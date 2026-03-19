@@ -12,6 +12,18 @@ import { redisClient } from '../redis/client';
 
 export const messagesRouter = Router();
 
+// Apply JSON body parsing at the router level. The global parser in server.ts
+// skips /messages paths so that /messages/send can use a 10 MB limit for large
+// encrypted payloads. All other message endpoints use the default 64 KB limit.
+messagesRouter.use((req, res, next) => {
+  if (req.path === '/send') {
+    // Let the route-level express.json({ limit: '10mb' }) handle /send
+    next();
+    return;
+  }
+  express.json({ limit: '64kb' })(req, res, next);
+});
+
 interface SendMessageBody {
   roomId: string;
   eventType: string;
