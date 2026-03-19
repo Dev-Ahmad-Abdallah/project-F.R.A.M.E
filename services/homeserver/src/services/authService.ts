@@ -54,7 +54,7 @@ function signAccessToken(userId: string, deviceId: string): string {
 
 async function signAndStoreRefreshToken(userId: string, deviceId: string): Promise<string> {
   const token = jwt.sign(
-    { sub: userId, deviceId, type: 'refresh' },
+    { sub: userId, deviceId, type: 'refresh', iss: config.HOMESERVER_DOMAIN },
     config.JWT_SECRET,
     { algorithm: 'HS256', expiresIn: '7d' }
   );
@@ -152,6 +152,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<{ access
   try {
     const payload = jwt.verify(refreshToken, config.JWT_SECRET, {
       algorithms: ['HS256'],
+      issuer: config.HOMESERVER_DOMAIN,
     }) as { sub: string; deviceId: string; type: string };
 
     if (payload.type !== 'refresh') {

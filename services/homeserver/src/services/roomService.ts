@@ -265,8 +265,8 @@ export async function joinRoomWithPassword(
 
   const settings = roomResult.rows[0].settings || {} as Record<string, unknown>;
 
-  // Check if room is private (invite-only) with no password provided
-  if (settings.isPrivate && !settings.passwordHash && !password) {
+  // A private room without a password is invite-only — no open join allowed
+  if (settings.isPrivate && !settings.passwordHash) {
     throw new ApiError(403, 'M_FORBIDDEN', 'This room is invite-only');
   }
 

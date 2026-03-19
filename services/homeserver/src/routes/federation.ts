@@ -7,6 +7,7 @@ import {
   handleIncomingFederationEvent,
 } from '../services/federationService';
 import { getKeyBundle } from '../db/queries/keys';
+import { findDevicesByUser } from '../db/queries/devices';
 import { getEventsSince } from '../db/queries/events';
 import { findUserById } from '../db/queries/users';
 import { getUserRooms } from '../db/queries/rooms';
@@ -87,11 +88,18 @@ federationRouter.get('/keys/:userId', apiLimiter, asyncHandler(async (req, res) 
     throw new ApiError(404, 'M_NOT_FOUND', `No key bundle found for user ${userId}`);
   }
 
+  // Look up the device's signing key (ed25519) so the remote OlmMachine
+  // can establish Olm sessions (requires both curve25519 and ed25519 keys).
+  const devices = await findDevicesByUser(userId);
+  const device = devices.find((d) => d.device_id === keyBundle.device_id);
+  const signingKey = device?.device_signing_key ?? null;
+
   // Return the public key bundle (safe for federation)
   res.status(200).json({
     userId: keyBundle.user_id,
     deviceId: keyBundle.device_id,
     identityKey: keyBundle.identity_key,
+    signingKey,
     signedPrekey: keyBundle.signed_prekey,
     signedPrekeySignature: keyBundle.signed_prekey_signature,
     oneTimePrekeys: keyBundle.one_time_prekeys,

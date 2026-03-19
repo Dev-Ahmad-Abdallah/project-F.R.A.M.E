@@ -18,6 +18,7 @@ import { federationRouter } from './routes/federation';
 import { healthRouter } from './routes/health';
 import { roomsRouter } from './routes/rooms';
 import { pushRouter } from './routes/push';
+import { stopDisappearingCleanup } from './services/messageService';
 
 const config = getConfig();
 const app = express();
@@ -41,6 +42,13 @@ app.use(helmet({
       scriptSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       connectSrc: ["'self'", ...getCorsOrigins()],
+      imgSrc: ["'self'", 'data:'],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      frameAncestors: ["'none'"],
+      upgradeInsecureRequests: [],
     },
   },
 }));
@@ -217,6 +225,9 @@ startServer().catch((err: unknown) => {
 // ── Graceful shutdown ──
 function shutdown(signal: string) {
   logger.info('Shutting down gracefully', { signal });
+
+  // Stop the disappearing-messages cleanup timer so it doesn't fire during teardown
+  stopDisappearingCleanup();
 
   server.close(() => {
     logger.info('HTTP server closed');

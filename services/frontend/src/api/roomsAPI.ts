@@ -69,6 +69,11 @@ interface ServerMember {
   displayName?: string;
 }
 
+interface ServerLastMessage {
+  content?: Record<string, unknown>;
+  timestamp?: string;
+}
+
 interface ServerRoom {
   room_id?: string;
   roomId?: string;
@@ -77,22 +82,38 @@ interface ServerRoom {
   name?: string;
   members?: ServerMember[];
   created_by?: string;
+  lastMessage?: ServerLastMessage | null;
+  last_message?: ServerLastMessage | null;
+  unreadCount?: number;
+  unread_count?: number;
 }
 
 export async function listRooms(): Promise<RoomSummary[]> {
   const data = await apiRequest<{ rooms: ServerRoom[] } | ServerRoom[]>('/rooms');
   const rawRooms = Array.isArray(data) ? data : data.rooms ?? [];
 
-  return rawRooms.map((r) => ({
-    roomId: r.roomId ?? r.room_id ?? '',
-    roomType: (r.roomType ?? r.room_type ?? 'group') as 'direct' | 'group',
-    name: r.name,
-    members: (r.members ?? []).map((m) => ({
-      userId: m.userId ?? m.user_id ?? '',
-      displayName: m.displayName ?? m.display_name,
-    })),
-    unreadCount: 0,
-  }));
+  return rawRooms.map((r) => {
+    const serverLastMsg = r.lastMessage ?? r.last_message ?? null;
+    const lastMessage = serverLastMsg
+      ? {
+          senderId: (serverLastMsg.content?.sender as string) ?? '',
+          body: (serverLastMsg.content?.body as string) ?? '',
+          timestamp: serverLastMsg.timestamp ?? '',
+        }
+      : undefined;
+
+    return {
+      roomId: r.roomId ?? r.room_id ?? '',
+      roomType: (r.roomType ?? r.room_type ?? 'group') as 'direct' | 'group',
+      name: r.name,
+      members: (r.members ?? []).map((m) => ({
+        userId: m.userId ?? m.user_id ?? '',
+        displayName: m.displayName ?? m.display_name,
+      })),
+      lastMessage,
+      unreadCount: r.unreadCount ?? r.unread_count ?? 0,
+    };
+  });
 }
 
 /**
@@ -152,9 +173,14 @@ export async function inviteToRoom(
 export async function getRoomMembers(
   roomId: string,
 ): Promise<RoomMember[]> {
-  return apiRequest<RoomMember[]>(
+  const data = await apiRequest<{ members: ServerMember[] } | ServerMember[]>(
     `/rooms/${encodeURIComponent(roomId)}/members`,
   );
+  const raw = Array.isArray(data) ? data : data.members ?? [];
+  return raw.map((m) => ({
+    userId: m.userId ?? m.user_id ?? '',
+    displayName: m.displayName ?? m.display_name,
+  }));
 }
 
 /**

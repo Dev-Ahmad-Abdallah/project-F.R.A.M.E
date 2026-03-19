@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
-import { sendMessage, deleteMessage, syncMessages, SyncEvent } from '../api/messagesAPI';
+import { sendMessage, deleteMessage, syncMessages, SyncEvent, reactToMessage, markAsRead, ReactionData } from '../api/messagesAPI';
 import { renameRoom } from '../api/roomsAPI';
 import { formatDisplayName } from '../utils/displayName';
 import {
@@ -12,6 +12,10 @@ import {
 } from '../crypto/sessionManager';
 import { FONT_BODY } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
+
+// ── Reaction Picker ──
+
+const QUICK_REACTIONS = ['\u{1F44D}', '\u{2764}\u{FE0F}', '\u{1F602}', '\u{1F62E}', '\u{1F622}', '\u{1F44F}'];
 
 // ── Helpers ──
 
@@ -160,6 +164,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   } | null>(null);
   const [showDisappearingMenu, setShowDisappearingMenu] = useState(false);
 
+  // Reaction picker state
+  const [reactionPickerEventId, setReactionPickerEventId] = useState<string | null>(null);
+  const [reactionPickerPos, setReactionPickerPos] = useState<{ x: number; y: number } | null>(null);
+  // Local reactions cache (overrides sync data after user reacts)
+  const [localReactions, setLocalReactions] = useState<Record<string, Record<string, ReactionData>>>({});
+  // Read receipts: track which event IDs have been marked as read
+  const [readEventIds, setReadEventIds] = useState<Set<string>>(new Set());
+  // Read receipt status per event: list of users who have read it
+  const [readByUsers, setReadByUsers] = useState<Record<string, string[]>>({});
+
   // "New messages" pill — shown when user has scrolled up and new messages arrive
   const [showNewMessagesPill, setShowNewMessagesPill] = useState(false);
   const isNearBottomRef = useRef(true);
@@ -210,6 +224,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const nextBatchRef = useRef<string | undefined>(undefined);
   const syncGenRef = useRef(0);
+  const syncBackoffRef = useRef(1000); // Exponential backoff for sync errors (ms)
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -281,6 +296,23 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         .frame-context-menu-item:hover {
           background-color: rgba(248, 81, 73, 0.15) !important;
         }
+        /* Show reaction button on message row hover */
+        div:hover > button[aria-label="Add reaction"] {
+          opacity: 1 !important;
+        }
+        button[aria-label="Add reaction"]:hover {
+          border-color: #58a6ff !important;
+          color: #58a6ff !important;
+        }
+        /* Reaction picker emoji hover */
+        .frame-reaction-emoji:hover {
+          background-color: rgba(88, 166, 255, 0.15) !important;
+          transform: scale(1.2) !important;
+        }
+        /* Reaction badge hover */
+        .frame-reaction-badge:hover {
+          border-color: #58a6ff !important;
+        }
       `;
       document.head.appendChild(style);
     }
@@ -323,7 +355,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     return () => clearInterval(disappearTimer);
   }, [disappearingSettings, messages, expiredEventIds]);
 
-  // View-once auto-hide
+  // View-once auto-hide + server-side deletion
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
     for (const msg of messages) {
@@ -334,12 +366,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         setViewedOnceIds((prev) => new Set(prev).add(eventId));
         const timer = setTimeout(() => {
           setHiddenOnceIds((prev) => new Set(prev).add(eventId));
+          // Remove content from React state — not just CSS hidden
           setMessages((prev) =>
             prev.map((m) =>
               m.event.eventId === eventId
                 ? { ...m, plaintext: null, decryptionError: 'View-once message already viewed' }
                 : m,
             ),
+          );
+          // Delete from server so content is purged from the database
+          deleteMessage(eventId).catch((err) =>
+            console.error('[ViewOnce] Failed to delete from server:', err),
           );
         }, 5000);
         timers.push(timer);
@@ -457,10 +494,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         }
 
         setSyncError(null);
+        syncBackoffRef.current = 1000; // Reset backoff on success
       } catch (err) {
         if (syncGenRef.current !== gen) break;
         setSyncError('Failed to sync messages');
-        await new Promise((r) => setTimeout(r, 5000));
+        // Exponential backoff: 1s → 2s → 4s → 8s → … capped at 30s
+        const delay = syncBackoffRef.current;
+        syncBackoffRef.current = Math.min(delay * 2, 30000);
+        await new Promise((r) => setTimeout(r, delay));
       }
     }
   }, [decryptEvents, roomId]);
@@ -469,6 +510,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     setMessages([]);
     setOptimisticMessages([]);
     nextBatchRef.current = undefined;
+    syncBackoffRef.current = 1000;
 
     // Increment generation to invalidate any in-flight sync loop
     const gen = ++syncGenRef.current;
@@ -477,12 +519,37 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       void syncLoop(gen);
     }, 0);
 
+    // When the tab regains visibility (e.g. after sleeping laptop,
+    // network loss, or user switching back), reset backoff and restart
+    // the sync loop so messages catch up immediately.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && syncGenRef.current === gen) {
+        syncBackoffRef.current = 1000;
+        // Restart the loop: bump generation and start a fresh loop.
+        const freshGen = ++syncGenRef.current;
+        void syncLoop(freshGen);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Also handle online/offline transitions for network loss recovery
+    const handleOnline = () => {
+      if (syncGenRef.current === gen) {
+        syncBackoffRef.current = 1000;
+        const freshGen = ++syncGenRef.current;
+        void syncLoop(freshGen);
+      }
+    };
+    window.addEventListener('online', handleOnline);
+
     // Capture ref for cleanup (React warns about stale refs in cleanup)
     const ref = syncGenRef;
     return () => {
       // Bump generation again so the loop exits on next check
       ref.current++;
       clearTimeout(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
     };
   }, [roomId, syncLoop]);
 
@@ -539,6 +606,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         memberUserIds,
       );
 
+      // Attach viewOnce flag to the outer (unencrypted) wrapper so the server
+      // can detect view-once messages for auto-cleanup without decrypting.
+      if (isViewOnce) {
+        encryptedContent.viewOnce = true;
+      }
+
       await sendMessage(roomId, 'm.room.encrypted', encryptedContent);
 
       setOptimisticMessages((prev) =>
@@ -581,14 +654,53 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`;
   };
 
-  // Close context menu and disappearing menu on click anywhere
+  // ── Reaction handlers ──
+
+  const handleShowReactionPicker = (e: React.MouseEvent, eventId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setReactionPickerEventId(eventId);
+    setReactionPickerPos({ x: rect.left, y: rect.top - 44 });
+  };
+
+  const handleReact = async (eventId: string, emoji: string) => {
+    setReactionPickerEventId(null);
+    setReactionPickerPos(null);
+    try {
+      const result = await reactToMessage(eventId, emoji);
+      setLocalReactions((prev) => ({ ...prev, [eventId]: result.reactions }));
+    } catch (err) {
+      console.error('Failed to react:', err);
+    }
+  };
+
+  // ── Read receipt: mark messages as read when they become visible ──
+
+  useEffect(() => {
+    if (messages.length === 0) return;
+    // Mark the latest non-own message as read
+    const latestOther = [...messages]
+      .reverse()
+      .find((m) => m.event.senderId !== currentUserId);
+    if (latestOther && !readEventIds.has(latestOther.event.eventId)) {
+      setReadEventIds((prev) => new Set(prev).add(latestOther.event.eventId));
+      markAsRead(latestOther.event.eventId).catch((err) =>
+        console.error('Failed to send read receipt:', err),
+      );
+    }
+  }, [messages, currentUserId, readEventIds]);
+
+  // Close context menu, disappearing menu, and reaction picker on click anywhere
   useEffect(() => {
     const handleClick = () => {
       setContextMenuEventId(null);
       setContextMenuPos(null);
       setShowDisappearingMenu(false);
+      setReactionPickerEventId(null);
+      setReactionPickerPos(null);
     };
-    if (contextMenuEventId || showDisappearingMenu) {
+    if (contextMenuEventId || showDisappearingMenu || reactionPickerEventId) {
       window.addEventListener('click', handleClick);
       return () => window.removeEventListener('click', handleClick);
     }
@@ -847,13 +959,61 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 </>
               )}
             </div>
-            {/* Timestamp — only on last message of a group */}
+            {/* Timestamp + read receipts — only on last message of a group */}
             {isLastInGroup && (
-              <div style={styles.timestamp}>
-                {formatRelativeTime(event.originServerTs)}
+              <div style={styles.timestampRow}>
+                <span style={styles.timestamp}>
+                  {formatRelativeTime(event.originServerTs)}
+                </span>
+                {isOwn && (
+                  <span style={styles.readReceiptIcon} title="Sent">
+                    {'\u2713'}
+                  </span>
+                )}
               </div>
             )}
+            {/* Reactions display */}
+            {(() => {
+              const reactions = localReactions[event.eventId] || event.reactions || {};
+              const emojiKeys = Object.keys(reactions);
+              if (emojiKeys.length === 0) return null;
+              return (
+                <div style={styles.reactionsRow}>
+                  {emojiKeys.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      style={{
+                        ...styles.reactionBadge,
+                        // eslint-disable-next-line security/detect-object-injection
+                      ...(reactions[emoji].users.includes(currentUserId)
+                          ? styles.reactionBadgeOwn
+                          : {}),
+                      }}
+                      onClick={() => void handleReact(event.eventId, emoji)}
+                      // eslint-disable-next-line security/detect-object-injection
+                      title={reactions[emoji].users.map((u: string) => formatDisplayName(u)).join(', ')}
+                    >
+                      {/* eslint-disable-next-line security/detect-object-injection */}
+                      {emoji} {reactions[emoji].count}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
+          {/* Reaction add button — appears on hover */}
+          {!isDeleted && !isExpired && (
+            <button
+              type="button"
+              style={styles.addReactionButton}
+              onClick={(e) => handleShowReactionPicker(e, event.eventId)}
+              title="Add reaction"
+              aria-label="Add reaction"
+            >
+              +
+            </button>
+          )}
         </div>
       );
 
@@ -1191,6 +1351,29 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           >
             Delete
           </button>
+        </div>
+      )}
+
+      {/* Reaction picker overlay */}
+      {reactionPickerEventId && reactionPickerPos && (
+        <div
+          style={{
+            ...styles.reactionPicker,
+            top: reactionPickerPos.y,
+            left: reactionPickerPos.x,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {QUICK_REACTIONS.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              style={styles.reactionPickerEmoji}
+              onClick={() => void handleReact(reactionPickerEventId, emoji)}
+            >
+              {emoji}
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -1693,6 +1876,87 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#3fb950',
     fontSize: 11,
     fontWeight: 600,
+  },
+
+  // ── Reactions ──
+  reactionsRow: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: 4,
+    marginTop: 4,
+  },
+  reactionBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 3,
+    padding: '2px 6px',
+    fontSize: 12,
+    borderRadius: 10,
+    border: '1px solid #30363d',
+    backgroundColor: 'rgba(33, 38, 45, 0.8)',
+    color: '#c9d1d9',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    transition: 'border-color 0.15s, background-color 0.15s',
+    lineHeight: 1.3,
+  },
+  reactionBadgeOwn: {
+    borderColor: '#58a6ff',
+    backgroundColor: 'rgba(88, 166, 255, 0.15)',
+  },
+  addReactionButton: {
+    width: 24,
+    height: 24,
+    borderRadius: '50%',
+    border: '1px solid #30363d',
+    backgroundColor: 'transparent',
+    color: '#8b949e',
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    alignSelf: 'center',
+    opacity: 0,
+    transition: 'opacity 0.15s, border-color 0.15s',
+    fontFamily: 'inherit',
+  },
+  reactionPicker: {
+    position: 'fixed' as const,
+    zIndex: 9999,
+    display: 'flex',
+    gap: 2,
+    padding: '4px 6px',
+    backgroundColor: '#1c2128',
+    border: '1px solid rgba(99, 110, 123, 0.35)',
+    borderRadius: 20,
+    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+    backdropFilter: 'blur(12px)',
+    animation: 'frame-context-menu-in 0.15s ease-out',
+  },
+  reactionPickerEmoji: {
+    width: 32,
+    height: 32,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 18,
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderRadius: '50%',
+    cursor: 'pointer',
+    transition: 'background-color 0.12s, transform 0.12s',
+    fontFamily: 'inherit',
+  },
+
+  // ── Read receipts ──
+  readReceiptIcon: {
+    fontSize: 11,
+    color: '#3fb950',
+    opacity: 0.8,
+    marginLeft: 2,
   },
 };
 

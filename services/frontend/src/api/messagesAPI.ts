@@ -17,6 +17,11 @@ export interface SendMessageResponse {
   sequenceId: number;
 }
 
+export interface ReactionData {
+  users: string[];
+  count: number;
+}
+
 export interface SyncEvent {
   eventId: string;
   roomId: string;
@@ -24,6 +29,7 @@ export interface SyncEvent {
   senderDeviceId: string;
   eventType: string;
   content: Record<string, unknown>;
+  reactions: Record<string, ReactionData>;
   originServerTs: string;
   sequenceId: number;
 }
@@ -95,4 +101,48 @@ export async function syncMessages(
   const endpoint = `/messages/sync${query ? `?${query}` : ''}`;
 
   return apiRequest<SyncResponse>(endpoint);
+}
+
+/**
+ * Add or toggle a reaction on a message.
+ */
+export async function reactToMessage(
+  eventId: string,
+  emoji: string,
+): Promise<{ eventId: string; reactions: Record<string, ReactionData> }> {
+  return apiRequest<{ eventId: string; reactions: Record<string, ReactionData> }>(
+    `/messages/${encodeURIComponent(eventId)}/react`,
+    {
+      method: 'POST',
+      body: { emoji },
+    },
+  );
+}
+
+/**
+ * Mark a message as read (send read receipt).
+ */
+export async function markAsRead(eventId: string): Promise<void> {
+  return apiRequest<void>(
+    `/messages/${encodeURIComponent(eventId)}/read`,
+    { method: 'POST' },
+  );
+}
+
+export interface ReadReceipt {
+  room_id: string;
+  user_id: string;
+  event_id: string;
+  read_at: string;
+}
+
+/**
+ * Get read receipts for a room.
+ */
+export async function getReadReceipts(
+  roomId: string,
+): Promise<{ receipts: ReadReceipt[] }> {
+  return apiRequest<{ receipts: ReadReceipt[] }>(
+    `/messages/read-receipts/${encodeURIComponent(roomId)}`,
+  );
 }

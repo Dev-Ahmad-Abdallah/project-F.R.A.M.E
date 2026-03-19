@@ -9,6 +9,8 @@
  */
 
 import React, { useEffect } from 'react';
+import DOMPurify from 'dompurify';
+import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
 
@@ -132,12 +134,12 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
             <code style={{
               ...styles.detailValue,
               ...(isMobile ? { fontSize: 13 } : {}),
-            }}>{device.deviceId}</code>
+            }}>{DOMPurify.sanitize(device.deviceId, PURIFY_CONFIG)}</code>
           </div>
           {device.deviceDisplayName && (
             <div style={styles.detailRow}>
               <span style={styles.detailLabel}>Display Name</span>
-              <span style={styles.detailValue}>{device.deviceDisplayName}</span>
+              <span style={styles.detailValue}>{DOMPurify.sanitize(device.deviceDisplayName, PURIFY_CONFIG)}</span>
             </div>
           )}
           <div style={styles.detailRow}>
@@ -146,7 +148,7 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
               ...styles.fingerprintValue,
               ...(isMobile ? { fontSize: 11, lineHeight: 1.5 } : {}),
             }}>
-              {formatFingerprint(device.fingerprint)}
+              {DOMPurify.sanitize(formatFingerprint(device.fingerprint), PURIFY_CONFIG)}
             </code>
           </div>
         </div>

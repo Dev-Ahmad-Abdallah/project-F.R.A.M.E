@@ -5,6 +5,7 @@ export interface UserRow {
   username: string;
   password_hash: string;
   homeserver: string;
+  display_name: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -46,4 +47,17 @@ export async function userExists(username: string): Promise<boolean> {
     [username]
   );
   return result.rowCount !== null && result.rowCount > 0;
+}
+
+export async function updateDisplayName(userId: string, displayName: string): Promise<UserRow> {
+  const result = await pool.query<UserRow>(
+    `UPDATE users SET display_name = $2, updated_at = NOW()
+     WHERE user_id = $1
+     RETURNING *`,
+    [userId, displayName]
+  );
+  if (result.rows.length === 0) {
+    throw new Error('User not found');
+  }
+  return result.rows[0];
 }

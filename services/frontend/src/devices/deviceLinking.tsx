@@ -10,6 +10,8 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import DOMPurify from 'dompurify';
+import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { generateFingerprint } from '../crypto/cryptoUtils';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -267,7 +269,7 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
 
       {/* Verification error */}
       {verificationError && (
-        <p style={{ margin: 0, fontSize: 13, color: '#f85149' }}>{verificationError}</p>
+        <p style={{ margin: 0, fontSize: 13, color: '#f85149' }}>{DOMPurify.sanitize(verificationError, PURIFY_CONFIG)}</p>
       )}
 
       {/* Actions */}

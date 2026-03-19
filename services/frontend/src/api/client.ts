@@ -105,7 +105,16 @@ async function checkSessionTimeout(): Promise<void> {
   if (sessionTimeoutMs === Infinity) return;
   if (accessToken && Date.now() - lastActivityTimestamp > sessionTimeoutMs) {
     // Revoke server-side session before clearing local tokens
-    try { await fetch(getBaseUrl() + '/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + accessToken } }); } catch { /* logout best-effort */ }
+    const logoutToken = accessToken; // Capture before clearing
+    try {
+      await fetch(getBaseUrl() + '/auth/logout', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${logoutToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+    } catch { /* logout best-effort */ }
     clearTokens();
     throw new FrameApiError(401, {
       error: { code: 'M_SESSION_EXPIRED', message: 'Session timed out due to inactivity' },

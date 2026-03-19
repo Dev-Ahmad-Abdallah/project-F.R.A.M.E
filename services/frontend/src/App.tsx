@@ -36,6 +36,8 @@ import type { KeyChangeAction } from './verification/keyChangeAlert';
 import { getAccessToken } from './api/client';
 import { logout as apiLogout } from './api/authAPI';
 import { formatDisplayName } from './utils/displayName';
+import DOMPurify from 'dompurify';
+import { PURIFY_CONFIG } from './utils/purifyConfig';
 import { listRooms, leaveRoom } from './api/roomsAPI';
 import { getKnownDevices, verifyDevice } from './devices/deviceManager';
 import type { RoomSummary } from './api/roomsAPI';
@@ -46,6 +48,7 @@ import { registerServiceWorker } from './notifications';
 import { initStorage } from './storage/secureStorage';
 import { useNotifications } from './hooks/useNotifications';
 import SessionSettings from './components/SessionSettings';
+import ProfileSettings from './components/ProfileSettings';
 import { useSessionTimeout, getAutoLock } from './hooks/useSessionTimeout';
 
 // ── Types ──
@@ -416,7 +419,7 @@ function App() {
           </svg>
           <h2 style={styles.lockTitle}>Session Locked</h2>
           <p style={styles.lockSubtitle}>Enter your user ID to unlock</p>
-          {lockError && <div style={styles.lockErrorBanner}>{lockError}</div>}
+          {lockError && <div style={styles.lockErrorBanner}>{DOMPurify.sanitize(lockError, PURIFY_CONFIG)}</div>}
           <input
             type="password"
             style={styles.lockInput}
@@ -506,6 +509,8 @@ function App() {
       case 'settings':
         return (
           <div style={styles.settingsContainer}>
+            <ProfileSettings userId={auth.userId} />
+            <div style={{ borderTop: '1px solid #30363d', width: '100%', maxWidth: 440, margin: '8px 0 20px' }} />
             <SessionSettings />
             <div style={{ borderTop: '1px solid #30363d', width: '100%', maxWidth: 440, margin: '8px 0 20px' }} />
             <DeviceList
@@ -668,12 +673,12 @@ function App() {
               }} />
             </div>
             <div style={styles.userDetails}>
-              <span style={styles.userName}>{formatDisplayName(auth.userId)}</span>
+              <span style={styles.userName}>{DOMPurify.sanitize(formatDisplayName(auth.userId), PURIFY_CONFIG)}</span>
               <span style={styles.userStatus}>
                 {connectionLost ? 'Reconnecting...' : 'Online'}
               </span>
               <span style={styles.userDevice}>
-                Device: {auth.deviceId.slice(0, 8)}...
+                Device: {DOMPurify.sanitize(auth.deviceId.slice(0, 8), PURIFY_CONFIG)}...
               </span>
             </div>
             {unreadCount > 0 && (
@@ -685,13 +690,13 @@ function App() {
 
           {/* Init error */}
           {initError && (
-            <div style={styles.initError}>{initError}</div>
+            <div style={styles.initError}>{DOMPurify.sanitize(initError, PURIFY_CONFIG)}</div>
           )}
 
           {/* Room fetch error (Fix 2) */}
           {roomFetchError && (
             <div style={styles.roomFetchError}>
-              <span>{roomFetchError}</span>
+              <span>{DOMPurify.sanitize(roomFetchError, PURIFY_CONFIG)}</span>
               <button
                 type="button"
                 style={styles.roomRetryButton}

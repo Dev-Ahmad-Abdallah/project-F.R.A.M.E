@@ -1,6 +1,9 @@
 import { getKeyBundle, claimOneTimePrekey, addOneTimePrekeys, getOtkCount, deleteKeyBundle } from '../db/queries/keys';
 import { pool } from '../db/pool';
 import { ApiError } from '../middleware/errorHandler';
+import { getConfig } from '../config';
+import { discoverPeer, isPeerTrusted } from './federationService';
+import { logger } from '../logger';
 import crypto from 'crypto';
 
 export async function fetchKeyBundle(userId: string) {
@@ -57,7 +60,7 @@ export async function uploadPrekeys(
 
 export async function getKeyCount(userId: string, deviceId: string) {
   const count = await getOtkCount(userId, deviceId);
-  return { oneTimeKeyCount: count };
+  return { count, oneTimeKeyCount: count };
 }
 
 interface DeviceKeyRow {
@@ -71,10 +74,32 @@ interface DeviceKeyRow {
 }
 
 // Query device keys for multiple users (required by vodozemac KeysQueryRequest)
-// Single batch query instead of N+1 per user/device
+// Single batch query instead of N+1 per user/device.
+// For remote users (on federated servers), proxies the key query to the
+// remote server's /federation/keys/:userId endpoint so that the OlmMachine
+// can establish Olm sessions across server boundaries.
 export async function queryDeviceKeys(userIds: string[]) {
   if (userIds.length === 0) return { device_keys: {} };
 
+  const config = getConfig();
+
+  // Partition user IDs into local and remote
+  const localUserIds: string[] = [];
+  const remoteUsersByDomain = new Map<string, string[]>();
+
+  for (const userId of userIds) {
+    const colonIdx = userId.indexOf(':');
+    const domain = colonIdx !== -1 ? userId.slice(colonIdx + 1) : config.HOMESERVER_DOMAIN;
+    if (domain === config.HOMESERVER_DOMAIN) {
+      localUserIds.push(userId);
+    } else {
+      const existing = remoteUsersByDomain.get(domain) ?? [];
+      existing.push(userId);
+      remoteUsersByDomain.set(domain, existing);
+    }
+  }
+
+  // Query local device keys
   const result = await pool.query<DeviceKeyRow>(
     `SELECT d.user_id, d.device_id, d.device_signing_key, d.device_keys_json,
             kb.identity_key, kb.signed_prekey, kb.signed_prekey_signature
@@ -83,7 +108,7 @@ export async function queryDeviceKeys(userIds: string[]) {
      WHERE d.user_id = ANY($1::text[])
        AND d.device_public_key != 'pending'
        AND d.device_signing_key != 'pending'`,
-    [userIds]
+    [localUserIds]
   );
 
   // SERVER-ENFORCED KEY TRANSPARENCY: Only serve device keys that have a
@@ -99,7 +124,7 @@ export async function queryDeviceKeys(userIds: string[]) {
     const logResult = await pool.query<{ key_hash: string }>(
       `SELECT DISTINCT key_hash FROM key_transparency_log
        WHERE user_id = ANY($1::text[])`,
-      [userIds],
+      [localUserIds],
     );
     for (const logRow of logResult.rows) {
       transparentKeys.add(logRow.key_hash);
@@ -144,6 +169,89 @@ export async function queryDeviceKeys(userIds: string[]) {
     }
   }
 
+  // Federate key queries for remote users: proxy to their homeserver's
+  // /federation/keys/:userId endpoint. This is essential for cross-server
+  // E2EE — without it, the OlmMachine cannot discover remote devices and
+  // establish Olm sessions for Megolm key sharing.
+  for (const [domain, remoteUsers] of remoteUsersByDomain) {
+    if (!isPeerTrusted(domain)) {
+      logger.warn('Skipping key query for untrusted domain', { domain });
+      for (const userId of remoteUsers) {
+        if (!deviceKeys.has(userId)) deviceKeys.set(userId, new Map<string, unknown>());
+      }
+      continue;
+    }
+
+    // Discover the remote server
+    let discovery;
+    try {
+      discovery = await discoverPeer(domain);
+    } catch (err) {
+      logger.error('Federation key query discovery failed', { domain, error: String(err) });
+    }
+
+    if (!discovery) {
+      for (const userId of remoteUsers) {
+        if (!deviceKeys.has(userId)) deviceKeys.set(userId, new Map<string, unknown>());
+      }
+      continue;
+    }
+
+    const { host, port } = discovery['frame.server'];
+    const baseUrl = port === 443 ? `https://${host}` : `https://${host}:${String(port)}`;
+
+    for (const userId of remoteUsers) {
+      try {
+        const url = `${baseUrl}/federation/keys/${encodeURIComponent(userId)}`;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(10_000),
+        });
+
+        if (!response.ok) {
+          logger.warn('Federation key query failed', { userId, domain, httpStatus: response.status });
+          if (!deviceKeys.has(userId)) deviceKeys.set(userId, new Map<string, unknown>());
+          continue;
+        }
+
+        const keyBundle = await response.json() as {
+          userId: string;
+          deviceId: string;
+          identityKey: string;
+          signingKey?: string;
+          signedPrekey: string;
+          signedPrekeySignature: string;
+          oneTimePrekeys: string[];
+        };
+
+        // Build device_keys object from the remote key bundle.
+        // Both curve25519 and ed25519 keys are required for the OlmMachine
+        // to establish Olm sessions with remote devices.
+        if (keyBundle.deviceId && keyBundle.identityKey && keyBundle.signingKey) {
+          if (!deviceKeys.has(userId)) deviceKeys.set(userId, new Map<string, unknown>());
+          const userDevices = deviceKeys.get(userId);
+          const curveKey = `curve25519:${keyBundle.deviceId}`;
+          const edKey = `ed25519:${keyBundle.deviceId}`;
+          userDevices?.set(keyBundle.deviceId, {
+            user_id: userId,
+            device_id: keyBundle.deviceId,
+            algorithms: ['m.olm.v1.curve25519-aes-sha2', 'm.megolm.v1.aes-sha2'],
+            keys: {
+              [curveKey]: keyBundle.identityKey,
+              [edKey]: keyBundle.signingKey,
+            },
+          });
+        } else {
+          if (!deviceKeys.has(userId)) deviceKeys.set(userId, new Map<string, unknown>());
+        }
+      } catch (err) {
+        logger.error('Federation key query error', { userId, domain, error: String(err) });
+        if (!deviceKeys.has(userId)) deviceKeys.set(userId, new Map<string, unknown>());
+      }
+    }
+  }
+
   // Ensure all requested users have an entry (even if empty)
   for (const userId of userIds) {
     if (!deviceKeys.has(userId)) {
@@ -179,15 +287,28 @@ export async function claimKeys(
     for (const [deviceId] of Object.entries(devices)) {
       const claimed = await claimOneTimePrekey(userId, deviceId);
       if (claimed) {
-        // OTKs may be stored as JSON strings — parse if needed
+        // OTKs are stored as JSON objects preserving the original key name,
+        // e.g. { "signed_curve25519:AAAAAQ": { key: "...", signatures: {...} } }
         let parsedOtk: unknown = claimed;
         if (typeof claimed === 'string') {
           try { parsedOtk = JSON.parse(claimed) as unknown; } catch { /* use as-is */ }
         }
-        const keyName = `signed_curve25519:${deviceId}`;
-        claimedKeys.get(userId)?.set(deviceId, {
-          [keyName]: parsedOtk,
-        });
+        // If the parsed OTK already has the correct key name wrapper
+        // (from the storage format), use it directly. Otherwise fall
+        // back to a generated key name for legacy OTKs.
+        if (typeof parsedOtk === 'object' && parsedOtk !== null && !Array.isArray(parsedOtk)) {
+          const otkObj = parsedOtk as Record<string, unknown>;
+          const otkKeys = Object.keys(otkObj);
+          if (otkKeys.length === 1 && otkKeys[0].startsWith('signed_curve25519:')) {
+            claimedKeys.get(userId)?.set(deviceId, otkObj);
+          } else {
+            const keyName = `signed_curve25519:${deviceId}`;
+            claimedKeys.get(userId)?.set(deviceId, { [keyName]: parsedOtk });
+          }
+        } else {
+          const keyName = `signed_curve25519:${deviceId}`;
+          claimedKeys.get(userId)?.set(deviceId, { [keyName]: parsedOtk });
+        }
 
         // Check remaining OTK count after claiming
         const remaining = await getOtkCount(userId, deviceId);

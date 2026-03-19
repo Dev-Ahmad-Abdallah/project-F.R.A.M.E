@@ -12,6 +12,8 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import DOMPurify from 'dompurify';
+import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { QRCodeSVG } from 'qrcode.react';
 import { generateFingerprint } from '../crypto/cryptoUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -363,7 +365,7 @@ const FingerprintUI: React.FC<FingerprintUIProps> = ({
       ...(isMobile ? { maxWidth: '100%', padding: 16 } : {}),
     }}>
       <h3 style={styles.title}>Verify Security</h3>
-      <p style={styles.subtitle}>{userId}</p>
+      <p style={styles.subtitle}>{DOMPurify.sanitize(userId, PURIFY_CONFIG)}</p>
 
       {/* Verified / Unverified badge */}
       <div

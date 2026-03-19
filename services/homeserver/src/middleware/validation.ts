@@ -112,7 +112,7 @@ export const keysClaimSchema = z.object({
 });
 
 export const roomRenameSchema = z.object({
-  name: z.string().min(1).max(64),
+  name: z.string().min(1).max(128),
 });
 
 export const roomSettingsSchema = z.object({
@@ -130,4 +130,16 @@ export const joinWithPasswordSchema = z.object({
 
 export const roomInviteSchema = z.object({
   userId: z.string().min(1),
+});
+
+export const reactSchema = z.object({
+  emoji: z.string().min(1).max(8),
+});
+
+export const readReceiptSchema = z.object({
+  eventId: z.string().min(1),
+});
+
+export const profileUpdateSchema = z.object({
+  displayName: z.string().min(1).max(64),
 });

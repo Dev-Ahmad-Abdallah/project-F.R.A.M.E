@@ -243,7 +243,7 @@ describe('refreshAccessToken', () => {
   it('rotates tokens when refresh token is valid', async () => {
     // Create a real refresh token
     const refreshToken = jwt.sign(
-      { sub: '@alice:test.frame.local', deviceId: 'DEV1', type: 'refresh' },
+      { sub: '@alice:test.frame.local', deviceId: 'DEV1', type: 'refresh', iss: 'test.frame.local' },
       JWT_SECRET,
       { algorithm: 'HS256', expiresIn: '7d' },
     );
@@ -360,7 +360,7 @@ describe('revokeAllTokens', () => {
 describe('refresh token rotation', () => {
   it('deletes old token and creates new one during rotation', async () => {
     const refreshToken = jwt.sign(
-      { sub: '@alice:test.frame.local', deviceId: 'DEV1', type: 'refresh' },
+      { sub: '@alice:test.frame.local', deviceId: 'DEV1', type: 'refresh', iss: 'test.frame.local' },
       JWT_SECRET,
       { algorithm: 'HS256', expiresIn: '7d' },
     );
@@ -391,7 +391,7 @@ describe('refresh token rotation', () => {
 
   it('new access token preserves user and device from original', async () => {
     const refreshToken = jwt.sign(
-      { sub: '@bob:test.frame.local', deviceId: 'MYDEV42', type: 'refresh' },
+      { sub: '@bob:test.frame.local', deviceId: 'MYDEV42', type: 'refresh', iss: 'test.frame.local' },
       JWT_SECRET,
       { algorithm: 'HS256', expiresIn: '7d' },
     );

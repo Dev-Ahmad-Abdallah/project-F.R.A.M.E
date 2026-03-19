@@ -91,15 +91,22 @@ export function useSessionTimeout(
       lastActivityRef.current = Date.now();
     };
 
-    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
+    const events = ['mousemove', 'mousedown', 'click', 'keydown', 'touchstart', 'scroll', 'pointerdown'];
     for (const evt of events) {
       window.addEventListener(evt, handleActivity, { passive: true });
     }
+
+    // Also reset on tab becoming visible (user returning to the app)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') handleActivity();
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       for (const evt of events) {
         window.removeEventListener(evt, handleActivity);
       }
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []);
 

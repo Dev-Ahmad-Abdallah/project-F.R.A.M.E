@@ -109,16 +109,21 @@ keysRouter.post(
         await updateDeviceKeysJson(deviceId, dk);
         // Ensure a key_bundle row exists for this device
         await upsertKeyBundle(userId, deviceId, curve25519Key, '', '', []);
-        // Log identity key to transparency Merkle tree
-        await addKeyToLog(userId, ed25519Key);
+        // Log identity key to transparency Merkle tree.
+        // Must use curve25519Key (the identity_key stored in key_bundles) to match
+        // the server-side verification in queryDeviceKeys() which hashes identity_key,
+        // and the client-side verification which hashes bundle.identityKey (curve25519).
+        await addKeyToLog(userId, curve25519Key);
       }
     }
 
     // Process OlmMachine-format one_time_keys (signed objects keyed by algorithm:id)
+    // Store each OTK as a JSON object preserving the key name (e.g. "signed_curve25519:AAAAAQ")
+    // so claimKeys can return the correct key name in the response.
     if (body.one_time_keys && typeof body.one_time_keys === 'object') {
       const otkEntries = Object.entries(body.one_time_keys);
       if (otkEntries.length > 0) {
-        const otkValues = otkEntries.map(([, v]) => JSON.stringify(v));
+        const otkValues = otkEntries.map(([keyName, v]) => JSON.stringify({ [keyName]: v }));
         await addOneTimePrekeys(userId, deviceId, otkValues);
       }
     }

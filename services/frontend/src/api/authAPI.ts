@@ -85,3 +85,29 @@ export async function logout(): Promise<void> {
   }
   clearTokens();
 }
+
+export interface ProfileResponse {
+  userId: string;
+  username: string;
+  displayName: string | null;
+  homeserver: string;
+}
+
+/**
+ * Get the current user's profile.
+ */
+export async function getProfile(): Promise<ProfileResponse> {
+  return apiRequest<ProfileResponse>('/auth/profile');
+}
+
+/**
+ * Update the current user's display name.
+ */
+export async function updateProfile(
+  displayName: string,
+): Promise<{ userId: string; displayName: string }> {
+  return apiRequest<{ userId: string; displayName: string }>('/auth/profile', {
+    method: 'PUT',
+    body: { displayName },
+  });
+}

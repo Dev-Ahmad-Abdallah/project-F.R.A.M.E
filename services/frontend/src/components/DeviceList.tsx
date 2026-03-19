@@ -10,6 +10,8 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import DOMPurify from 'dompurify';
+import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import VerificationBadge from './VerificationBadge';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -173,7 +175,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
     }}>
       <h2 style={styles.heading}>Linked Devices</h2>
 
-      {error && <div style={styles.errorBanner}>{error}</div>}
+      {error && <div style={styles.errorBanner}>{DOMPurify.sanitize(error, PURIFY_CONFIG)}</div>}
 
       {devices.length === 0 ? (
         <p style={styles.emptyText}>No devices found.</p>
@@ -206,7 +208,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
                   }}>
                     <VerificationBadge verified={device.verified} size="small" />
                     <span style={styles.deviceName}>
-                      {device.deviceDisplayName || 'Unnamed Device'}
+                      {DOMPurify.sanitize(device.deviceDisplayName || 'Unnamed Device', PURIFY_CONFIG)}
                     </span>
                     {isCurrent && (
                       <span style={styles.currentBadge}>This device</span>
@@ -217,7 +219,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
                     ...(isMobile ? { flexDirection: 'column' as const, gap: 2 } : {}),
                   }}>
                     <span style={styles.deviceId}>
-                      ID: {device.deviceId.slice(0, 12)}...
+                      ID: {DOMPurify.sanitize(device.deviceId.slice(0, 12), PURIFY_CONFIG)}...
                     </span>
                     <span style={styles.lastSeen}>
                       Last seen: {formatLastSeen(device.lastSeen)}
@@ -225,7 +227,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
                   </div>
                   {device.fingerprint && (
                     <div style={styles.deviceKey}>
-                      Key: {device.fingerprint.slice(0, 20)}...
+                      Key: {DOMPurify.sanitize(device.fingerprint.slice(0, 20), PURIFY_CONFIG)}...
                     </div>
                   )}
                 </div>
@@ -260,7 +262,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
         <div style={styles.confirmOverlay}>
           <div style={styles.confirmDialog}>
             <p style={styles.confirmText}>
-              Remove device <strong>{confirmRemoveId.slice(0, 12)}...</strong>? This will revoke its access.
+              Remove device <strong>{DOMPurify.sanitize(confirmRemoveId.slice(0, 12), PURIFY_CONFIG)}...</strong>? This will revoke its access.
             </p>
             <div style={styles.confirmActions}>
               <button

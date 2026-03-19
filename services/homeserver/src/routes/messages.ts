@@ -2,8 +2,11 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { messageLimiter, apiLimiter } from '../middleware/rateLimit';
 import { asyncHandler, ApiError } from '../middleware/errorHandler';
-import { validateBody, validateQuery, sendMessageSchema, syncQuerySchema } from '../middleware/validation';
+import { validateBody, validateQuery, sendMessageSchema, syncQuerySchema, reactSchema } from '../middleware/validation';
 import { sendMessage, deleteMessage, syncMessages, acknowledgeToDeviceMessages } from '../services/messageService';
+import { addReaction, upsertReadReceipt, getReadReceipts } from '../db/queries/events';
+import { isRoomMember } from '../db/queries/rooms';
+import { pool } from '../db/pool';
 
 export const messagesRouter = Router();
 
@@ -97,5 +100,84 @@ messagesRouter.get(
     );
 
     res.json(result);
+  })
+);
+
+// POST /messages/:eventId/react — Add or toggle a reaction on a message
+messagesRouter.post(
+  '/:eventId/react',
+  requireAuth,
+  apiLimiter,
+  validateBody(reactSchema),
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const { eventId } = req.params;
+    const { emoji } = req.body as { emoji: string };
+
+    // Verify the event exists and user is a member of its room
+    const eventResult = await pool.query<{ room_id: string }>(
+      'SELECT room_id FROM events WHERE event_id = $1',
+      [eventId]
+    );
+    if (eventResult.rows.length === 0) {
+      throw new ApiError(404, 'M_NOT_FOUND', 'Event not found');
+    }
+    const roomId = eventResult.rows[0].room_id;
+    if (!(await isRoomMember(roomId, req.auth.sub))) {
+      throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
+    }
+
+    const reactions = await addReaction(eventId, req.auth.sub, emoji);
+    res.json({ eventId, reactions });
+  })
+);
+
+// POST /messages/:eventId/read — Mark a message as read (read receipt)
+messagesRouter.post(
+  '/:eventId/read',
+  requireAuth,
+  apiLimiter,
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const { eventId } = req.params;
+
+    // Verify the event exists and user is a member of its room
+    const eventResult = await pool.query<{ room_id: string }>(
+      'SELECT room_id FROM events WHERE event_id = $1',
+      [eventId]
+    );
+    if (eventResult.rows.length === 0) {
+      throw new ApiError(404, 'M_NOT_FOUND', 'Event not found');
+    }
+    const roomId = eventResult.rows[0].room_id;
+    if (!(await isRoomMember(roomId, req.auth.sub))) {
+      throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
+    }
+
+    await upsertReadReceipt(roomId, req.auth.sub, eventId);
+    res.json({ success: true });
+  })
+);
+
+// GET /messages/read-receipts/:roomId — Get read receipts for a room
+messagesRouter.get(
+  '/read-receipts/:roomId',
+  requireAuth,
+  apiLimiter,
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const { roomId } = req.params;
+    if (!(await isRoomMember(roomId, req.auth.sub))) {
+      throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
+    }
+
+    const receipts = await getReadReceipts(roomId);
+    res.json({ receipts });
   })
 );

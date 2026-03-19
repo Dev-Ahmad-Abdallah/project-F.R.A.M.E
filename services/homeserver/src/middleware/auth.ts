@@ -42,8 +42,12 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
     req.auth = payload;
     next();
   } catch (err) {
+    if (err instanceof ApiError) throw err;
     if (err instanceof jwt.TokenExpiredError) {
-      throw new ApiError(401, 'M_INVALID_TOKEN', 'Token expired');
+      throw new ApiError(401, 'M_TOKEN_EXPIRED', 'Token expired');
+    }
+    if (err instanceof jwt.JsonWebTokenError) {
+      throw new ApiError(401, 'M_INVALID_TOKEN', 'Invalid token');
     }
     throw new ApiError(401, 'M_INVALID_TOKEN', 'Invalid token');
   }

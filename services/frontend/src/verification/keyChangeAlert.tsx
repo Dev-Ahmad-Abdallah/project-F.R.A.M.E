@@ -18,6 +18,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import DOMPurify from 'dompurify';
+import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { generateFingerprint } from '../crypto/cryptoUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 
@@ -382,7 +384,7 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
           </svg>
         </div>
         <h2 id="key-change-title" style={styles.title}>Security Alert</h2>
-        <p style={styles.subtitle}>{userId}</p>
+        <p style={styles.subtitle}>{DOMPurify.sanitize(userId, PURIFY_CONFIG)}</p>
 
         <p id="key-change-desc" style={styles.description}>
           The identity key for this contact has changed. This could mean

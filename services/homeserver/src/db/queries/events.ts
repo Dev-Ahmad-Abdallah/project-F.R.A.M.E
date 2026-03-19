@@ -8,6 +8,7 @@ export interface EventRow {
   event_type: string;
   ciphertext: Buffer | null;
   content: Record<string, unknown> | null;
+  reactions: Record<string, { users: string[]; count: number }> | null;
   sequence_id: number;
   origin_server: string | null;
   origin_ts: Date;
@@ -117,4 +118,103 @@ export async function softDeleteEvent(eventId: string, senderId: string): Promis
     [eventId, senderId]
   );
   return result.rowCount !== null && result.rowCount > 0;
+}
+
+/**
+ * Add or remove a reaction on an event.
+ * Uses JSONB operations to atomically update the reactions column.
+ */
+export async function addReaction(
+  eventId: string,
+  userId: string,
+  emoji: string
+): Promise<Record<string, { users: string[]; count: number }>> {
+  // Fetch current reactions
+  const current = await pool.query<{ reactions: Record<string, { users: string[]; count: number }> }>(
+    'SELECT COALESCE(reactions, \'{}\'::jsonb) as reactions FROM events WHERE event_id = $1',
+    [eventId]
+  );
+  if (current.rows.length === 0) {
+    throw new Error('Event not found');
+  }
+
+  const reactions = current.rows[0].reactions || {};
+  const entry = reactions[emoji] || { users: [], count: 0 };
+
+  if (entry.users.includes(userId)) {
+    // Remove reaction (toggle off)
+    entry.users = entry.users.filter((u: string) => u !== userId);
+    entry.count = entry.users.length;
+    if (entry.count === 0) {
+      delete reactions[emoji];
+    } else {
+      reactions[emoji] = entry;
+    }
+  } else {
+    // Add reaction
+    entry.users.push(userId);
+    entry.count = entry.users.length;
+    reactions[emoji] = entry;
+  }
+
+  const result = await pool.query<{ reactions: Record<string, { users: string[]; count: number }> }>(
+    `UPDATE events SET reactions = $2::jsonb WHERE event_id = $1 RETURNING reactions`,
+    [eventId, JSON.stringify(reactions)]
+  );
+  return result.rows[0].reactions;
+}
+
+/**
+ * Record a read receipt for a user in a room.
+ * Uses UPSERT to track the latest read event per user per room.
+ */
+export async function upsertReadReceipt(
+  roomId: string,
+  userId: string,
+  eventId: string
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO read_receipts (room_id, user_id, event_id, read_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (room_id, user_id)
+     DO UPDATE SET event_id = EXCLUDED.event_id, read_at = NOW()`,
+    [roomId, userId, eventId]
+  );
+}
+
+export interface ReadReceiptRow {
+  room_id: string;
+  user_id: string;
+  event_id: string;
+  read_at: Date;
+}
+
+/**
+ * Get all read receipts for a room (who has read up to which event).
+ */
+export async function getReadReceipts(roomId: string): Promise<ReadReceiptRow[]> {
+  const result = await pool.query<ReadReceiptRow>(
+    'SELECT * FROM read_receipts WHERE room_id = $1',
+    [roomId]
+  );
+  return result.rows;
+}
+
+/**
+ * Get read receipt counts for specific events — how many users have read past each event.
+ */
+export async function getReadReceiptsByEventIds(
+  eventIds: string[]
+): Promise<Record<string, string[]>> {
+  if (eventIds.length === 0) return {};
+  const result = await pool.query<{ event_id: string; user_id: string }>(
+    `SELECT event_id, user_id FROM read_receipts WHERE event_id = ANY($1::text[])`,
+    [eventIds]
+  );
+  const map: Record<string, string[]> = {};
+  for (const row of result.rows) {
+    if (!map[row.event_id]) map[row.event_id] = [];
+    map[row.event_id].push(row.user_id);
+  }
+  return map;
 }

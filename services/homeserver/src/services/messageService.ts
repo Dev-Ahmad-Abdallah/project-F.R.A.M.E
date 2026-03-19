@@ -44,11 +44,16 @@ export async function cleanupExpiredMessages(): Promise<number> {
 }
 
 // Run cleanup every 30 seconds
-setInterval(() => {
+const disappearingCleanupTimer = setInterval(() => {
   cleanupExpiredMessages().catch((err: unknown) =>
     console.error('[Disappearing] Cleanup error:', err),
   );
 }, 30_000);
+
+/** Stop the disappearing-messages cleanup interval (call on shutdown). */
+export function stopDisappearingCleanup(): void {
+  clearInterval(disappearingCleanupTimer);
+}
 
 export async function sendMessage(params: SendMessageParams) {
   const { roomId, senderId, senderDeviceId, eventType, content } = params;
@@ -135,14 +140,16 @@ export async function sendMessage(params: SendMessageParams) {
 }
 
 /**
- * Soft-delete a message. Only the original sender may delete their own message.
- * The row is not removed; instead a deleted_at timestamp is set and the content
- * is replaced with a tombstone so the ciphertext is no longer available.
+ * Soft-delete a message. The original sender may delete their own message.
+ * For view-once messages, the recipient (any room member) may also trigger
+ * deletion after viewing. The row is not removed; instead a deleted_at
+ * timestamp is set and the content is replaced with a tombstone so the
+ * ciphertext is no longer available.
  */
 export async function deleteMessage(eventId: string, userId: string): Promise<void> {
-  // Verify the event exists and the user is the sender
-  const result = await pool.query<{ sender_id: string }>(
-    'SELECT sender_id FROM events WHERE event_id = $1',
+  // Verify the event exists
+  const result = await pool.query<{ sender_id: string; content: Record<string, unknown>; room_id: string }>(
+    'SELECT sender_id, content, room_id FROM events WHERE event_id = $1',
     [eventId],
   );
 
@@ -150,17 +157,32 @@ export async function deleteMessage(eventId: string, userId: string): Promise<vo
     throw new ApiError(404, 'M_NOT_FOUND', 'Message not found');
   }
 
-  if (result.rows[0].sender_id !== userId) {
-    throw new ApiError(403, 'M_FORBIDDEN', 'You can only delete your own messages');
+  const event = result.rows[0];
+
+  // Check if this is a view-once message (the encrypted wrapper stores viewOnce flag)
+  const isViewOnce = event.content &&
+    (event.content as Record<string, unknown>).viewOnce === true;
+
+  if (event.sender_id !== userId) {
+    if (isViewOnce) {
+      // For view-once messages, any room member may trigger deletion after viewing
+      if (!(await isRoomMember(event.room_id, userId))) {
+        throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
+      }
+    } else {
+      throw new ApiError(403, 'M_FORBIDDEN', 'You can only delete your own messages');
+    }
   }
 
-  // Soft-delete: set deleted_at and clear content
+  const reason = isViewOnce ? 'view-once' : 'deleted';
+
+  // Soft-delete: set deleted_at and clear content with reason
   await pool.query(
     `UPDATE events
-     SET content = '{"deleted": true}'::jsonb,
+     SET content = $2::jsonb,
          deleted_at = NOW()
-     WHERE event_id = $1`,
-    [eventId],
+     WHERE event_id = $1 AND deleted_at IS NULL`,
+    [eventId, JSON.stringify({ deleted: true, reason })],
   );
 }
 
@@ -254,6 +276,23 @@ export async function syncMessages(
        WHERE event_id = ANY($1::text[]) AND device_id = $2`,
       [eventIds, deviceId]
     );
+
+    // Server-side view-once cleanup: auto-delete view-once messages once delivered.
+    // This ensures that even if the client fails to call DELETE, the server
+    // removes the content so no future sync can retrieve it.
+    const viewOnceEvents = events.filter(
+      (e) => e.content && (e.content as Record<string, unknown>).viewOnce === true
+    );
+    if (viewOnceEvents.length > 0) {
+      const viewOnceIds = viewOnceEvents.map((e) => e.event_id);
+      await pool.query(
+        `UPDATE events
+         SET content = '{"deleted": true, "reason": "view-once"}'::jsonb,
+             deleted_at = NOW()
+         WHERE event_id = ANY($1::text[]) AND deleted_at IS NULL`,
+        [viewOnceIds]
+      );
+    }
   }
 
   // Delete claimed to-device messages now that the response is fully built
@@ -274,6 +313,7 @@ export async function syncMessages(
       senderDeviceId: e.sender_device_id,
       eventType: e.event_type,
       content: e.content,
+      reactions: e.reactions || {},
       originServerTs: e.origin_ts,
       sequenceId: e.sequence_id,
     })),
@@ -303,16 +343,22 @@ async function waitForEvents(
       redisSubscriber.unsubscribe(channel).catch(() => { /* ignore */ });
     };
 
+    const fetchAndResolve = () => {
+      getEventsByUser(userId, since, limit)
+        .then(resolve)
+        .catch(() => resolve([]));
+    };
+
     const timer = setTimeout(() => {
       cleanup();
-      void getEventsByUser(userId, since, limit).then(resolve);
+      fetchAndResolve();
     }, timeout);
 
     const onMessage = (ch: string, _msg: string) => {
       if (ch !== channel) return;
       clearTimeout(timer);
       cleanup();
-      void getEventsByUser(userId, since, limit).then(resolve);
+      fetchAndResolve();
     };
 
     // Use dedicated subscriber client (never the command client)

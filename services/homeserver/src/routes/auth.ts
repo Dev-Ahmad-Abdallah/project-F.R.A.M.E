@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import { asyncHandler } from '../middleware/errorHandler';
+import { asyncHandler, ApiError } from '../middleware/errorHandler';
 import { loginLimiter, registerLimiter, apiLimiter, refreshLimiter } from '../middleware/rateLimit';
 import { validateBody } from '../middleware/validation';
-import { registerSchema, loginSchema, refreshSchema } from '../middleware/validation';
+import { registerSchema, loginSchema, refreshSchema, profileUpdateSchema } from '../middleware/validation';
 import { requireAuth } from '../middleware/auth';
 import { register, login, refreshAccessToken, revokeAllTokens } from '../services/authService';
+import { updateDisplayName, findUserById } from '../db/queries/users';
 import type { RegisterParams, LoginParams } from '../services/authService';
 
 export const authRouter = Router();
@@ -55,5 +56,46 @@ authRouter.post(
     const body = req.body as { refreshToken: string };
     const result = await refreshAccessToken(body.refreshToken);
     res.json(result);
+  })
+);
+
+// PUT /auth/profile — Update user display name
+authRouter.put(
+  '/profile',
+  requireAuth,
+  apiLimiter,
+  validateBody(profileUpdateSchema),
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const { displayName } = req.body as { displayName: string };
+    const user = await updateDisplayName(req.auth.sub, displayName);
+    res.json({
+      userId: user.user_id,
+      displayName: user.display_name,
+    });
+  })
+);
+
+// GET /auth/profile — Get own profile info
+authRouter.get(
+  '/profile',
+  requireAuth,
+  apiLimiter,
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const user = await findUserById(req.auth.sub);
+    if (!user) {
+      throw new ApiError(404, 'M_NOT_FOUND', 'User not found');
+    }
+    res.json({
+      userId: user.user_id,
+      username: user.username,
+      displayName: user.display_name,
+      homeserver: user.homeserver,
+    });
   })
 );
