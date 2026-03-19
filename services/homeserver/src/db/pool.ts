@@ -12,7 +12,9 @@ export const pool = new Pool({
   // Prevent runaway queries from holding connections indefinitely
   statement_timeout: 30000, // 30s max per statement
   idle_in_transaction_session_timeout: 60000, // 60s max idle in open transaction
-  ssl: config.NODE_ENV === 'production' ? { rejectUnauthorized: config.DB_SSL_REJECT_UNAUTHORIZED } : undefined,
+  ssl: config.NODE_ENV === 'production' && config.DB_SSL_ENABLED
+    ? { rejectUnauthorized: config.DB_SSL_REJECT_UNAUTHORIZED }
+    : undefined,
 });
 
 pool.on('error', (err) => {

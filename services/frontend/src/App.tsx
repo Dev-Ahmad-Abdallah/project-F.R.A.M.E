@@ -25,13 +25,6 @@ import ChatWindow from './components/ChatWindow';
 import ToastContainer from './components/Toast';
 import RoomList from './components/RoomList';
 import NewChatDialog from './components/NewChatDialog';
-
-// Lazy-load components not needed on initial render — reduces main bundle size
-const LandingPage = React.lazy(() => import('./pages/LandingPage'));
-const DeviceList = React.lazy(() => import('./components/DeviceList'));
-const RoomSettings = React.lazy(() => import('./components/RoomSettings'));
-const FingerprintUI = React.lazy(() => import('./verification/fingerprintUI'));
-const DeviceLinking = React.lazy(() => import('./devices/deviceLinking'));
 import DeviceAlert from './devices/deviceAlert';
 import type { UnknownDeviceInfo } from './devices/deviceAlert';
 import KeyChangeAlert from './verification/keyChangeAlert';
@@ -55,6 +48,13 @@ import SessionSettings from './components/SessionSettings';
 import ProfileSettings from './components/ProfileSettings';
 import { useSessionTimeout, getAutoLock } from './hooks/useSessionTimeout';
 import { useInstallPrompt } from './hooks/useInstallPrompt';
+
+// Lazy-load components not needed on initial render — reduces main bundle size
+const LandingPage = React.lazy(() => import('./pages/LandingPage'));
+const DeviceList = React.lazy(() => import('./components/DeviceList'));
+const RoomSettings = React.lazy(() => import('./components/RoomSettings'));
+const FingerprintUI = React.lazy(() => import('./verification/fingerprintUI'));
+const DeviceLinking = React.lazy(() => import('./devices/deviceLinking'));
 
 // ── Types ──
 

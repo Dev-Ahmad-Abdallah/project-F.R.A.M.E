@@ -10,6 +10,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { generateFingerprint } from '../crypto/cryptoUtils';
@@ -205,7 +206,7 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
           fingerprint text manually.
         </p>
 
-        {/* QR Code placeholder with scanning grid and animated border */}
+        {/* QR Code with animated border */}
         <div style={{
           ...styles.qrOuterFrame,
           ...(isMobile ? { width: 160, height: 160 } : {}),
@@ -215,16 +216,13 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
             ...styles.qrPlaceholder,
             ...(isMobile ? { width: 140, height: 140 } : {}),
           }}>
-            {/* Scanning grid pattern */}
-            <ScanningGrid />
-            {/* Animated scan line */}
-            <div style={styles.qrScanLine} />
-            <div style={styles.qrInner}>
-              <span style={styles.qrLabel}>QR Code</span>
-              <span style={styles.qrData}>
-                {qrPayload ? qrPayload.slice(0, 24) + '...' : 'Generating...'}
-              </span>
-            </div>
+            {qrPayload ? (
+              <QRCodeSVG value={qrPayload} size={isMobile ? 120 : 160} bgColor="#ffffff" fgColor="#000000" />
+            ) : (
+              <div style={styles.qrInner}>
+                <span style={styles.qrLabel}>Generating...</span>
+              </div>
+            )}
           </div>
         </div>
 

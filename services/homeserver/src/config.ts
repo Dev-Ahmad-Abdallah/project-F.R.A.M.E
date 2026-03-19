@@ -11,6 +11,7 @@ const envSchema = z.object({
   FEDERATION_SIGNING_KEY: z.string(),
   FEDERATION_PEERS: z.string().default(''),
   CORS_ORIGINS: z.string().default(''),
+  DB_SSL_ENABLED: z.string().default('true').transform((v) => v === 'true' || v === '1'),
   DB_SSL_REJECT_UNAUTHORIZED: z.string().default('true').transform((v) => v === 'true' || v === '1'),
   VAPID_PUBLIC_KEY: z.string().default(''),
   VAPID_PRIVATE_KEY: z.string().default(''),
