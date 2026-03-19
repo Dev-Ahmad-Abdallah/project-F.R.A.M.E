@@ -48,28 +48,100 @@ F.R.A.M.E. also implements a Merkle Tree-based key transparency system, allowing
 
 ## Architecture Overview
 
-```
-                          Federation (TLS + Signed Events)
-   ┌──────────────────┐ ◄──────────────────────────────► ┌──────────────────┐
-   │  Homeserver A     │                                  │  Homeserver B     │
-   │  (Express + Node) │                                  │  (Express + Node) │
-   │  ┌──────────────┐ │                                  │  ┌──────────────┐ │
-   │  │ PostgreSQL A │ │                                  │  │ PostgreSQL B │ │
-   │  │ Redis A      │ │                                  │  │ Redis B      │ │
-   │  └──────────────┘ │                                  │  └──────────────┘ │
-   └────────┬─────────┘                                  └────────┬─────────┘
-            │ HTTPS + JWT                                         │
-            ▼                                                     ▼
-   ┌──────────────────────────────────────────────────────────────────────────┐
-   │                       React Frontend (TypeScript)                        │
-   │  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌───────────────────┐  │
-   │  │ vodozemac  │  │ Key Verify │  │ Device Mgr │  │ Secure Storage    │  │
-   │  │ (WASM)     │  │ (Merkle)   │  │ (QR Link)  │  │ (IndexedDB + AES)│  │
-   │  └────────────┘  └────────────┘  └────────────┘  └───────────────────┘  │
-   └──────────────────────────────────────────────────────────────────────────┘
+```mermaid
+C4Context
+    title F.R.A.M.E. System Context
+
+    Person(user, "User", "Sends and receives encrypted messages via browser")
+
+    System_Boundary(b1, "Homeserver A") {
+        System(hsA, "Homeserver A", "Express + Node.js API")
+        SystemDb(pgA, "PostgreSQL A", "Users, rooms, encrypted events, key bundles")
+        SystemQueue(redisA, "Redis A", "Pub/sub delivery notifications")
+    }
+
+    System_Boundary(b2, "Homeserver B") {
+        System(hsB, "Homeserver B", "Express + Node.js API")
+        SystemDb(pgB, "PostgreSQL B", "Federated user data")
+        SystemQueue(redisB, "Redis B", "Pub/sub delivery notifications")
+    }
+
+    System(frontend, "React Frontend", "E2EE client with vodozemac WASM, IndexedDB encrypted storage")
+
+    Rel(user, frontend, "Uses", "HTTPS")
+    Rel(frontend, hsA, "API calls", "JWT + HTTPS")
+    BiRel(hsA, hsB, "Federation", "Ed25519 signed events over TLS")
+    Rel(hsA, pgA, "Reads/Writes", "SQL")
+    Rel(hsA, redisA, "Pub/Sub", "TCP")
+    Rel(hsB, pgB, "Reads/Writes", "SQL")
+    Rel(hsB, redisB, "Pub/Sub", "TCP")
 ```
 
 Both homeservers run identical code -- differentiated entirely by environment variables. The frontend is the only trusted component; it performs all encryption and decryption.
+
+### E2EE Message Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Alice as Alice (Browser)
+    participant Olm as vodozemac WASM
+    participant HS as Homeserver
+    participant Bob as Bob (Browser)
+
+    Note over Alice,Bob: Session Establishment
+    Alice->>Olm: initCrypto(userId, deviceId)
+    Olm->>HS: Upload device keys + OTKs (signed)
+    HS->>HS: Verify Ed25519 signature
+    HS->>HS: Store in key_bundles + key_transparency_log
+
+    Note over Alice,Bob: Sending a Message
+    Alice->>HS: Query Bob's device keys
+    HS->>HS: Check key transparency log
+    HS-->>Alice: Signed device keys + Merkle proof
+    Alice->>Olm: Verify keys + establish Olm session
+    Olm->>Olm: Encrypt with Megolm (group) or Olm (1:1)
+    Alice->>HS: Send encrypted event (ciphertext blob)
+    HS->>HS: Store event (never decrypts)
+    HS-)Bob: Notify via Redis pub/sub
+
+    Note over Alice,Bob: Receiving a Message
+    Bob->>HS: Sync (long-poll)
+    HS-->>Bob: Encrypted event + to-device keys
+    Bob->>Olm: Decrypt with Megolm session key
+    Olm-->>Bob: Plaintext message
+```
+
+### Security Architecture
+
+```mermaid
+flowchart TB
+    subgraph Client["Client (Trusted Zone)"]
+        WASM["vodozemac WASM<br/>Olm + Megolm"]
+        KC["Key Transparency<br/>Merkle Proof Verification"]
+        SS["Secure Storage<br/>AES-256-GCM + PBKDF2"]
+        DP["DOMPurify<br/>XSS Prevention"]
+    end
+
+    subgraph Server["Server (Untrusted Relay)"]
+        Auth["JWT Auth<br/>bcrypt + Refresh Tokens"]
+        RL["Rate Limiting<br/>Redis-backed, per-user"]
+        Val["Zod Validation<br/>All request bodies"]
+        Helm["Helmet + HSTS<br/>Security Headers"]
+        Fed["Federation<br/>Ed25519 Signed Events"]
+        KT["Key Transparency<br/>Append-only Merkle Log"]
+    end
+
+    subgraph Data["Data Layer"]
+        PG["PostgreSQL<br/>Encrypted events only"]
+        Redis["Redis<br/>Pub/sub notifications"]
+    end
+
+    Client -->|"HTTPS + JWT"| Server
+    Server --> Data
+    WASM -->|"Private keys never leave WASM"| WASM
+    KT -->|"Server-enforced: rejects<br/>unlogged device keys"| KC
+```
 
 ---
 
@@ -78,8 +150,8 @@ Both homeservers run identical code -- differentiated entirely by environment va
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-org/project-frame.git
-cd project-frame
+git clone https://github.com/Dev-Ahmad-Abdallah/project-F.R.A.M.E.git
+cd project-F.R.A.M.E
 ```
 
 ### 2. Install dependencies
@@ -154,7 +226,7 @@ project-F.R.A.M.E/
 │   │   │   ├── services/       # Business logic (auth, keys, messages, devices, federation, Merkle)
 │   │   │   ├── db/             # PostgreSQL pool + parameterized SQL queries
 │   │   │   └── redis/          # ioredis client + pub/sub subscriber
-│   │   ├── migrations/         # 9 SQL migration files (001-009)
+│   │   ├── migrations/         # 10 SQL migration files (001-010)
 │   │   └── tests/              # Jest unit and integration tests
 │   └── frontend/               # @frame/frontend -- React client app
 │       └── src/
@@ -178,6 +250,43 @@ project-F.R.A.M.E/
 | Settings | Mobile View |
 |:---:|:---:|
 | ![Settings](current-settings.png) | ![Mobile](mobile-chat.png) |
+
+---
+
+## Security Model
+
+| Layer | Control | Implementation |
+|-------|---------|---------------|
+| **Encryption** | Double Ratchet (Olm) + Megolm | vodozemac WASM -- private keys never leave browser |
+| **Key Transparency** | Server-enforced Merkle tree | Device keys rejected if not in append-only log |
+| **Key Signatures** | Ed25519 device key verification | Server verifies self-signatures on key upload |
+| **Forward Secrecy** | Megolm session rotation | New session created when members leave a room |
+| **Authentication** | JWT + bcrypt (12 rounds) | 15-min access tokens, 7-day refresh with rotation |
+| **Rate Limiting** | Redis-backed per-user limits | Per-room message limits, dedicated sync/key limiters |
+| **Input Validation** | Zod schemas on all endpoints | Request body/query validated before processing |
+| **XSS Prevention** | DOMPurify strict allowlist | Script, iframe, form tags blocked; href-only attributes |
+| **Headers** | Helmet + HSTS | CSP, X-Frame-Options: DENY, no-sniff, referrer policy |
+| **Session Security** | 30-min inactivity timeout | Auto-lock with server-side token revocation |
+| **Device Management** | 10-device limit, QR linking | Cascading delete, verification badges, deep-link QR |
+| **Federation** | Ed25519 signed events | Signature verification, replay prevention, room membership check |
+| **CI/CD Security** | CodeQL + Trivy + gitleaks | SAST, container scanning, secret detection, npm audit |
+
+---
+
+## API Endpoints (51 total)
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| Auth | 9 | register, login, logout, refresh, profile, status |
+| Keys | 7 | upload, query, claim, count, revoke, transparency |
+| Messages | 9 | send, sync, delete, react, read receipts, typing |
+| Rooms | 12 | create, join, invite, leave, rename, settings, codes |
+| Devices | 4 | register, list, delete, heartbeat |
+| Federation | 4 | send, keys, backfill, directory |
+| Push | 3 | VAPID key, subscribe, unsubscribe |
+| Infrastructure | 3 | health, root info, .well-known |
+
+All endpoints use `requireAuth` (except public/federation), rate limiting, and `asyncHandler` for error propagation.
 
 ---
 
