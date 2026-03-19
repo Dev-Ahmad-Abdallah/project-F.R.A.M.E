@@ -63,7 +63,9 @@ export async function queryDeviceKeys(userIds: string[]) {
             kb.identity_key, kb.signed_prekey, kb.signed_prekey_signature
      FROM devices d
      LEFT JOIN key_bundles kb ON d.user_id = kb.user_id AND d.device_id = kb.device_id
-     WHERE d.user_id = ANY($1::text[])`,
+     WHERE d.user_id = ANY($1::text[])
+       AND d.device_public_key != 'pending'
+       AND d.device_signing_key != 'pending'`,
     [userIds]
   );
 
@@ -71,7 +73,7 @@ export async function queryDeviceKeys(userIds: string[]) {
 
   for (const row of result.rows) {
     if (!deviceKeys[row.user_id]) deviceKeys[row.user_id] = {};
-    if (row.identity_key) {
+    if (row.identity_key && row.device_signing_key) {
       deviceKeys[row.user_id][row.device_id] = {
         user_id: row.user_id,
         device_id: row.device_id,

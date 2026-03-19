@@ -213,8 +213,8 @@ describe('login', () => {
     });
 
     expect(result.deviceId).toBe('EXISTING_DEV');
-    // Should NOT create a new device since it already exists
-    expect(mockCreateDevice).not.toHaveBeenCalled();
+    // createDevice uses INSERT ... ON CONFLICT DO NOTHING, so it's always called
+    expect(mockCreateDevice).toHaveBeenCalled();
   });
 
   it('creates device record when deviceId does not exist', async () => {

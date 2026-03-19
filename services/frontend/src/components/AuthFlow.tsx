@@ -73,8 +73,13 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
             );
           }
         } else {
-          auth = await login({ username, password });
+          // Reuse device ID from previous login if available
+          const storedDeviceId = localStorage.getItem(`frame-device-id:${username}`) ?? undefined;
+          auth = await login({ username, password, deviceId: storedDeviceId });
         }
+
+        // Persist device ID for future logins (enables cross-session E2EE)
+        localStorage.setItem(`frame-device-id:${auth.userId.split(':')[0].slice(1)}`, auth.deviceId);
 
         onAuthenticated(auth);
       } catch (err) {

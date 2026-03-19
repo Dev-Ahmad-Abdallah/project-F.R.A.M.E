@@ -48,6 +48,13 @@ export async function findDevice(deviceId: string): Promise<DeviceRow | null> {
   return result.rows[0] || null;
 }
 
+export async function updateDevice(deviceId: string, publicKey: string, signingKey: string): Promise<void> {
+  await pool.query(
+    'UPDATE devices SET device_public_key = $2, device_signing_key = $3 WHERE device_id = $1',
+    [deviceId, publicKey, signingKey]
+  );
+}
+
 export async function updateLastSeen(deviceId: string): Promise<void> {
   await pool.query(
     'UPDATE devices SET last_seen = NOW() WHERE device_id = $1',

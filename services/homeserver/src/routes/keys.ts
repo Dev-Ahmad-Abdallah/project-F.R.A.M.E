@@ -5,6 +5,8 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { validateBody, keyUploadSchema, keysQuerySchema, keysClaimSchema } from '../middleware/validation';
 import { fetchKeyBundle, uploadPrekeys, getKeyCount, queryDeviceKeys, claimKeys } from '../services/keyService';
 import { getProofForUser } from '../services/merkleTree';
+import { updateDevice } from '../db/queries/devices';
+import { upsertKeyBundle, addOneTimePrekeys } from '../db/queries/keys';
 
 export const keysRouter = Router();
 
@@ -15,9 +17,35 @@ keysRouter.post(
   apiLimiter,
   validateBody(keyUploadSchema),
   asyncHandler(async (req, res) => {
+    const userId = req.auth!.sub;
+    const deviceId = req.auth!.deviceId;
+
+    // If device_keys is included (OlmMachine KeysUploadRequest),
+    // update the device's public keys and ensure key_bundle exists
+    if (req.body.device_keys) {
+      const dk = req.body.device_keys;
+      const keys = dk.keys || {};
+      const curve25519Key = keys[`curve25519:${deviceId}`];
+      const ed25519Key = keys[`ed25519:${deviceId}`];
+      if (curve25519Key && ed25519Key) {
+        await updateDevice(deviceId, curve25519Key, ed25519Key);
+        // Ensure a key_bundle row exists for this device
+        await upsertKeyBundle(userId, deviceId, curve25519Key, '', '', []);
+      }
+    }
+
+    // Process OlmMachine-format one_time_keys (signed objects keyed by algorithm:id)
+    if (req.body.one_time_keys && typeof req.body.one_time_keys === 'object') {
+      const otkEntries = Object.entries(req.body.one_time_keys);
+      if (otkEntries.length > 0) {
+        const otkValues = otkEntries.map(([, v]) => JSON.stringify(v));
+        await addOneTimePrekeys(userId, deviceId, otkValues);
+      }
+    }
+
     const result = await uploadPrekeys(
-      req.auth!.sub,
-      req.auth!.deviceId,
+      userId,
+      deviceId,
       req.body.oneTimePrekeys,
       req.body.signedPrekey,
       req.body.signedPrekeySig

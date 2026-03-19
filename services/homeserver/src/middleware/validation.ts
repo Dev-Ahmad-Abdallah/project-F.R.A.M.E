@@ -84,8 +84,11 @@ export const createRoomSchema = z.object({
 });
 
 export const keysQuerySchema = z.object({
-  device_keys: z.record(z.string(), z.record(z.string(), z.string())),
-});
+  device_keys: z.record(z.string(), z.union([
+    z.array(z.string()),
+    z.record(z.string(), z.string()),
+  ])),
+}).passthrough();
 
 export const keysClaimSchema = z.object({
   one_time_keys: z.record(z.string(), z.record(z.string(), z.string())),

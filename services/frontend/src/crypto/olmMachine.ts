@@ -134,7 +134,12 @@ export async function initCrypto(
 
   const uid = new sdk.UserId(userId);
   const did = new sdk.DeviceId(deviceId);
-  machine = await sdk.OlmMachine.initialize(uid, did);
+
+  // Use IndexedDB-backed store for persistent E2EE state across sessions.
+  // The store name is unique per user/device to avoid key confusion.
+  const storeName = `frame-crypto-${userId}-${deviceId}`;
+  const storePassphrase = `${userId}:${deviceId}:frame-olm-store`;
+  machine = await sdk.OlmMachine.initialize(uid, did, storeName, storePassphrase);
   currentUserId = userId;
   currentDeviceId = deviceId;
 

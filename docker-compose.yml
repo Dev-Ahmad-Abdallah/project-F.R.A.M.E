@@ -7,7 +7,7 @@ services:
       context: .
       dockerfile: services/homeserver/Dockerfile
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres-a:5432/frame_a
       REDIS_URL: redis://redis-a:6379
@@ -32,7 +32,7 @@ services:
       context: .
       dockerfile: services/homeserver/Dockerfile
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres-b:5432/frame_b
       REDIS_URL: redis://redis-b:6379
