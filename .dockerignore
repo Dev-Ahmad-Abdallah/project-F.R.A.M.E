@@ -1,0 +1,11 @@
+.git
+node_modules
+dist
+build
+*.md
+docs/
+.env
+.env.*
+coverage/
+.claude/
+*.log

@@ -25,7 +25,8 @@ export async function createRoom(
   roomType: 'direct' | 'group',
   createdBy: string,
   homeserver: string,
-  name?: string
+  name?: string,
+  inviteUserIds: string[] = [],
 ): Promise<RoomRow> {
   const roomId = `!${crypto.randomBytes(12).toString('hex')}:${homeserver}`;
 
@@ -46,6 +47,16 @@ export async function createRoom(
        VALUES ($1, $2, 'admin')`,
       [roomId, createdBy]
     );
+
+    // Add invited members within the same transaction
+    for (const inviteeId of inviteUserIds) {
+      await client.query(
+        `INSERT INTO room_members (room_id, user_id, role)
+         VALUES ($1, $2, 'member')
+         ON CONFLICT (room_id, user_id) DO NOTHING`,
+        [roomId, inviteeId]
+      );
+    }
 
     await client.query('COMMIT');
     return roomResult.rows[0];

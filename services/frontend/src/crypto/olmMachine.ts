@@ -27,7 +27,7 @@ export interface IdentityKeys {
 }
 
 /** Request types produced by OlmMachine.outgoingRequests() */
-type OutgoingRequest = sdk.KeysUploadRequest | sdk.KeysQueryRequest | sdk.KeysClaimRequest;
+type OutgoingRequest = sdk.KeysUploadRequest | sdk.KeysQueryRequest | sdk.KeysClaimRequest | sdk.ToDeviceRequest;
 
 // ── Mutex ──
 
@@ -279,6 +279,19 @@ async function sendOutgoingRequest(request: OutgoingRequest): Promise<string> {
       return JSON.stringify(
         await apiRequest<Record<string, unknown>>('/keys/claim', { method: 'POST', body }),
       );
+
+    case sdk.RequestType.ToDevice: {
+      // ToDeviceRequest has event_type and txn_id properties
+      const toDeviceReq = request as sdk.ToDeviceRequest;
+      const eventType = toDeviceReq.event_type;
+      const txnId = toDeviceReq.txn_id;
+      return JSON.stringify(
+        await apiRequest<Record<string, unknown>>(
+          `/sendToDevice/${encodeURIComponent(eventType)}/${encodeURIComponent(txnId)}`,
+          { method: 'PUT', body },
+        ),
+      );
+    }
 
     default:
       console.warn(

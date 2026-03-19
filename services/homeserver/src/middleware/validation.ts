@@ -66,9 +66,23 @@ export const syncQuerySchema = z.object({
 });
 
 export const keyUploadSchema = z.object({
+  identityKey: z.string().optional(),
   oneTimePrekeys: z.array(z.string()).max(100).optional(),
   signedPrekey: z.string().optional(),
   signedPrekeySig: z.string().optional(),
+  // OlmMachine KeysUploadRequest includes these Matrix-spec fields
+  device_keys: z.object({
+    user_id: z.string().optional(),
+    device_id: z.string().optional(),
+    algorithms: z.array(z.string()).optional(),
+    keys: z.record(z.string(), z.string()).optional(),
+    signatures: z.record(z.string(), z.record(z.string(), z.string())).optional(),
+    unsigned: z.record(z.unknown()).optional(),
+  }).passthrough().optional(),
+  one_time_keys: z.record(z.string(), z.unknown()).optional(),
+  // Allow fallback_keys from OlmMachine as well
+  'org.matrix.msc2732.fallback_keys': z.record(z.string(), z.unknown()).optional(),
+  fallback_keys: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const deviceRegisterSchema = z.object({

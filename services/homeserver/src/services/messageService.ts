@@ -5,7 +5,7 @@ import { isRoomMember, getRoomMembers } from '../db/queries/rooms';
 import { pool } from '../db/pool';
 import { redisClient, redisSubscriber } from '../redis/client';
 import { ApiError } from '../middleware/errorHandler';
-import { relayEventToAllPeers } from './federationService';
+import { relayEventToPeers } from './federationService';
 import type { FederationEvent } from '@frame/shared/federation';
 
 const config = getConfig();
@@ -99,12 +99,19 @@ export async function sendMessage(params: SendMessageParams) {
     )
   );
 
-  // Relay to federation peers if room has remote members
-  const hasRemoteMembers = members.some(
-    (m) => !m.user_id.endsWith(`:${config.HOMESERVER_DOMAIN}`)
+  // Relay to federation peers that have members in this room (targeted relay).
+  // Extract unique remote domains from member user IDs instead of broadcasting
+  // to all configured peers — avoids leaking events to unrelated servers.
+  const remoteDomains = new Set(
+    members
+      .map((m) => {
+        const idx = m.user_id.indexOf(':');
+        return idx !== -1 ? m.user_id.slice(idx + 1) : null;
+      })
+      .filter((domain): domain is string => domain !== null && domain !== config.HOMESERVER_DOMAIN)
   );
 
-  if (hasRemoteMembers) {
+  if (remoteDomains.size > 0) {
     const federationEvent: FederationEvent = {
       origin: config.HOMESERVER_DOMAIN,
       originServerTs: Date.now(),
@@ -116,7 +123,7 @@ export async function sendMessage(params: SendMessageParams) {
       signatures: {},
     };
     // Fire and forget — don't block the sender on federation relay
-    relayEventToAllPeers(federationEvent).catch((err: unknown) =>
+    relayEventToPeers(federationEvent, [...remoteDomains]).catch((err: unknown) =>
       console.error('[Federation] Relay failed after sendMessage:', err)
     );
   }
@@ -194,13 +201,17 @@ export async function syncMessages(
   limit: number,
   timeout: number
 ): Promise<{ events: Record<string, unknown>[]; nextBatch: string; hasMore: boolean; to_device?: unknown[] }> {
-  // Clean up expired disappearing messages before returning results
-  await cleanupExpiredMessages();
+  // NOTE: cleanupExpiredMessages() runs on a 30s setInterval — calling it
+  // on every sync poll would create heavy DB load under many concurrent users.
 
-  // Clean up stale claimed messages (client disconnected mid-response more than 5 min ago)
+  // Clean up stale claimed messages for THIS user/device only
+  // (client disconnected mid-response more than 5 min ago).
+  // Scoped to avoid deleting messages claimed by other users with slow connections.
   await pool.query(
     `DELETE FROM to_device_messages
-     WHERE claimed_at IS NOT NULL AND claimed_at < NOW() - INTERVAL '5 minutes'`
+     WHERE recipient_user_id = $1 AND recipient_device_id = $2
+       AND claimed_at IS NOT NULL AND claimed_at < NOW() - INTERVAL '5 minutes'`,
+    [userId, deviceId]
   );
 
   // Fetch unclaimed to-device messages and mark them as claimed atomically

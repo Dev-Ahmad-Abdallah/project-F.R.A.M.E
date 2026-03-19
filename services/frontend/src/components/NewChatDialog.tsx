@@ -10,6 +10,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
+import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { createRoom } from '../api/roomsAPI';
 import type { RoomSummary } from '../api/roomsAPI';
 import { FONT_BODY } from '../globalStyles';
@@ -168,7 +169,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         {/* Error */}
         {error && (
           <div style={styles.error}>
-            {DOMPurify.sanitize(error)}
+            {DOMPurify.sanitize(error, PURIFY_CONFIG)}
           </div>
         )}
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import DOMPurify from 'dompurify';
+import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { sendMessage, deleteMessage, syncMessages, SyncEvent } from '../api/messagesAPI';
 import { renameRoom } from '../api/roomsAPI';
 import { formatDisplayName } from '../utils/displayName';
@@ -209,6 +210,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const nextBatchRef = useRef<string | undefined>(undefined);
   const abortRef = useRef(false);
+  const syncGenRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -339,11 +341,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     [],
   );
 
-  // Long-polling sync loop
-  const syncLoop = useCallback(async () => {
-    abortRef.current = false;
-
-    while (!abortRef.current) {
+  // Long-polling sync loop — uses a generation counter so that stale
+  // loops from a previous room reliably stop even if the boolean flag
+  // is overwritten by the new loop before the old fetch returns.
+  const syncLoop = useCallback(async (gen: number) => {
+    while (syncGenRef.current === gen) {
       try {
         const result = await syncMessages(
           nextBatchRef.current,
@@ -351,43 +353,57 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           50,
         );
 
-        if (abortRef.current) break;
+        if (syncGenRef.current !== gen) break;
 
         await processSyncResponse(result);
 
+        // Always update nextBatch so the next poll uses the latest
+        // sequence cursor, even when no room events were returned
+        // (e.g. timeout expiry or to-device-only responses).
+        nextBatchRef.current = result.nextBatch;
+
         if (result.events.length > 0) {
-          const decryptedEvents = await decryptEvents(result.events);
+          // Filter to only events belonging to the current room —
+          // the server returns events across all rooms the user is in.
+          const roomEvents = result.events.filter((e) => e.roomId === roomId);
+          const decryptedEvents = roomEvents.length > 0
+            ? await decryptEvents(roomEvents)
+            : [];
 
-          if (abortRef.current) break;
+          if (syncGenRef.current !== gen) break;
 
-          setMessages((prev) => [...prev, ...decryptedEvents]);
+          if (decryptedEvents.length > 0) {
+            setMessages((prev) => [...prev, ...decryptedEvents]);
+          }
           setOptimisticMessages((prev) =>
             prev.filter((om) => om.status === 'failed'),
           );
-          nextBatchRef.current = result.nextBatch;
         }
 
         setSyncError(null);
       } catch (err) {
-        if (abortRef.current) break;
+        if (syncGenRef.current !== gen) break;
         setSyncError('Failed to sync messages');
         await new Promise((r) => setTimeout(r, 5000));
       }
     }
-  }, [decryptEvents]);
+  }, [decryptEvents, roomId]);
 
   useEffect(() => {
     setMessages([]);
     setOptimisticMessages([]);
     nextBatchRef.current = undefined;
-    abortRef.current = true;
+
+    // Increment generation to invalidate any in-flight sync loop
+    const gen = ++syncGenRef.current;
 
     const timer = setTimeout(() => {
-      void syncLoop();
+      void syncLoop(gen);
     }, 0);
 
     return () => {
-      abortRef.current = true;
+      // Bump generation again so the loop exits on next check
+      syncGenRef.current++;
       clearTimeout(timer);
     };
   }, [roomId, syncLoop]);
@@ -528,7 +544,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           ? content.ciphertext
           : JSON.stringify(content);
 
-    return DOMPurify.sanitize(raw);
+    return DOMPurify.sanitize(raw, PURIFY_CONFIG);
   };
 
   const renderEncryptionIcon = (decrypted: DecryptedEvent): React.ReactNode => {
@@ -580,8 +596,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   const headerName = roomDisplayName
-    ? DOMPurify.sanitize(roomDisplayName)
-    : DOMPurify.sanitize(roomId);
+    ? DOMPurify.sanitize(roomDisplayName, PURIFY_CONFIG)
+    : DOMPurify.sanitize(roomId, PURIFY_CONFIG);
 
   // ── Build grouped message list with date separators and smart timestamps ──
 
@@ -710,7 +726,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             {/* Sender name — only on first message of a group from others */}
             {!isOwn && isFirstInGroup && (
               <div style={{ ...styles.senderName, color: getAvatarColor(event.senderId) }}>
-                {DOMPurify.sanitize(formatDisplayName(event.senderId))}
+                {DOMPurify.sanitize(formatDisplayName(event.senderId), PURIFY_CONFIG)}
               </div>
             )}
             <div style={styles.messageBody}>
@@ -941,7 +957,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             }}
           >
             <div style={styles.messageBody}>
-              <span>{DOMPurify.sanitize(om.body)}</span>
+              <span>{DOMPurify.sanitize(om.body, PURIFY_CONFIG)}</span>
             </div>
             <div style={styles.timestampRow}>
               <span style={styles.timestamp}>

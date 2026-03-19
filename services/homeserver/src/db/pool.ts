@@ -8,7 +8,7 @@ export const pool = new Pool({
   max: 100,
   idleTimeoutMillis: 10000,
   connectionTimeoutMillis: 5000,
-  ssl: config.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+  ssl: config.NODE_ENV === 'production' ? { rejectUnauthorized: config.DB_SSL_REJECT_UNAUTHORIZED } : undefined,
 });
 
 pool.on('error', (err) => {

@@ -33,7 +33,8 @@ import DeviceAlert from './devices/deviceAlert';
 import type { UnknownDeviceInfo } from './devices/deviceAlert';
 import KeyChangeAlert from './verification/keyChangeAlert';
 import type { KeyChangeAction } from './verification/keyChangeAlert';
-import { clearTokens, getAccessToken } from './api/client';
+import { getAccessToken } from './api/client';
+import { logout as apiLogout } from './api/authAPI';
 import { formatDisplayName } from './utils/displayName';
 import { listRooms, leaveRoom } from './api/roomsAPI';
 import { getKnownDevices, verifyDevice } from './devices/deviceManager';
@@ -107,7 +108,9 @@ function App() {
     if (getAutoLock()) {
       setIsLocked(true);
     } else {
-      clearTokens();
+      // Full logout on timeout: revoke server-side tokens too.
+      // apiLogout() calls clearTokens() internally and swallows errors.
+      void apiLogout();
       setAuth(null);
       setCurrentPage('landing');
       setActiveView('empty');
@@ -256,7 +259,10 @@ function App() {
   // ── Handlers ──
 
   const handleLogout = useCallback(() => {
-    clearTokens();
+    // Revoke server-side refresh tokens, then clear local state.
+    // apiLogout() already calls clearTokens() internally and swallows
+    // network errors so the local logout always succeeds.
+    void apiLogout();
     setAuth(null);
     setCurrentPage('landing');
     setActiveView('empty');

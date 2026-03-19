@@ -1,6 +1,7 @@
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
+import { z } from 'zod';
 import { getConfig, getCorsOrigins } from './config';
 import { getPublicKeyBase64 } from './services/federationService';
 import { pool, closePool } from './db/pool';
@@ -81,17 +82,26 @@ app.use('/devices', devicesRouter);
 app.use('/federation', federationRouter);
 app.use('/rooms', roomsRouter);
 
+// ── Zod schema for sendToDevice body ──
+const sendToDeviceSchema = z.object({
+  messages: z.record(
+    z.string().min(1),
+    z.record(z.string().min(1), z.unknown())
+  ),
+});
+
 // ── To-device messaging (required by vodozemac for Megolm key sharing) ──
 app.put('/sendToDevice/:eventType/:txnId', requireAuth, apiLimiter, asyncHandler(async (req, res) => {
   if (!req.auth) {
     throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
   }
-  const body = req.body as { messages?: Record<string, Record<string, unknown>> };
-  const messagesObj = body.messages;
-  if (!messagesObj || typeof messagesObj !== 'object') {
-    res.status(400).json({ error: { code: 'M_BAD_JSON', message: 'Missing messages object' } });
-    return;
+
+  const parseResult = sendToDeviceSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    throw new ApiError(400, 'M_BAD_JSON', `Invalid request body: ${parseResult.error.message}`);
   }
+
+  const messagesObj = parseResult.data.messages;
 
   // Limit total recipients per request to prevent abuse
   let recipientCount = 0;
@@ -144,11 +154,18 @@ app.put('/sendToDevice/:eventType/:txnId', requireAuth, apiLimiter, asyncHandler
 }));
 
 // ── Well-known for federation discovery ──
+// The federation port defaults to 443 (standard HTTPS) in production.
+// In development, it falls back to the internal PORT. This can be overridden
+// via FEDERATION_PORT env var for non-standard setups.
+const federationPort = process.env.FEDERATION_PORT
+  ? Number(process.env.FEDERATION_PORT)
+  : config.NODE_ENV === 'production' ? 443 : config.PORT;
+
 app.get('/.well-known/frame/server', (_req, res) => {
   res.json({
     'frame.server': {
       host: config.HOMESERVER_DOMAIN,
-      port: config.PORT,
+      port: federationPort,
       publicKey: getPublicKeyBase64(),
     },
   });

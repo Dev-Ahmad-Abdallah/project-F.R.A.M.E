@@ -8,6 +8,7 @@
 
 import React, { useState, useCallback, useRef } from 'react';
 import DOMPurify from 'dompurify';
+import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { renameRoom, inviteToRoom, leaveRoom } from '../api/roomsAPI';
 import type { RoomSummary, RoomMember } from '../api/roomsAPI';
 
@@ -52,17 +53,17 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
 
   // Derive display name
   const displayName = room.name
-    ? DOMPurify.sanitize(room.name)
+    ? DOMPurify.sanitize(room.name, PURIFY_CONFIG)
     : room.roomType === 'direct'
       ? (() => {
           const other = room.members.find((m) => m.userId !== currentUserId);
-          return DOMPurify.sanitize(other?.displayName || other?.userId || 'Direct Message');
+          return DOMPurify.sanitize(other?.displayName || other?.userId || 'Direct Message', PURIFY_CONFIG);
         })()
       : (() => {
           const names = room.members
             .filter((m) => m.userId !== currentUserId)
             .slice(0, 3)
-            .map((m) => DOMPurify.sanitize(m.displayName || m.userId));
+            .map((m) => DOMPurify.sanitize(m.displayName || m.userId, PURIFY_CONFIG));
           return names.length > 0 ? names.join(', ') : 'Empty Room';
         })();
 
@@ -229,7 +230,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                   </div>
                   <div style={styles.memberInfo}>
                     <span style={styles.memberName}>
-                      {DOMPurify.sanitize(member.displayName || member.userId)}
+                      {DOMPurify.sanitize(member.displayName || member.userId, PURIFY_CONFIG)}
                     </span>
                     {member.userId === currentUserId && (
                       <span style={styles.youBadge}>you</span>

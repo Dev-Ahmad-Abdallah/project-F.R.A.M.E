@@ -22,7 +22,13 @@ const config = {
     "<rootDir>/tests/**/*.spec.ts",
   ],
 
-  testPathIgnorePatterns: ["/node_modules/", "/dist/"],
+  testPathIgnorePatterns: [
+    "/node_modules/",
+    "/dist/",
+    // Integration & security tests require real Postgres + Redis (CI service containers)
+    "/tests/integration/",
+    "/tests/security/",
+  ],
 
   setupFiles: ["<rootDir>/tests/jest.setup.ts"],
 

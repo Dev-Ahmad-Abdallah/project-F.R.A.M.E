@@ -12,6 +12,7 @@
 
 import React, { useState, useCallback } from 'react';
 import DOMPurify from 'dompurify';
+import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import type { RoomSummary } from '../api/roomsAPI';
 import { formatDisplayName } from '../utils/displayName';
 
@@ -60,13 +61,13 @@ function getRoomDisplayName(
   currentUserId: string,
 ): string {
   if (room.name) {
-    return DOMPurify.sanitize(room.name);
+    return DOMPurify.sanitize(room.name, PURIFY_CONFIG);
   }
 
   if (room.roomType === 'direct') {
     const other = room.members.find((m) => m.userId !== currentUserId);
     if (other) {
-      return DOMPurify.sanitize(other.displayName || formatDisplayName(other.userId));
+      return DOMPurify.sanitize(other.displayName || formatDisplayName(other.userId), PURIFY_CONFIG);
     }
   }
 
@@ -74,7 +75,7 @@ function getRoomDisplayName(
   const names = room.members
     .filter((m) => m.userId !== currentUserId)
     .slice(0, 3)
-    .map((m) => DOMPurify.sanitize(m.displayName || formatDisplayName(m.userId)));
+    .map((m) => DOMPurify.sanitize(m.displayName || formatDisplayName(m.userId), PURIFY_CONFIG));
 
   if (names.length === 0) return 'Empty Room';
   return names.join(', ');
@@ -84,7 +85,7 @@ function getRoomDisplayName(
  * Truncate a message preview to a reasonable length.
  */
 function truncate(text: string, maxLength: number): string {
-  const sanitized = DOMPurify.sanitize(text);
+  const sanitized = DOMPurify.sanitize(text, PURIFY_CONFIG);
   if (sanitized.length <= maxLength) return sanitized;
   return sanitized.slice(0, maxLength) + '...';
 }

@@ -154,8 +154,11 @@ export async function ensureSessionsForRoom(
     for (const request of shareRequests) {
       try {
         const reqBody = JSON.parse(request.body) as Record<string, unknown>;
+        // Use event_type (the Matrix event type string, e.g. "m.room.encrypted")
+        // not request.type (which is the RequestType enum used for markRequestAsSent)
+        const eventType = request.event_type;
         const response = await apiRequest<Record<string, unknown>>(
-          '/sendToDevice/' + encodeURIComponent(request.type) + '/' + Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join(''),
+          '/sendToDevice/' + encodeURIComponent(eventType) + '/' + Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2, '0')).join(''),
           { method: 'PUT', body: reqBody },
         );
         await machine.markRequestAsSent(

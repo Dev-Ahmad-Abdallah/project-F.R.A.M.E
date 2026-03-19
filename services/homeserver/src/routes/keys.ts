@@ -6,7 +6,7 @@ import { validateBody, keyUploadSchema, keysQuerySchema, keysClaimSchema } from 
 import crypto from 'crypto';
 import { fetchKeyBundle, uploadPrekeys, getKeyCount, queryDeviceKeys, claimKeys, revokeDeviceKeys } from '../services/keyService';
 import { canonicalJson } from '../services/federationService';
-import { getProofForUser } from '../services/merkleTree';
+import { getProofForUser, addKeyToLog } from '../services/merkleTree';
 import { updateDevice, updateDeviceKeysJson } from '../db/queries/devices';
 import { upsertKeyBundle, addOneTimePrekeys } from '../db/queries/keys';
 
@@ -26,6 +26,7 @@ interface DeviceKeysPayload {
 }
 
 interface KeyUploadBody {
+  identityKey?: string;
   device_keys?: DeviceKeysPayload;
   one_time_keys?: Record<string, unknown>;
   oneTimePrekeys?: string[];
@@ -108,6 +109,8 @@ keysRouter.post(
         await updateDeviceKeysJson(deviceId, dk);
         // Ensure a key_bundle row exists for this device
         await upsertKeyBundle(userId, deviceId, curve25519Key, '', '', []);
+        // Log identity key to transparency Merkle tree
+        await addKeyToLog(userId, ed25519Key);
       }
     }
 

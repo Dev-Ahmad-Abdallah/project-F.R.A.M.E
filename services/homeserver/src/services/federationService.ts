@@ -253,19 +253,14 @@ export function isPeerTrusted(domain: string): boolean {
 // ── Event Relay ──
 
 /**
- * Sign and relay an event to a specific peer server via HTTPS POST.
+ * Send a pre-signed event to a specific peer server via HTTPS POST.
+ * The event must already be signed — this avoids redundant signing when
+ * relaying the same event to multiple peers.
  */
-export async function relayEventToPeer(
-  event: FederationEvent,
+async function sendSignedEventToPeer(
+  signedEvent: FederationEvent,
   peerDomain: string
 ): Promise<boolean> {
-  if (!isPeerTrusted(peerDomain)) {
-    console.warn(`[Federation] Refusing to relay to untrusted peer: ${peerDomain}`);
-    return false;
-  }
-
-  const signedEvent = signEvent(event);
-
   try {
     const discovery = await discoverPeer(peerDomain);
     if (!discovery) {
@@ -274,7 +269,11 @@ export async function relayEventToPeer(
     }
 
     const { host, port } = discovery['frame.server'];
-    const url = `https://${host}:${String(port)}/federation/send`;
+    // Use port 443 as default for standard HTTPS; only include non-standard ports
+    const baseUrl = port === 443
+      ? `https://${host}`
+      : `https://${host}:${String(port)}`;
+    const url = `${baseUrl}/federation/send`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -297,24 +296,62 @@ export async function relayEventToPeer(
 }
 
 /**
- * Relay an event to all trusted peers with failure tracking.
+ * Sign and relay an event to a specific peer server.
+ * Convenience wrapper when relaying to a single peer.
+ */
+export async function relayEventToPeer(
+  event: FederationEvent,
+  peerDomain: string
+): Promise<boolean> {
+  if (!isPeerTrusted(peerDomain)) {
+    console.warn(`[Federation] Refusing to relay to untrusted peer: ${peerDomain}`);
+    return false;
+  }
+
+  const signedEvent = signEvent(event);
+  return sendSignedEventToPeer(signedEvent, peerDomain);
+}
+
+/**
+ * Relay an event to a specific set of peer domains (targeted relay).
+ * Signs the event once and sends to each domain in parallel.
+ * Only relays to domains that are in the trusted FEDERATION_PEERS list.
+ *
+ * This is preferred over relayEventToAllPeers when the caller knows
+ * exactly which remote domains need the event (e.g., based on room membership).
  *
  * TODO: Implement a persistent retry queue — store failed relay attempts in
  * a `federation_relay_queue` table and process them on a periodic timer
  * (e.g., exponential backoff: 5s, 30s, 2m, 10m, 1h). This would prevent
  * message loss when peers are temporarily unreachable.
  */
-export async function relayEventToAllPeers(event: FederationEvent): Promise<void> {
-  const peers = getFederationPeers();
+export async function relayEventToPeers(
+  event: FederationEvent,
+  targetDomains: string[]
+): Promise<void> {
+  // Filter to only trusted peers
+  const trustedTargets = targetDomains.filter((domain) => {
+    if (!isPeerTrusted(domain)) {
+      console.warn(`[Federation] Skipping untrusted target domain: ${domain}`);
+      return false;
+    }
+    return true;
+  });
+
+  if (trustedTargets.length === 0) return;
+
+  // Sign once, send to many
+  const signedEvent = signEvent(event);
+
   const results = await Promise.allSettled(
-    peers.map((peer) => relayEventToPeer(event, peer))
+    trustedTargets.map((peer) => sendSignedEventToPeer(signedEvent, peer))
   );
 
   const failedPeers: string[] = [];
 
   results.forEach((result, i) => {
     // eslint-disable-next-line security/detect-object-injection -- i is a safe numeric index from forEach
-    const peerName = peers[i];
+    const peerName = trustedTargets[i];
     if (result.status === 'rejected') {
       console.error(
         `[Federation] Relay to ${peerName} threw (eventId=${event.eventId}, roomId=${event.roomId}):`,
@@ -332,9 +369,20 @@ export async function relayEventToAllPeers(event: FederationEvent): Promise<void
   if (failedPeers.length > 0) {
     // TODO: Persist to federation_relay_queue table for retry instead of just logging
     console.error(
-      `[Federation] Failed to relay event ${event.eventId} to ${String(failedPeers.length)}/${String(peers.length)} peers: ${failedPeers.join(', ')}`
+      `[Federation] Failed to relay event ${event.eventId} to ${String(failedPeers.length)}/${String(trustedTargets.length)} peers: ${failedPeers.join(', ')}`
     );
   }
+}
+
+/**
+ * Relay an event to all trusted peers with failure tracking.
+ * Signs once and fans out in parallel.
+ *
+ * Prefer relayEventToPeers() with targeted domains when possible.
+ */
+export async function relayEventToAllPeers(event: FederationEvent): Promise<void> {
+  const peers = getFederationPeers();
+  return relayEventToPeers(event, peers);
 }
 
 // ── Incoming Event Handling ──

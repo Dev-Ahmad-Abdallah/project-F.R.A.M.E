@@ -46,6 +46,7 @@ jest.mock('../../src/redis/client', () => ({
 }));
 
 jest.mock('../../src/services/federationService', () => ({
+  relayEventToPeers: jest.fn().mockResolvedValue(undefined),
   relayEventToAllPeers: jest.fn().mockResolvedValue(undefined),
 }));
 
@@ -151,6 +152,12 @@ describe('syncMessages', () => {
     ];
     mockGetEventsByUser.mockResolvedValue(fakeEvents);
     mockMarkDelivered.mockResolvedValue(undefined);
+    // pool.query is called for: stale cleanup, to-device fetch, mark delivered
+    // (cleanupExpiredMessages now runs only via setInterval, not on every sync)
+    mockPoolQuery
+      .mockResolvedValueOnce({ rowCount: 0 })           // delete stale claimed
+      .mockResolvedValueOnce({ rows: [] })              // to-device messages fetch
+      .mockResolvedValueOnce({ rowCount: 1 });          // mark delivered
 
     const result = await syncMessages(
       '@alice:test.frame.local',
@@ -167,6 +174,11 @@ describe('syncMessages', () => {
 
   it('returns empty result when no events exist', async () => {
     mockGetEventsByUser.mockResolvedValue([]);
+    // pool.query is called for: stale cleanup, to-device fetch
+    // (cleanupExpiredMessages now runs only via setInterval, not on every sync)
+    mockPoolQuery
+      .mockResolvedValueOnce({ rowCount: 0 })           // delete stale claimed
+      .mockResolvedValueOnce({ rows: [] });             // to-device messages fetch
 
     const result = await syncMessages(
       '@alice:test.frame.local',

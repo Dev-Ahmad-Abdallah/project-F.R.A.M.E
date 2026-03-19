@@ -68,6 +68,7 @@ describe('createRoom', () => {
     };
     mockDbCreateRoom.mockResolvedValue(fakeRoom);
     mockAddRoomMember.mockResolvedValue(undefined);
+    mockFindUserById.mockResolvedValue({ user_id: '@bob:test.frame.local' });
 
     const result = await createRoom(
       '@alice:test.frame.local',
@@ -78,13 +79,14 @@ describe('createRoom', () => {
     expect(result.roomId).toBe('!abc123:test.frame.local');
     expect(result.room).toBe(fakeRoom);
 
-    // Should create the room
-    expect(mockDbCreateRoom).toHaveBeenCalledWith('group', '@alice:test.frame.local', 'test.frame.local', undefined);
-
-    // Should add each invited member
-    expect(mockAddRoomMember).toHaveBeenCalledTimes(2);
-    expect(mockAddRoomMember).toHaveBeenCalledWith('!abc123:test.frame.local', '@bob:test.frame.local', 'member');
-    expect(mockAddRoomMember).toHaveBeenCalledWith('!abc123:test.frame.local', '@charlie:test.frame.local', 'member');
+    // Should create the room (now includes inviteUserIds as 5th arg)
+    expect(mockDbCreateRoom).toHaveBeenCalledWith(
+      'group',
+      '@alice:test.frame.local',
+      'test.frame.local',
+      undefined,
+      ['@bob:test.frame.local', '@charlie:test.frame.local'],
+    );
   });
 
   it('creates direct room with single invite', async () => {
@@ -95,6 +97,7 @@ describe('createRoom', () => {
     };
     mockDbCreateRoom.mockResolvedValue(fakeRoom);
     mockAddRoomMember.mockResolvedValue(undefined);
+    mockFindUserById.mockResolvedValue({ user_id: '@bob:test.frame.local' });
 
     const result = await createRoom(
       '@alice:test.frame.local',
@@ -103,7 +106,14 @@ describe('createRoom', () => {
     );
 
     expect(result.roomId).toBe('!dm:test.frame.local');
-    expect(mockAddRoomMember).toHaveBeenCalledTimes(1);
+    // Members are now added inside dbCreateRoom, not via separate addRoomMember calls
+    expect(mockDbCreateRoom).toHaveBeenCalledWith(
+      'direct',
+      '@alice:test.frame.local',
+      'test.frame.local',
+      undefined,
+      ['@bob:test.frame.local'],
+    );
   });
 });
 

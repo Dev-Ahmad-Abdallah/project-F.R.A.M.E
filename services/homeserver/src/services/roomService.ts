@@ -45,7 +45,18 @@ export async function createRoom(
   homeserver: string = config.HOMESERVER_DOMAIN,
   options?: { name?: string; isPrivate?: boolean; password?: string },
 ): Promise<{ roomId: string; room: RoomRow }> {
-  const room = await dbCreateRoom(roomType, userId, homeserver, options?.name);
+  // Validate all invited user IDs before creating the room
+  for (const inviteeId of inviteUserIds) {
+    if (!USER_ID_REGEX.test(inviteeId)) {
+      throw new ApiError(400, 'M_INVALID_PARAM', `Invalid userId format: ${inviteeId}. Expected @username:server`);
+    }
+    const invitee = await findUserById(inviteeId);
+    if (!invitee) {
+      throw new ApiError(404, 'M_NOT_FOUND', `User not found: ${inviteeId}`);
+    }
+  }
+
+  const room = await dbCreateRoom(roomType, userId, homeserver, options?.name, inviteUserIds);
 
   // Set room settings if privacy or password is specified
   if (options?.isPrivate || options?.password) {
@@ -58,10 +69,20 @@ export async function createRoom(
     await dbUpdateRoomSettings(room.room_id, settings);
   }
 
-  // Add invited members in parallel
-  await Promise.all(
-    inviteUserIds.map((inviteeId) => addRoomMember(room.room_id, inviteeId, 'member'))
-  );
+  // Emit membership events for the creator and all invited members
+  roomEvents.emit('membershipChange', {
+    roomId: room.room_id,
+    userId,
+    action: 'join',
+  } as MembershipChangeEvent);
+
+  for (const inviteeId of inviteUserIds) {
+    roomEvents.emit('membershipChange', {
+      roomId: room.room_id,
+      userId: inviteeId,
+      action: 'invite',
+    } as MembershipChangeEvent);
+  }
 
   return { roomId: room.room_id, room };
 }
@@ -108,23 +129,58 @@ export async function inviteToRoom(
   }
 
   await addRoomMember(roomId, targetUserId, 'member');
+
+  // Emit membership change event for the invited user
+  roomEvents.emit('membershipChange', {
+    roomId,
+    userId: targetUserId,
+    action: 'invite',
+  } as MembershipChangeEvent);
+
   return { success: true };
 }
 
 /**
- * Join a room (by invite). The user must already have a pending membership
- * entry, or we allow open join for now.
+ * Join a room (by invite). Rejects join attempts on private or
+ * password-protected rooms — use joinRoomWithPassword instead.
  */
 export async function joinRoom(
   roomId: string,
   userId: string,
 ): Promise<{ joined: boolean }> {
+  // Verify the room exists
+  const { pool } = await import('../db/pool') as { pool: import('pg').Pool };
+  const roomResult = await pool.query<{ room_id: string; settings: Record<string, unknown> }>(
+    'SELECT room_id, settings FROM rooms WHERE room_id = $1',
+    [roomId],
+  );
+  if (roomResult.rows.length === 0) {
+    throw new ApiError(404, 'M_NOT_FOUND', 'Room not found');
+  }
+
   const alreadyMember = await isRoomMember(roomId, userId);
   if (alreadyMember) {
     return { joined: true };
   }
 
+  // Block open join on private or password-protected rooms
+  const settings = roomResult.rows[0].settings || {};
+  if (settings.isPrivate) {
+    throw new ApiError(403, 'M_FORBIDDEN', 'This room is invite-only');
+  }
+  if (settings.passwordHash) {
+    throw new ApiError(403, 'M_FORBIDDEN', 'This room requires a password to join. Use join-with-password instead.');
+  }
+
   await addRoomMember(roomId, userId, 'member');
+
+  // Emit membership change event
+  roomEvents.emit('membershipChange', {
+    roomId,
+    userId,
+    action: 'join',
+  } as MembershipChangeEvent);
+
   return { joined: true };
 }
 
@@ -226,6 +282,14 @@ export async function joinRoomWithPassword(
   }
 
   await addRoomMember(roomId, userId, 'member');
+
+  // Emit membership change event
+  roomEvents.emit('membershipChange', {
+    roomId,
+    userId,
+    action: 'join',
+  } as MembershipChangeEvent);
+
   return { joined: true };
 }
 
