@@ -196,6 +196,21 @@ export const refreshLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// File upload: 30 uploads per hour per user.
+// Generous enough for normal usage but prevents abuse/storage exhaustion.
+const fileUploadWindowMs = 60 * 60 * 1000;
+export const fileUploadLimiter = rateLimit({
+  windowMs: fileUploadWindowMs,
+  max: 30,
+  store: new RedisStore('ratelimit:fileupload', fileUploadWindowMs) as unknown as Store,
+  keyGenerator: (req: Request) => {
+    return req.auth?.sub ?? String(req.ip);
+  },
+  handler: rateLimitHandler,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Message sending: 300 per minute per user PER ROOM.
 // Keyed by userId:roomId so active participation in multiple rooms
 // doesn't exhaust a single global bucket. A user chatting in 10 rooms

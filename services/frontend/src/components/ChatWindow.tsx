@@ -20,6 +20,9 @@ import { SkeletonMessageBubble, SyncIndicator } from './Skeleton';
 import { playMessageSound, playSendSound, playErrorSound } from '../sounds';
 import VoiceRecorder from './VoiceRecorder';
 import AudioPlayer from './AudioPlayer';
+import FileAttachment from './FileAttachment';
+import { encryptFile } from '../crypto/fileEncryption';
+import { uploadFile, ALLOWED_FILE_TYPES, MAX_FILE_SIZE, FRIENDLY_FILE_TYPES } from '../api/filesAPI';
 
 // ── Reaction Picker ──
 
@@ -251,6 +254,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   // Reply state
   const [replyTo, setReplyTo] = useState<{ eventId: string; senderId: string; body: string } | null>(null);
   const messageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // ── Feature: File attachment ──
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Contact status for DM header
   const [contactStatus, setContactStatus] = useState<UserStatus>('offline');
@@ -960,6 +968,76 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [roomId, memberUserIds]);
 
+  // ── File attachment handler ──
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset input so the same file can be re-selected
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (!file || !roomId) return;
+
+    // Validate file type
+    if (!ALLOWED_FILE_TYPES.has(file.type)) {
+      showToast?.('error', `File type not allowed. Supported: ${FRIENDLY_FILE_TYPES}`, { duration: 5000 });
+      return;
+    }
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE) {
+      showToast?.('error', 'File too large. Maximum 10MB.', { duration: 4000 });
+      return;
+    }
+
+    setIsUploadingFile(true);
+    setUploadStatus('Encrypting...');
+
+    try {
+      // Read file into bytes
+      const arrayBuffer = await file.arrayBuffer();
+      const plainBytes = new Uint8Array(arrayBuffer);
+
+      // Encrypt client-side
+      const { encryptedBytes, key: fileKey, iv: fileIv } = await encryptFile(plainBytes);
+
+      setUploadStatus('Uploading...');
+
+      // Upload encrypted blob
+      const result = await uploadFile(encryptedBytes, roomId, file.name, file.type);
+
+      setUploadStatus('Sending...');
+
+      // Build E2EE message with file metadata + decryption key
+      const plaintext: Record<string, unknown> = {
+        msgtype: 'm.file',
+        body: file.name,
+        fileId: result.fileId,
+        fileName: result.fileName,
+        mimeType: result.mimeType,
+        fileSize: result.fileSize,
+        fileKey,
+        fileIv,
+      };
+
+      const encryptedContent = await encryptForRoom(
+        roomId,
+        'm.room.message',
+        plaintext,
+        memberUserIds,
+      );
+
+      await sendMessage(roomId, 'm.room.encrypted', encryptedContent);
+
+      playSendSound();
+      showToast?.('success', `File sent: ${file.name}`, { duration: 3000 });
+    } catch (err) {
+      console.error('[FileAttach] Upload failed:', err);
+      playErrorSound();
+      showToast?.('error', 'Failed to send file. Please try again.', { duration: 4000, dedupeKey: 'file-fail' });
+    } finally {
+      setIsUploadingFile(false);
+      setUploadStatus(null);
+    }
+  }, [roomId, memberUserIds, showToast]);
+
   const handleRetry = (om: OptimisticMessage) => {
     setOptimisticMessages((prev) => prev.filter((m) => m.id !== om.id));
     void handleSend(om.body);
@@ -1220,6 +1298,35 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     const obj = parseContentIfString(content);
     if (obj != null && obj.msgtype === 'm.audio' && typeof obj.audioData === 'string') {
       return { audioData: String(obj.audioData), duration: Number(obj.duration) || 0 };
+    }
+    return null;
+  }
+
+  function isFileMessage(content: unknown): boolean {
+    const obj = parseContentIfString(content);
+    return obj != null && obj.msgtype === 'm.file' && typeof obj.fileId === 'string';
+  }
+
+  function getFileContent(content: unknown): {
+    fileId: string; fileName: string; mimeType: string;
+    fileSize: number; fileKey: string; fileIv: string;
+  } | null {
+    const obj = parseContentIfString(content);
+    if (
+      obj != null && obj.msgtype === 'm.file' &&
+      typeof obj.fileId === 'string' &&
+      typeof obj.fileName === 'string' &&
+      typeof obj.fileKey === 'string' &&
+      typeof obj.fileIv === 'string'
+    ) {
+      return {
+        fileId: String(obj.fileId),
+        fileName: String(obj.fileName),
+        mimeType: typeof obj.mimeType === 'string' ? String(obj.mimeType) : 'application/octet-stream',
+        fileSize: typeof obj.fileSize === 'number' ? Number(obj.fileSize) : 0,
+        fileKey: String(obj.fileKey),
+        fileIv: String(obj.fileIv),
+      };
     }
     return null;
   }
@@ -1529,7 +1636,22 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                       </span>
                     </span>
                   ) : (
-                    decrypted.plaintext && isAudioMessage(decrypted.plaintext)
+                    decrypted.plaintext && isFileMessage(decrypted.plaintext)
+                    ? (() => {
+                        const fc = getFileContent(decrypted.plaintext);
+                        return fc ? (
+                          <FileAttachment
+                            fileId={fc.fileId}
+                            fileName={fc.fileName}
+                            mimeType={fc.mimeType}
+                            fileSize={fc.fileSize}
+                            fileKey={fc.fileKey}
+                            fileIv={fc.fileIv}
+                            isSent={isOwn}
+                          />
+                        ) : null;
+                      })()
+                    : decrypted.plaintext && isAudioMessage(decrypted.plaintext)
                     ? (() => {
                         const audio = getAudioContent(decrypted.plaintext);
                         return audio ? (
@@ -2022,10 +2144,47 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       ) : (
       <div className="frame-chat-input-area" style={{ borderTop: replyTo ? 'none' : undefined }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', flex: 1, backgroundColor: '#0d1117', borderRadius: 4, border: isTextareaFocused ? '1px solid #3fb950' : '1px solid #30363d', transition: 'border-color 0.2s', padding: '4px 4px 4px 8px', gap: 2, position: 'relative' as const, ...(isTextareaFocused ? { boxShadow: '0 0 8px rgba(63,185,80,0.15)' } : {}) }}>
-          {/* Attachment placeholder */}
-          <button type="button" title="File sharing coming soon" aria-label="Attach file (coming soon)" style={{ background: 'none', border: 'none', cursor: 'default', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.35, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2 }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.49" /></svg>
+          {/* File attachment */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            style={{ display: 'none' }}
+            onChange={(e) => { void handleFileSelect(e); }}
+          />
+          <button
+            type="button"
+            title={isUploadingFile ? (uploadStatus || 'Uploading...') : 'Attach file'}
+            aria-label={isUploadingFile ? (uploadStatus || 'Uploading...') : 'Attach file'}
+            disabled={isUploadingFile}
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              background: isUploadingFile ? 'rgba(88,166,255,0.1)' : 'none',
+              border: 'none',
+              cursor: isUploadingFile ? 'not-allowed' : 'pointer',
+              padding: 6,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: isUploadingFile ? 0.5 : 0.8,
+              flexShrink: 0,
+              alignSelf: 'flex-end',
+              marginBottom: 2,
+              borderRadius: 8,
+              transition: 'opacity 0.15s, background-color 0.15s',
+            }}
+          >
+            {isUploadingFile ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ animation: 'frame-spin 1s linear infinite' }}>
+                <circle cx="12" cy="12" r="9" stroke="#58a6ff" strokeWidth="2" strokeDasharray="14 14" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.49" /></svg>
+            )}
           </button>
+          {uploadStatus && (
+            <span style={{ fontSize: 10, color: '#58a6ff', alignSelf: 'flex-end', marginBottom: 6, whiteSpace: 'nowrap' as const }}>{uploadStatus}</span>
+          )}
           {/* View-once toggle with pill badge — compact on mobile */}
           <button type="button" onClick={() => setViewOnceMode((v) => !v)} title={viewOnceMode ? 'View-once enabled' : 'Enable view-once mode'} aria-label="Toggle view-once mode" style={{ background: viewOnceMode ? 'rgba(217,158,36,0.2)' : 'none', border: 'none', cursor: 'pointer', padding: viewOnceMode ? (isMobile ? '2px 6px 2px 4px' : '3px 10px 3px 6px') : (isMobile ? '4px' : '6px'), display: 'flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 2 : 4, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2, borderRadius: 12, transition: 'background-color 0.15s, padding 0.15s' }}>
             <svg width={isMobile ? '14' : '16'} height={isMobile ? '14' : '16'} viewBox="0 0 24 24" fill="none" stroke={viewOnceMode ? '#d99e24' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>

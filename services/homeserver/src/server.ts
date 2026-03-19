@@ -18,6 +18,7 @@ import { federationRouter } from './routes/federation';
 import { healthRouter } from './routes/health';
 import { roomsRouter } from './routes/rooms';
 import { pushRouter } from './routes/push';
+import { filesRouter } from './routes/files';
 import { stopDisappearingCleanup } from './services/messageService';
 
 const config = getConfig();
@@ -94,6 +95,7 @@ app.get('/', (_req, res) => {
       rooms: '/rooms',
       federation: '/federation',
       push: '/push',
+      files: '/files',
       discovery: '/.well-known/frame/server',
     },
   });
@@ -108,6 +110,7 @@ app.use('/devices', devicesRouter);
 app.use('/federation', federationRouter);
 app.use('/rooms', roomsRouter);
 app.use('/push', pushRouter);
+app.use('/files', filesRouter);
 
 // ── Zod schema for sendToDevice body ──
 const sendToDeviceSchema = z.object({

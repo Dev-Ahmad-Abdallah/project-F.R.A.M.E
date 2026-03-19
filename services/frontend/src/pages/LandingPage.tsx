@@ -103,7 +103,7 @@ const ShieldIcon = () => (
 );
 
 const LockIcon = () => (
-  <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+  <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style={{ filter: 'drop-shadow(0 0 6px rgba(63,185,80,0.4))' }}>
     <rect x="10" y="20" width="28" height="22" rx="4" stroke={C.success} strokeWidth="2" fill="rgba(63,185,80,0.06)" />
     <path d="M16 20v-6a8 8 0 1116 0v6" stroke={C.success} strokeWidth="2" fill="none" strokeLinecap="round" />
     <circle cx="24" cy="31" r="3" fill={C.success} />
@@ -133,7 +133,7 @@ const NetworkIcon = () => (
 );
 
 const ZeroTrustIcon = () => (
-  <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+  <svg width="40" height="40" viewBox="0 0 40 40" fill="none" style={{ filter: 'drop-shadow(0 0 6px rgba(63,185,80,0.4))' }}>
     <path d="M20 4L6 12v10c0 10.8 5.97 20.88 14 24 8.03-3.12 14-13.2 14-24V12L20 4z" stroke={C.success} strokeWidth="1.5" fill="rgba(63,185,80,0.06)" />
     <path d="M15 20l3 3 7-7" stroke={C.success} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
@@ -165,7 +165,7 @@ const CodeIcon = () => (
 );
 
 const EncryptedIcon = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 4px rgba(63,185,80,0.5))' }}>
     <rect x="5" y="10" width="14" height="10" rx="2" stroke={C.success} strokeWidth="1.5" fill="rgba(63,185,80,0.1)" />
     <path d="M8 10V7a4 4 0 118 0v3" stroke={C.success} strokeWidth="1.5" fill="none" />
   </svg>
@@ -180,7 +180,7 @@ const OpenSourceIcon = () => (
 );
 
 const ZeroKnowledgeIcon = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 4px rgba(63,185,80,0.5))' }}>
     <path d="M12 3L4 7v5c0 5.55 3.41 10.74 8 12 4.59-1.26 8-6.45 8-12V7l-8-4z" stroke={C.success} strokeWidth="1.5" fill="rgba(63,185,80,0.08)" />
     <path d="M9 12l2 2 4-4" stroke={C.success} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
@@ -293,7 +293,7 @@ function MobileMenu({ scrollTo }: { scrollTo: (id: string) => void }) {
           right: 0,
           backgroundColor: C.cardBg,
           border: `1px solid ${C.border}`,
-          borderRadius: '0 0 8px 8px',
+          borderRadius: '0 0 3px 3px',
           padding: 8,
           width: '100vw',
           display: 'flex',
@@ -318,8 +318,10 @@ function MobileMenu({ scrollTo }: { scrollTo: (id: string) => void }) {
                 textAlign: 'left',
                 cursor: 'pointer',
                 fontFamily: C.font,
-                borderRadius: 6,
+                borderRadius: 3,
                 minHeight: 48,
+                letterSpacing: '0.04em',
+                textTransform: 'uppercase' as const,
               }}
             >
               {id === 'how-it-works' ? 'How It Works' : id.charAt(0).toUpperCase() + id.slice(1)}
@@ -729,11 +731,12 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
                   style={{
                     backgroundColor: C.cardBg,
                     border: `1px solid ${C.border}`,
-                    borderRadius: 12,
+                    borderRadius: 3,
                     padding: 28,
                     transition: 'border-color 0.3s, transform 0.3s, box-shadow 0.3s',
                     cursor: 'default',
                     height: '100%',
+                    borderTop: `2px solid ${C.success}20`,
                   }}
                   onMouseEnter={handleCardEnter}
                   onMouseLeave={handleCardLeave}
@@ -864,9 +867,10 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
             <div style={{
               backgroundColor: C.cardBg,
               border: `1px solid ${C.border}`,
-              borderRadius: 12,
+              borderRadius: 3,
               padding: 'clamp(20px, 3vw, 40px)',
               textAlign: 'center',
+              borderTop: `2px solid ${C.success}30`,
             }}>
               <div className="frame-arch-diagram">
                 {/* Client A */}
@@ -1035,11 +1039,14 @@ const navLink: React.CSSProperties = {
   background: 'none',
   border: 'none',
   color: C.textSecondary,
-  fontSize: 14,
+  fontSize: 12,
   cursor: 'pointer',
   fontFamily: C.font,
   padding: '4px 8px',
   transition: 'color 0.15s',
+  textTransform: 'uppercase' as const,
+  letterSpacing: '0.08em',
+  fontWeight: 600,
 };
 
 const footerLink: React.CSSProperties = {
@@ -1066,7 +1073,7 @@ function archBox(trusted: boolean): React.CSSProperties {
     padding: 'clamp(12px, 2vw, 16px) clamp(12px, 2.5vw, 20px)',
     backgroundColor: trusted ? 'rgba(63,185,80,0.04)' : 'rgba(139,148,158,0.04)',
     border: `1px solid ${trusted ? C.success + '40' : C.border}`,
-    borderRadius: 10,
+    borderRadius: 3,
     minWidth: 80,
     maxWidth: '100%',
   };
