@@ -315,7 +315,8 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       unreadCount: 0,
     };
     onCreated(newRoom);
-  }, [sessionRoomId, currentUserId, onCreated]);
+    onClose(); // Close the dialog overlay so chat is interactive
+  }, [sessionRoomId, currentUserId, onCreated, onClose]);
 
   // ── Join Session ──
 

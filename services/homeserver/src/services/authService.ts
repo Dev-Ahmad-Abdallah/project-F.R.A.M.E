@@ -7,6 +7,7 @@ import { createDevice, findDevice, countDevicesByUser } from '../db/queries/devi
 import { upsertKeyBundle } from '../db/queries/keys';
 import { addKeyToLog } from './merkleTree';
 import { pool } from '../db/pool';
+import { logger } from '../logger';
 import { ApiError } from '../middleware/errorHandler';
 import type { AuthPayload } from '../middleware/auth';
 
@@ -137,7 +138,19 @@ export async function login(params: LoginParams): Promise<AuthResult> {
   if (!existingDevice) {
     const deviceCount = await countDevicesByUser(user.user_id);
     if (deviceCount >= 10) {
-      throw new ApiError(429, 'M_LIMIT_EXCEEDED', 'Maximum 10 devices per user');
+      // Auto-evict oldest devices instead of blocking login
+      // This prevents users from being permanently locked out after testing/multi-device usage
+      const evictCount = deviceCount - 8; // Keep 8, make room for 2 new
+      await pool.query(
+        `DELETE FROM devices WHERE device_id IN (
+          SELECT device_id FROM devices
+          WHERE user_id = $1
+          ORDER BY last_seen_at ASC NULLS FIRST, created_at ASC
+          LIMIT $2
+        )`,
+        [user.user_id, evictCount]
+      );
+      logger.info(`Auto-evicted ${evictCount} stale device(s) for ${user.user_id}`);
     }
   }
   // Uses INSERT ... ON CONFLICT DO NOTHING to prevent race conditions on concurrent logins

@@ -20,6 +20,9 @@ import type { SyncEvent, SyncResponse } from '../api/messagesAPI';
 import { ackToDeviceMessages } from '../api/messagesAPI';
 import { fetchAndVerifyKey } from '../verification/keyTransparency';
 
+// Track which users have already been warned about key transparency — prevents console spam
+const ktWarnedUsers = new Set<string>();
+
 // ── Mutex ──
 
 /**
@@ -146,15 +149,16 @@ export async function ensureSessionsForRoom(
     try {
       const result = await fetchAndVerifyKey(memberId);
       if (!result.verified && result.proof !== null) {
-        console.warn(
-          `[F.R.A.M.E.] Key transparency verification failed for ${memberId} — proceeding anyway (defense in depth).`,
-        );
+        // Only warn once per user per session to reduce console noise
+        if (!ktWarnedUsers.has(memberId)) {
+          console.warn(
+            `[F.R.A.M.E.] Key transparency verification failed for ${memberId} — proceeding anyway (defense in depth).`,
+          );
+          ktWarnedUsers.add(memberId);
+        }
       }
-    } catch (err) {
-      console.warn(
-        `[F.R.A.M.E.] Could not verify key transparency for ${memberId}:`,
-        err instanceof Error ? err.message : err,
-      );
+    } catch {
+      // Key transparency check failed — not critical, proceeding with messaging
     }
   }
 
