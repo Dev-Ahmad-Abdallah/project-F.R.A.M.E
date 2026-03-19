@@ -27,6 +27,7 @@ interface CreateRoomBody {
   name?: string;
   isPrivate?: boolean;
   password?: string;
+  isAnonymous?: boolean;
 }
 
 interface RoomRenameBody {
@@ -110,6 +111,7 @@ roomsRouter.post(
         name: body.name,
         isPrivate: body.isPrivate,
         password: body.password,
+        isAnonymous: body.isAnonymous,
       },
     );
     res.status(201).json(result);

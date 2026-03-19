@@ -112,6 +112,9 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   const [roomName, setRoomName] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [roomPassword, setRoomPassword] = useState('');
+  const [privacyMode, setPrivacyMode] = useState<'open' | 'private' | 'password'>('open');
+  const [disappearingTimer, setDisappearingTimer] = useState<number>(0);
+  const [anonymousMode, setAnonymousMode] = useState(false);
   // Join by code state
   const [joinCode, setJoinCode] = useState('');
   const [joinCodePassword, setJoinCodePassword] = useState('');
@@ -246,8 +249,9 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
           invitedUsers,
           finalName,
           {
-            isPrivate: isPrivate || undefined,
-            password: roomPassword.trim() || undefined,
+            isPrivate: privacyMode === 'private' || privacyMode === 'password' || undefined,
+            password: privacyMode === 'password' && roomPassword.trim() ? roomPassword.trim() : undefined,
+            isAnonymous: anonymousMode || undefined,
           },
         );
 
@@ -260,6 +264,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
             ...invitedUsers.map((u) => ({ userId: u })),
           ],
           unreadCount: 0,
+          isAnonymous: anonymousMode || undefined,
         };
 
         setSuccessRoom(newRoom);
@@ -388,7 +393,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         setLoading(false);
       }
     }
-  }, [username, roomType, roomName, isPrivate, roomPassword, currentUserId, onCreated, invitedUsers, groupNameSuggestion, joinCode, joinCodePassword]);
+  }, [username, roomType, roomName, isPrivate, roomPassword, privacyMode, disappearingTimer, anonymousMode, currentUserId, onCreated, invitedUsers, groupNameSuggestion, joinCode, joinCodePassword]);
 
   const handleJoinByCode = useCallback(async () => {
     const trimmedCode = joinCode.trim().toUpperCase();
@@ -562,7 +567,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         {/* Header */}
         <div style={styles.header}>
           <h2 id="new-chat-title" style={styles.title}>
-            New Conversation
+            {roomType === 'group' ? 'Configure Secure Room' : 'New Conversation'}
           </h2>
           <button
             type="button"
@@ -647,48 +652,201 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
           </div>
         )}
 
-        {/* Private room toggle (group only) */}
+        {/* ── Secure Session Configuration (group only) ── */}
         {roomType === 'group' && (
-          <div style={styles.fieldGroup}>
-            <label style={styles.label}>Access Control</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button
-                type="button"
-                style={{
-                  ...styles.toggleButton,
-                  ...(isPrivate ? styles.toggleButtonActive : {}),
-                  transition: 'all 0.2s ease',
-                }}
-                onClick={() => setIsPrivate(!isPrivate)}
-                disabled={loading}
-              >
-                {isPrivate ? 'Private' : 'Open'}
-              </button>
-              <span style={styles.fieldHint}>
-                {isPrivate ? 'Invite-only room' : 'Anyone can join'}
+          <div style={{
+            border: '1px solid #30363d',
+            borderRadius: 8,
+            overflow: 'hidden',
+            marginBottom: 16,
+          }}>
+            {/* Section: Privacy */}
+            <div style={{
+              padding: '12px 14px',
+              borderBottom: '1px solid #21262d',
+            }}>
+              <div style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: '#8b949e',
+                textTransform: 'uppercase' as const,
+                letterSpacing: '0.08em',
+                marginBottom: 8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+                Privacy
+              </div>
+              <div style={{
+                display: 'flex',
+                gap: 6,
+                backgroundColor: '#0d1117',
+                borderRadius: 6,
+                padding: 3,
+              }}>
+                {(['open', 'private', 'password'] as const).map((mode) => {
+                  const labels = { open: 'Open', private: 'Invite Only', password: 'Password' };
+                  const isActive = privacyMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      style={{
+                        flex: 1,
+                        padding: '7px 6px',
+                        fontSize: 12,
+                        fontWeight: isActive ? 600 : 500,
+                        color: isActive ? (mode === 'open' ? '#3fb950' : mode === 'private' ? '#d29922' : '#f78166') : '#8b949e',
+                        backgroundColor: isActive ? (mode === 'open' ? 'rgba(63, 185, 80, 0.1)' : mode === 'private' ? 'rgba(210, 153, 34, 0.1)' : 'rgba(247, 129, 102, 0.1)') : 'transparent',
+                        border: isActive ? `1px solid ${mode === 'open' ? 'rgba(63, 185, 80, 0.3)' : mode === 'private' ? 'rgba(210, 153, 34, 0.3)' : 'rgba(247, 129, 102, 0.3)'}` : '1px solid transparent',
+                        borderRadius: 5,
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onClick={() => setPrivacyMode(mode)}
+                      disabled={loading}
+                    >
+                      {labels[mode as keyof typeof labels]}
+                    </button>
+                  );
+                })}
+              </div>
+              <span style={{ fontSize: 11, color: '#6e7681', marginTop: 4, display: 'block' }}>
+                {privacyMode === 'open' ? 'Anyone with the room code can join' : privacyMode === 'private' ? 'Only invited members can join' : 'A password is required to join'}
+              </span>
+              {privacyMode === 'password' && (
+                <input
+                  type="password"
+                  style={{ ...styles.input, marginTop: 8 }}
+                  value={roomPassword}
+                  onChange={(e) => setRoomPassword(e.target.value)}
+                  placeholder="Set room password"
+                  disabled={loading}
+                />
+              )}
+            </div>
+
+            {/* Section: Disappearing Messages */}
+            <div style={{
+              padding: '12px 14px',
+              borderBottom: '1px solid #21262d',
+            }}>
+              <div style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: '#8b949e',
+                textTransform: 'uppercase' as const,
+                letterSpacing: '0.08em',
+                marginBottom: 8,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+                Disappearing Messages
+              </div>
+              <div style={{
+                display: 'flex',
+                gap: 5,
+                flexWrap: 'wrap' as const,
+              }}>
+                {[
+                  { label: 'Off', value: 0 },
+                  { label: '30s', value: 30 },
+                  { label: '5m', value: 300 },
+                  { label: '1h', value: 3600 },
+                  { label: '24h', value: 86400 },
+                ].map((opt) => {
+                  const isActive = disappearingTimer === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: 12,
+                        fontWeight: isActive ? 600 : 500,
+                        color: isActive ? (opt.value === 0 ? '#8b949e' : '#d29922') : '#6e7681',
+                        backgroundColor: isActive ? (opt.value === 0 ? '#21262d' : 'rgba(210, 153, 34, 0.1)') : '#0d1117',
+                        border: isActive ? `1px solid ${opt.value === 0 ? '#30363d' : 'rgba(210, 153, 34, 0.3)'}` : '1px solid #21262d',
+                        borderRadius: 5,
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onClick={() => setDisappearingTimer(opt.value)}
+                      disabled={loading}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <span style={{ fontSize: 11, color: '#6e7681', marginTop: 4, display: 'block' }}>
+                {disappearingTimer === 0 ? 'Messages persist until manually deleted' : `Messages auto-delete after ${disappearingTimer < 60 ? disappearingTimer + 's' : disappearingTimer < 3600 ? Math.floor(disappearingTimer / 60) + ' min' : Math.floor(disappearingTimer / 3600) + ' hour(s)'}`}
               </span>
             </div>
-          </div>
-        )}
 
-        {/* Room password (group only) */}
-        {roomType === 'group' && (
-          <div style={styles.fieldGroup}>
-            <label style={styles.label} htmlFor="new-chat-password">
-              Room Password (optional)
-            </label>
-            <input
-              id="new-chat-password"
-              type="password"
-              style={styles.input}
-              value={roomPassword}
-              onChange={(e) => setRoomPassword(e.target.value)}
-              placeholder="Leave blank for no password"
-              disabled={loading}
-            />
-            <span style={styles.fieldHint}>
-              Users will need this password to join
-            </span>
+            {/* Section: Anonymous Mode */}
+            <div style={{
+              padding: '12px 14px',
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <div>
+                  <div style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: '#8b949e',
+                    textTransform: 'uppercase' as const,
+                    letterSpacing: '0.08em',
+                    marginBottom: 4,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /><line x1="2" y1="2" x2="22" y2="22" /></svg>
+                    Anonymous Mode
+                  </div>
+                  <span style={{ fontSize: 11, color: '#6e7681' }}>
+                    {anonymousMode ? 'Identities hidden from other members' : 'Members see each other\'s names'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  style={{
+                    width: 40,
+                    height: 22,
+                    borderRadius: 11,
+                    border: 'none',
+                    cursor: 'pointer',
+                    position: 'relative' as const,
+                    padding: 3,
+                    backgroundColor: anonymousMode ? '#bc8cff' : '#30363d',
+                    transition: 'background-color 0.2s',
+                    flexShrink: 0,
+                  }}
+                  onClick={() => setAnonymousMode(!anonymousMode)}
+                  disabled={loading}
+                  aria-label="Toggle anonymous mode"
+                >
+                  <div style={{
+                    width: 16,
+                    height: 16,
+                    borderRadius: '50%',
+                    backgroundColor: '#e6edf3',
+                    transition: 'transform 0.2s',
+                    transform: anonymousMode ? 'translateX(18px)' : 'translateX(0)',
+                  }} />
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -924,7 +1082,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
               onClick={() => void handleCreate()}
               disabled={loading || (roomType === 'group' ? invitedUsers.length === 0 : !username.trim())}
             >
-              {verifying ? 'Verifying keys...' : loading ? 'Creating...' : 'Create'}
+              {verifying ? 'Verifying keys...' : loading ? 'Creating...' : roomType === 'group' ? 'Create Secure Room' : 'Create'}
             </button>
           )}
         </div>
@@ -954,11 +1112,13 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #30363d',
     borderRadius: 12,
     padding: 28,
-    maxWidth: 440,
+    maxWidth: 480,
     width: '100%',
     fontFamily: FONT_BODY,
     color: '#c9d1d9',
     boxShadow: '0 16px 48px rgba(0, 0, 0, 0.4)',
+    maxHeight: '90vh',
+    overflowY: 'auto' as const,
   },
   header: {
     display: 'flex',

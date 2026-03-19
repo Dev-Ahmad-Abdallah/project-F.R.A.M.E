@@ -40,6 +40,53 @@ const USER_ID_REGEX = /^@[a-zA-Z0-9_-]+:.+$/;
 const config = getConfig();
 
 /**
+ * Anonymous animal names used to generate pseudonyms for anonymous rooms.
+ * Each member gets a unique "Anonymous <Animal>" name.
+ */
+const ANONYMOUS_ANIMALS = [
+  'Fox', 'Eagle', 'Wolf', 'Bear', 'Hawk', 'Owl', 'Deer', 'Lynx',
+  'Raven', 'Falcon', 'Panther', 'Cobra', 'Puma', 'Dolphin', 'Tiger',
+  'Crane', 'Otter', 'Viper', 'Bison', 'Jaguar', 'Heron', 'Badger',
+  'Moose', 'Osprey', 'Coyote', 'Marten', 'Ibis', 'Gecko', 'Ferret',
+  'Mantis', 'Condor', 'Bobcat', 'Wren', 'Newt', 'Lark', 'Yak',
+  'Dingo', 'Finch', 'Moth', 'Toad', 'Asp', 'Kiwi', 'Emu', 'Ram',
+  'Mink', 'Pike', 'Swan', 'Dove', 'Jay', 'Elk',
+];
+
+/**
+ * Generate a deterministic anonymous name for a user in a room.
+ * Uses simple index-based assignment so names are stable.
+ */
+function pickAnonymousName(usedNames: Set<string>): string {
+  for (const animal of ANONYMOUS_ANIMALS) {
+    const name = `Anonymous ${animal}`;
+    if (!usedNames.has(name)) return name;
+  }
+  // Fallback if we somehow exceed the list
+  return `Anonymous User ${usedNames.size + 1}`;
+}
+
+/**
+ * Build the anonymousNames mapping for a room given its current members.
+ * Preserves existing assignments and adds new ones for new members.
+ */
+function buildAnonymousNames(
+  existingMap: Record<string, string>,
+  memberIds: string[],
+): Record<string, string> {
+  const result: Record<string, string> = { ...existingMap };
+  const usedNames = new Set(Object.values(result));
+  for (const memberId of memberIds) {
+    if (!result[memberId]) { // eslint-disable-line security/detect-object-injection
+      const name = pickAnonymousName(usedNames);
+      result[memberId] = name; // eslint-disable-line security/detect-object-injection
+      usedNames.add(name);
+    }
+  }
+  return result;
+}
+
+/**
  * Create a new room (direct or group) and invite initial members.
  */
 export async function createRoom(
@@ -47,7 +94,7 @@ export async function createRoom(
   roomType: 'direct' | 'group',
   inviteUserIds: string[],
   homeserver: string = config.HOMESERVER_DOMAIN,
-  options?: { name?: string; isPrivate?: boolean; password?: string },
+  options?: { name?: string; isPrivate?: boolean; password?: string; isAnonymous?: boolean },
 ): Promise<{ roomId: string; room: RoomRow }> {
   // Validate all invited user IDs before creating the room
   for (const inviteeId of inviteUserIds) {
@@ -62,13 +109,19 @@ export async function createRoom(
 
   const room = await dbCreateRoom(roomType, userId, homeserver, options?.name, inviteUserIds);
 
-  // Set room settings if privacy or password is specified
-  if (options?.isPrivate || options?.password) {
+  // Set room settings if privacy, password, or anonymous mode is specified
+  if (options?.isPrivate || options?.password || options?.isAnonymous) {
     const settings: Record<string, unknown> = {};
     if (options.isPrivate) settings.isPrivate = true;
     if (options.password) {
       const bcrypt = await import('bcrypt');
       settings.passwordHash = await bcrypt.hash(options.password, 10);
+    }
+    if (options.isAnonymous) {
+      settings.isAnonymous = true;
+      // Generate anonymous names for creator and all invited members
+      const allMembers = [userId, ...inviteUserIds];
+      settings.anonymousNames = buildAnonymousNames({}, allMembers);
     }
     await dbUpdateRoomSettings(room.room_id, settings);
   }
@@ -135,6 +188,21 @@ export async function inviteToRoom(
 
   await addRoomMember(roomId, targetUserId, 'member');
 
+  // If this is an anonymous room, assign an anonymous name to the invited member
+  const { pool: dbPool } = await import('../db/pool') as { pool: import('pg').Pool };
+  const roomRow = await dbPool.query<{ settings: Record<string, unknown> }>(
+    'SELECT settings FROM rooms WHERE room_id = $1',
+    [roomId],
+  );
+  const roomSettings = roomRow.rows[0]?.settings || {};
+  if (roomSettings.isAnonymous) {
+    const existingNames = (roomSettings.anonymousNames as Record<string, string>) || {};
+    if (!existingNames[targetUserId]) { // eslint-disable-line security/detect-object-injection
+      const updatedNames = buildAnonymousNames(existingNames, [targetUserId]);
+      await dbUpdateRoomSettings(roomId, { ...roomSettings, anonymousNames: updatedNames });
+    }
+  }
+
   // Emit membership change event for the invited user
   roomEvents.emit('membershipChange', {
     roomId,
@@ -178,6 +246,15 @@ export async function joinRoom(
   }
 
   await addRoomMember(roomId, userId, 'member');
+
+  // If this is an anonymous room, assign an anonymous name to the new member
+  if (settings.isAnonymous) {
+    const existingNames = (settings.anonymousNames as Record<string, string>) || {};
+    if (!existingNames[userId]) { // eslint-disable-line security/detect-object-injection
+      const updatedNames = buildAnonymousNames(existingNames, [userId]);
+      await dbUpdateRoomSettings(roomId, { ...settings, anonymousNames: updatedNames });
+    }
+  }
 
   // Emit membership change event
   roomEvents.emit('membershipChange', {
@@ -288,6 +365,15 @@ export async function joinRoomWithPassword(
 
   await addRoomMember(roomId, userId, 'member');
 
+  // If this is an anonymous room, assign an anonymous name to the new member
+  if (settings.isAnonymous) {
+    const existingNames = (settings.anonymousNames as Record<string, string>) || {};
+    if (!existingNames[userId]) { // eslint-disable-line security/detect-object-injection
+      const updatedNames = buildAnonymousNames(existingNames, [userId]);
+      await dbUpdateRoomSettings(roomId, { ...settings, anonymousNames: updatedNames });
+    }
+  }
+
   // Emit membership change event
   roomEvents.emit('membershipChange', {
     roomId,
@@ -312,7 +398,24 @@ export async function getRoomMemberList(
     throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
   }
 
-  return getRoomMembersWithDeviceCounts(roomId);
+  const members = await getRoomMembersWithDeviceCounts(roomId);
+
+  // For anonymous rooms, replace display names with anonymous pseudonyms
+  const { pool } = await import('../db/pool') as { pool: import('pg').Pool };
+  const roomResult = await pool.query<{ settings: Record<string, unknown> }>(
+    'SELECT settings FROM rooms WHERE room_id = $1',
+    [roomId],
+  );
+  const settings = roomResult.rows[0]?.settings || {};
+  if (settings.isAnonymous && settings.anonymousNames) {
+    const anonNames = settings.anonymousNames as Record<string, string>;
+    return members.map((m) => ({
+      ...m,
+      display_name: anonNames[m.user_id] || 'Anonymous', // eslint-disable-line security/detect-object-injection
+    }));
+  }
+
+  return members;
 }
 
 /**
@@ -408,6 +511,15 @@ export async function joinRoomByCode(
   }
 
   await addRoomMember(room.room_id, userId, 'member');
+
+  // If this is an anonymous room, assign an anonymous name to the new member
+  if (settings.isAnonymous) {
+    const existingNames = (settings.anonymousNames as Record<string, string>) || {};
+    if (!existingNames[userId]) { // eslint-disable-line security/detect-object-injection
+      const updatedNames = buildAnonymousNames(existingNames, [userId]);
+      await dbUpdateRoomSettings(room.room_id, { ...settings, anonymousNames: updatedNames });
+    }
+  }
 
   roomEvents.emit('membershipChange', {
     roomId: room.room_id,

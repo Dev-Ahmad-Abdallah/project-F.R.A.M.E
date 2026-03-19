@@ -98,6 +98,7 @@ export const createRoomSchema = z.object({
   name: z.string().max(128).optional(),
   isPrivate: z.boolean().optional(),
   password: z.string().max(128).optional(),
+  isAnonymous: z.boolean().optional(),
 });
 
 export const keysQuerySchema = z.object({
@@ -122,6 +123,7 @@ export const roomSettingsSchema = z.object({
   }).optional(),
   isPrivate: z.boolean().optional(),
   password: z.string().max(128).optional(),
+  isAnonymous: z.boolean().optional(),
 }).strict();
 
 export const joinWithPasswordSchema = z.object({

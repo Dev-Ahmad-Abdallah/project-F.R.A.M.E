@@ -9,7 +9,7 @@
  * border with corner brackets (Signal / WhatsApp QR scanner inspired).
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
@@ -45,6 +45,16 @@ function injectKeyframes() {
     @keyframes frameQrCornerPulse {
       0%, 100% { opacity: 0.6; }
       50% { opacity: 1; }
+    }
+    @keyframes frameScanSuccess {
+      0% { transform: scale(0); opacity: 0; }
+      50% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes frameScanSuccessFade {
+      0% { opacity: 1; }
+      70% { opacity: 1; }
+      100% { opacity: 0; }
     }
   `;
   document.head.appendChild(style);
@@ -148,6 +158,15 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
   const [scannedFingerprint, setScannedFingerprint] = useState<string>('');
   const [verificationError, setVerificationError] = useState<string | null>(null);
 
+  // Camera / scanner state
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [scanSuccess, setScanSuccess] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => { injectKeyframes(); }, []);
 
   useEffect(() => {
@@ -155,7 +174,6 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
     void generateFingerprint(devicePublicKey).then((fp) => {
       if (!cancelled) {
         setFingerprint(fp);
-        // Build QR payload with timestamp to prevent replay attacks
         const payload = JSON.stringify({ fingerprint: fp, deviceId, timestamp: Date.now() });
         setQrPayload(payload);
       }
@@ -165,13 +183,129 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
     };
   }, [devicePublicKey, deviceId]);
 
+  // Stop camera helper
+  const stopCamera = useCallback(() => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, [stopCamera]);
+
+  // Handle a successfully detected QR payload
+  const handleQrDetected = useCallback((rawValue: string) => {
+    // Stop scanning immediately
+    stopCamera();
+
+    // Show success animation
+    setScanSuccess(true);
+
+    // Try to parse the JSON payload to extract fingerprint for display
+    let displayValue = rawValue;
+    try {
+      const parsed = JSON.parse(rawValue) as { fingerprint?: string };
+      if (parsed.fingerprint) {
+        displayValue = rawValue; // Keep the full JSON so handleApprove can validate timestamp
+      }
+    } catch {
+      // Raw string — use as-is
+    }
+
+    setScannedFingerprint(displayValue);
+
+    // Clear success animation after 1.5s
+    setTimeout(() => {
+      setScanSuccess(false);
+      setScannerOpen(false);
+    }, 1500);
+  }, [stopCamera]);
+
+  // Start camera and begin scanning
+  const openScanner = useCallback(async () => {
+    setCameraError(null);
+    setScannerOpen(true);
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+      });
+      streamRef.current = stream;
+
+      // Wait for video element to be mounted
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      // Check if BarcodeDetector is available
+      const hasBarcodeDetector =
+        typeof window !== 'undefined' && 'BarcodeDetector' in window;
+
+      if (hasBarcodeDetector) {
+        // Use BarcodeDetector API
+        const detector = new (window as any).BarcodeDetector({
+          formats: ['qr_code'],
+        });
+
+        scanIntervalRef.current = setInterval(async () => {
+          if (!videoRef.current || videoRef.current.readyState < 2) return;
+          try {
+            const barcodes = await detector.detect(videoRef.current);
+            if (barcodes.length > 0 && barcodes[0].rawValue) {
+              handleQrDetected(barcodes[0].rawValue);
+            }
+          } catch {
+            // Detection frame failed — continue scanning
+          }
+        }, 500);
+      } else {
+        // No BarcodeDetector — show fallback message after a moment.
+        // We still keep the camera open so the user sees it's working,
+        // but inform them to use manual entry.
+        setCameraError(
+          'Your browser does not support QR code detection. Please enter the fingerprint manually below.'
+        );
+      }
+    } catch (err: any) {
+      // Camera access denied or not available
+      const message =
+        err?.name === 'NotAllowedError'
+          ? 'Camera access denied. You can enter the fingerprint manually below.'
+          : err?.name === 'NotFoundError'
+            ? 'No camera found on this device. You can enter the fingerprint manually below.'
+            : 'Could not access camera. You can enter the fingerprint manually below.';
+      setCameraError(message);
+      setScannerOpen(false);
+    }
+  }, [handleQrDetected]);
+
+  const closeScanner = useCallback(() => {
+    stopCamera();
+    setScannerOpen(false);
+    setCameraError(null);
+  }, [stopCamera]);
+
   const formattedFingerprint = formatFingerprint(fingerprint);
 
   const handleApprove = useCallback(() => {
     const input = scannedFingerprint.trim();
     if (!input) return;
 
-    // Try to parse as a QR payload (JSON with timestamp); fall back to raw fingerprint
     setVerificationError(null);
     try {
       const parsed = JSON.parse(input) as { fingerprint?: string; timestamp?: number };
@@ -238,16 +372,87 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
       <div style={styles.section}>
         <h3 style={styles.subheading}>Scan Other Device</h3>
 
-        <div style={styles.scannerPlaceholder}>
-          <svg width="32" height="32" viewBox="0 0 24 24" style={{ opacity: 0.4 }}>
-            <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" stroke="#58a6ff" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-            <rect x="7" y="7" width="10" height="10" rx="1" stroke="#58a6ff" strokeWidth="1" fill="none" opacity="0.3" />
-          </svg>
-          <p style={styles.scannerText}>
-            Camera QR scanning requires a native mobile app. Use manual
-            fingerprint comparison below.
+        {!scannerOpen && !scanSuccess && (
+          <div style={styles.scannerPlaceholder}>
+            <svg width="32" height="32" viewBox="0 0 24 24" style={{ opacity: 0.4 }}>
+              <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2" stroke="#58a6ff" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+              <rect x="7" y="7" width="10" height="10" rx="1" stroke="#58a6ff" strokeWidth="1" fill="none" opacity="0.3" />
+            </svg>
+            <button
+              type="button"
+              style={styles.openCameraButton}
+              onClick={openScanner}
+            >
+              Open Camera Scanner
+            </button>
+            <p style={styles.scannerText}>
+              Point your camera at the other device's QR code to link automatically.
+            </p>
+          </div>
+        )}
+
+        {/* Camera error message */}
+        {cameraError && (
+          <p style={styles.cameraErrorText}>
+            {DOMPurify.sanitize(cameraError, PURIFY_CONFIG)}
           </p>
-        </div>
+        )}
+
+        {/* Live camera feed */}
+        {scannerOpen && (
+          <div style={styles.cameraContainer}>
+            <div style={styles.cameraViewport}>
+              <QrCornerBrackets />
+              <video
+                ref={videoRef}
+                style={styles.cameraVideo}
+                playsInline
+                muted
+              />
+              {/* Scan line overlay */}
+              <div style={styles.qrScanLine} />
+              <ScanningGrid />
+
+              {/* Success overlay */}
+              {scanSuccess && (
+                <div style={styles.successOverlay}>
+                  <svg
+                    width="64"
+                    height="64"
+                    viewBox="0 0 64 64"
+                    style={{
+                      animation: 'frameScanSuccess 0.4s ease-out forwards',
+                    }}
+                  >
+                    <circle cx="32" cy="32" r="30" fill="#238636" opacity="0.9" />
+                    <path
+                      d="M20 32 L28 40 L44 24"
+                      stroke="#ffffff"
+                      strokeWidth="4"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <p style={{ color: '#3fb950', fontSize: 14, fontWeight: 600, margin: '8px 0 0' }}>
+                    QR Code Scanned!
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              style={styles.closeCameraButton}
+              onClick={closeScanner}
+            >
+              Close Camera
+            </button>
+          </div>
+        )}
+
+        {/* Hidden canvas for frame capture (used by BarcodeDetector fallback if needed) */}
+        <canvas ref={canvasRef} style={{ display: 'none' }} />
 
         {/* Manual fingerprint entry fallback */}
         <div style={styles.manualEntry}>
@@ -429,6 +634,72 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     color: '#8b949e',
     textAlign: 'center',
+  },
+  openCameraButton: {
+    padding: '10px 20px',
+    fontSize: 14,
+    fontWeight: 600,
+    backgroundColor: '#21262d',
+    color: '#58a6ff',
+    border: '1px solid #30363d',
+    borderRadius: 6,
+    cursor: 'pointer',
+    transition: 'background-color 0.15s, border-color 0.15s',
+    minHeight: 44,
+  },
+  cameraContainer: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    gap: 12,
+  },
+  cameraViewport: {
+    position: 'relative' as const,
+    width: '100%',
+    maxWidth: 320,
+    aspectRatio: '1 / 1',
+    backgroundColor: '#0d1117',
+    borderRadius: 12,
+    overflow: 'hidden',
+    border: '2px solid #30363d',
+  },
+  cameraVideo: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'cover' as const,
+    display: 'block',
+    borderRadius: 10,
+  },
+  successOverlay: {
+    position: 'absolute' as const,
+    inset: 0,
+    display: 'flex',
+    flexDirection: 'column' as const,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(13, 17, 23, 0.85)',
+    zIndex: 10,
+    animation: 'frameScanSuccessFade 1.5s ease-in-out forwards',
+  },
+  closeCameraButton: {
+    padding: '8px 16px',
+    fontSize: 13,
+    fontWeight: 500,
+    backgroundColor: '#21262d',
+    color: '#c9d1d9',
+    border: '1px solid #30363d',
+    borderRadius: 6,
+    cursor: 'pointer',
+  },
+  cameraErrorText: {
+    margin: 0,
+    fontSize: 13,
+    color: '#d29922',
+    padding: '8px 12px',
+    backgroundColor: 'rgba(210, 153, 34, 0.1)',
+    border: '1px solid rgba(210, 153, 34, 0.2)',
+    borderRadius: 6,
+    lineHeight: 1.5,
   },
   manualEntry: {
     display: 'flex',
