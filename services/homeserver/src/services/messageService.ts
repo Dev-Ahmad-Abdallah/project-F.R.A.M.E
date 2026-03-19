@@ -328,10 +328,28 @@ export async function syncMessages(
     }
   }
 
+  // Batch-fetch display names for all senders in this sync page
+  const senderIds = [...new Set(events.map((e) => e.sender_id))];
+  const displayNamesBySender: Record<string, string> = {};
+  if (senderIds.length > 0) {
+    const usersResult = await pool.query<{ user_id: string; display_name: string | null }>(
+      'SELECT user_id, display_name FROM users WHERE user_id = ANY($1::text[])',
+      [senderIds],
+    );
+    for (const row of usersResult.rows) {
+      if (row.display_name) {
+        displayNamesBySender[row.user_id] = row.display_name; // eslint-disable-line security/detect-object-injection
+      }
+    }
+  }
+
   return {
     events: events.map((e) => {
       const anonNames = anonymousNamesByRoom[e.room_id]; // eslint-disable-line security/detect-object-injection
-      const senderDisplayName = anonNames?.[e.sender_id] || undefined; // eslint-disable-line security/detect-object-injection
+      // For anonymous rooms use anonymous names; otherwise use the user's current display name
+      const senderDisplayName = anonNames
+        ? (anonNames[e.sender_id] || undefined) // eslint-disable-line security/detect-object-injection
+        : (displayNamesBySender[e.sender_id] || undefined); // eslint-disable-line security/detect-object-injection
       return {
         eventId: e.event_id,
         roomId: e.room_id,

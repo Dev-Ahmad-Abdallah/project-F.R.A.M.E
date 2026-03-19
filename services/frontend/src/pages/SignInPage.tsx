@@ -45,7 +45,7 @@ export default function SignInPage({ onAuthenticated, onBack }: SignInPageProps)
 
 const signinMobileStyles = `
 @media (max-width: 600px) {
-  /* 8. Back button — larger touch target on mobile */
+  /* Back button — larger touch target on mobile */
   .frame-back-button {
     min-height: 44px !important;
     min-width: 44px !important;
@@ -57,6 +57,10 @@ const signinMobileStyles = `
   .frame-back-button:active {
     background: rgba(88, 166, 255, 0.1) !important;
   }
+  /* Prevent horizontal overflow on sign-in page */
+  body {
+    overflow-x: hidden !important;
+  }
 }
 `;
 
@@ -66,12 +70,14 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: '#0d1117',
     display: 'flex',
     flexDirection: 'column',
+    overflowX: 'hidden',
+    maxWidth: '100vw',
   },
   topBar: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '12px 24px',
+    padding: '12px clamp(12px, 4vw, 24px)',
     borderBottom: '1px solid #30363d',
     backgroundColor: 'rgba(13,17,23,0.9)',
     backdropFilter: 'blur(12px)',

@@ -178,6 +178,11 @@ flowchart TB
     HSA <-->|"Federation — Ed25519 signed events"| HSB
 ```
 
+<!-- Save your Railway dashboard screenshot as docs/railway-infrastructure.png -->
+<p align="center">
+  <img src="docs/railway-infrastructure.png" alt="Railway Production Dashboard — 7 services all online" width="700" />
+</p>
+
 - **7 services** all online with persistent volumes for data durability
 - **2 homeservers** demonstrating real federation (separate databases, separate Redis)
 - **Auto-TLS** via Railway — HTTPS enforced on all public endpoints

@@ -121,7 +121,7 @@ export interface LastMessage {
 }
 
 export interface RoomWithMembers extends RoomRow {
-  members: { user_id: string; role: string }[];
+  members: { user_id: string; role: string; display_name: string | null }[];
   lastMessage: LastMessage | null;
   unreadCount: number;
 }
@@ -130,6 +130,7 @@ interface MemberQueryRow {
   room_id: string;
   user_id: string;
   role: string;
+  display_name: string | null;
 }
 
 export async function getUserRoomsWithMembers(userId: string, deviceId?: string): Promise<RoomWithMembers[]> {
@@ -157,9 +158,12 @@ export async function getUserRoomsWithMembers(userId: string, deviceId?: string)
 
   const roomIds = roomsResult.rows.map((r) => r.room_id);
 
-  // Get all members for these rooms in a single query
+  // Get all members for these rooms in a single query, joining users for display_name
   const membersResult = await pool.query<MemberQueryRow>(
-    `SELECT room_id, user_id, role FROM room_members WHERE room_id = ANY($1::text[])`,
+    `SELECT rm.room_id, rm.user_id, rm.role, u.display_name
+     FROM room_members rm
+     LEFT JOIN users u ON rm.user_id = u.user_id
+     WHERE rm.room_id = ANY($1::text[])`,
     [roomIds]
   );
 
@@ -181,13 +185,14 @@ export async function getUserRoomsWithMembers(userId: string, deviceId?: string)
   }
 
   // Group members by room using a Map
-  const membersByRoom = new Map<string, { user_id: string; role: string }[]>();
+  const membersByRoom = new Map<string, { user_id: string; role: string; display_name: string | null }[]>();
   for (const m of membersResult.rows) {
+    const member = { user_id: m.user_id, role: m.role, display_name: m.display_name };
     const roomMembers = membersByRoom.get(m.room_id);
     if (roomMembers) {
-      roomMembers.push({ user_id: m.user_id, role: m.role });
+      roomMembers.push(member);
     } else {
-      membersByRoom.set(m.room_id, [{ user_id: m.user_id, role: m.role }]);
+      membersByRoom.set(m.room_id, [member]);
     }
   }
 

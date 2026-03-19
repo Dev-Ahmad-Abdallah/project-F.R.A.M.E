@@ -306,9 +306,32 @@ export async function decryptEvent(event: SyncEvent): Promise<DecryptedEvent> {
     );
     const parsed = JSON.parse(decrypted.event) as Record<string, unknown>;
 
+    // Extract plaintext content — handle both object and string forms.
+    // The WASM SDK may return content as a nested object or as a JSON string
+    // depending on the encryption algorithm (Olm vs Megolm) and SDK version.
+    let plaintext: Record<string, unknown> | null = null;
+    const rawContent = parsed.content;
+    if (rawContent != null && typeof rawContent === 'object') {
+      plaintext = rawContent as Record<string, unknown>;
+    } else if (typeof rawContent === 'string') {
+      try {
+        const inner: unknown = JSON.parse(rawContent);
+        if (inner != null && typeof inner === 'object') {
+          plaintext = inner as Record<string, unknown>;
+        }
+      } catch {
+        // rawContent is a non-JSON string — fall through
+      }
+    }
+    // If parsed.content was missing/unusable, fall back to parsed itself
+    // (some SDK versions return the content at the top level)
+    if (plaintext == null) {
+      plaintext = parsed;
+    }
+
     return {
       event,
-      plaintext: (parsed.content as Record<string, unknown> | undefined) ?? parsed,
+      plaintext,
       isEncrypted: true,
       decryptionError: null,
     };

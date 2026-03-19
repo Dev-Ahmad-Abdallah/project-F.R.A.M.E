@@ -31,6 +31,27 @@ input::placeholder { color: #8b949e; }
 ::-webkit-scrollbar-thumb { background: #1c2128; border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: #30363d; }
 
+/* Military/tactical: green caret color on inputs */
+input, textarea {
+  caret-color: #3fb950;
+}
+
+/* Military/tactical: monospace placeholder on chat textarea */
+.frame-chat-textarea::placeholder {
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", "Consolas", monospace;
+  letter-spacing: 0.03em;
+  opacity: 0.5;
+}
+
+/* Vignette effect on chat message area */
+.frame-chat-vignette {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  box-shadow: inset 0 0 80px 20px rgba(0, 0, 0, 0.35);
+}
+
 /* Modal entrance animation */
 @keyframes frame-modal-enter {
   from { opacity: 0; transform: scale(0.95); }
@@ -69,6 +90,7 @@ button, label, span, [role="button"] {
   height: 100%;
   overflow: hidden;
   transition: width 0.3s ease, min-width 0.3s ease;
+  border-top: 2px solid #3fb950;
 }
 
 /* Below 600px: sidebar becomes a Telegram-style slide-over overlay */
@@ -239,7 +261,7 @@ button, label, span, [role="button"] {
   max-width: clamp(200px, 75%, 600px);
   min-width: 80px;
   padding: 8px 12px;
-  border-radius: 12px;
+  border-radius: 4px;
   font-size: clamp(13px, 1.4vw, 16px);
   line-height: 1.4;
   word-break: break-word;
@@ -305,6 +327,8 @@ button, label, span, [role="button"] {
   font-weight: 700;
   word-break: break-word;
   overflow-wrap: break-word;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 /* ── Feature grid: auto-fit columns ── */
@@ -886,6 +910,69 @@ body {
   .frame-landing-nav {
     padding: 6px 8px !important;
   }
+}
+
+/* ══════════════════════════════════════════════════
+   REPLY QUOTE STYLING
+   ══════════════════════════════════════════════════ */
+
+/* Reply quote text: 2-line clamp with ellipsis */
+.frame-reply-quote-text {
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  display: -webkit-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Reply quote hover feedback */
+.frame-reply-quote:hover {
+  filter: brightness(1.1);
+}
+
+/* ══════════════════════════════════════════════════
+   ADDITIONAL MOBILE FIXES
+   ══════════════════════════════════════════════════ */
+@media (max-width: 600px) {
+  /* Reply preview bar: ensure no overflow */
+  .frame-reply-preview-mobile {
+    max-width: 100vw !important;
+    overflow: hidden !important;
+  }
+
+  /* Sign-in page: stack vertically, prevent overflow */
+  .frame-auth-form {
+    max-width: 100% !important;
+    padding: 16px !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Ensure dialog modals stay within viewport */
+  [role="dialog"] {
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Context menu: keep within screen bounds */
+  .frame-context-menu-mobile {
+    left: 8px !important;
+    right: 8px !important;
+    max-width: calc(100vw - 16px) !important;
+  }
+
+  /* Sync error indicator: wrap on small screens */
+  .frame-sync-error {
+    flex-wrap: wrap !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   TOAST & FEEDBACK VISIBILITY
+   ══════════════════════════════════════════════════ */
+
+/* Ensure toasts render above all overlays including dialogs */
+.frame-toast-container {
+  z-index: 10001 !important;
 }
 `;
 
