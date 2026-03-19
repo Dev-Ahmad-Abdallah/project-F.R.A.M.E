@@ -1406,23 +1406,31 @@ function App() {
           className={`frame-sidebar${isMobile && !sidebarOpen ? ' frame-sidebar-hidden' : ''}`}
           style={{ flexShrink: 0, position: 'relative' as const, overflow: 'hidden' }}
         >
-          {/* Subtle scan-line overlay for military HUD feel */}
+          {/* Tactical grid overlay for command console feel */}
           <div style={{
             position: 'absolute',
             inset: 0,
             pointerEvents: 'none',
             zIndex: 0,
-            background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(63,185,80,0.015) 2px, rgba(63,185,80,0.015) 4px)',
-            opacity: 1,
+            backgroundImage: 'linear-gradient(rgba(63,185,80,0.01) 1px, transparent 1px), linear-gradient(90deg, rgba(63,185,80,0.01) 1px, transparent 1px)',
+            backgroundSize: '24px 24px',
+          }} />
+          {/* Refined scan-line sweep */}
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            zIndex: 0,
+            background: 'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(63,185,80,0.008) 3px, rgba(63,185,80,0.008) 4px)',
           }} />
           <div style={{
             position: 'absolute',
             inset: 0,
             pointerEvents: 'none',
             zIndex: 0,
-            background: 'linear-gradient(180deg, rgba(63,185,80,0.03) 0%, transparent 10%, transparent 90%, rgba(63,185,80,0.03) 100%)',
-            animation: 'frame-scanline 8s linear infinite',
-            opacity: 0.5,
+            background: 'linear-gradient(180deg, rgba(63,185,80,0.02) 0%, transparent 8%, transparent 92%, rgba(63,185,80,0.02) 100%)',
+            animation: 'frame-scanline 10s linear infinite',
+            opacity: 0.4,
           }} />
           {/* F.R.A.M.E. sidebar header branding */}
           <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1472,7 +1480,7 @@ function App() {
             </div>
             <div style={styles.userDetails}>
               <span className="frame-user-name" style={styles.userName}>{DOMPurify.sanitize(userDisplayName || formatDisplayName(auth.userId), PURIFY_CONFIG)}</span>
-              <span className="frame-user-status" style={styles.userStatus} role="status" aria-live="polite">
+              <span className="frame-user-status" style={{ ...styles.userStatus, color: connectionLost ? '#d29922' : (userStatus === 'online' ? '#3fb950' : userStatus === 'away' ? '#d29922' : userStatus === 'busy' ? '#f85149' : '#484f58') }} role="status" aria-live="polite">
                 <span style={{
                   display: 'inline-block',
                   width: 7,
@@ -1741,8 +1749,9 @@ const styles: Record<string, React.CSSProperties> = {
     width: 48,
     height: 48,
     borderRadius: '50%',
-    background: 'linear-gradient(135deg, #58a6ff 0%, #3fb950 100%)',
-    padding: 2,
+    background: 'transparent',
+    border: '2px solid #3fb950',
+    padding: 0,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1750,7 +1759,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     color: '#58a6ff',
     flexShrink: 0,
-    boxShadow: '0 0 0 2px #161b22',
+    boxShadow: '0 0 6px rgba(63,185,80,0.25), 0 0 0 2px #161b22',
   },
   userAvatarInner: {
     width: 44,
