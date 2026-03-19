@@ -574,9 +574,9 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
           {/* Session ID display — large, prominent, TeamViewer-style */}
           <div style={{
             backgroundColor: '#0d1117',
-            border: '2px solid #30363d',
-            borderRadius: 12,
-            padding: '24px 20px',
+            border: '1px solid #30363d',
+            borderRadius: 14,
+            padding: '28px 24px',
             marginBottom: 16,
           }}>
             <div style={{
@@ -585,19 +585,20 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
               color: '#8b949e',
               textTransform: 'uppercase' as const,
               letterSpacing: '0.1em',
-              marginBottom: 12,
+              marginBottom: 14,
             }}>
               Your Session ID
             </div>
             <div style={{
               fontFamily: FONT_MONO,
-              fontSize: 32,
+              fontSize: 36,
               fontWeight: 700,
               color: '#58a6ff',
-              letterSpacing: '0.15em',
+              letterSpacing: '0.18em',
               userSelect: 'all' as const,
-              marginBottom: 16,
+              marginBottom: 18,
               lineHeight: 1.2,
+              textAlign: 'center' as const,
             }}>
               {formatSessionId(sessionId)}
             </div>
@@ -819,12 +820,13 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         {/* Tab selector */}
         <div style={{
           display: 'flex',
-          gap: isMobile ? 2 : 4,
-          backgroundColor: '#0d1117',
-          borderRadius: 8,
-          padding: isMobile ? 3 : 4,
+          gap: 0,
+          backgroundColor: 'rgba(13, 17, 23, 0.8)',
+          borderRadius: 10,
+          padding: 3,
           marginBottom: 20,
           width: '100%',
+          border: '1px solid #21262d',
         }}>
           {tabs.map((tab) => {
             const isActive = activeTab === tab.key;
@@ -839,8 +841,8 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                   fontWeight: isActive ? 600 : 500,
                   color: isActive ? '#f0f6fc' : '#8b949e',
                   backgroundColor: isActive ? '#21262d' : 'transparent',
-                  border: isActive ? '1px solid #30363d' : '1px solid transparent',
-                  borderRadius: 6,
+                  border: 'none',
+                  borderRadius: 8,
                   cursor: 'pointer',
                   fontFamily: 'inherit',
                   transition: 'all 0.2s ease',
@@ -848,7 +850,8 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: isMobile ? 4 : 6,
-                  minHeight: 44,
+                  minHeight: 40,
+                  boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.3)' : 'none',
                 }}
                 onClick={() => { setActiveTab(tab.key); setError(null); }}
                 disabled={isLoading}
@@ -865,9 +868,9 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
           <div style={{ animation: 'frame-dialog-slide-up 0.2s ease-out' }}>
             {/* Explanation */}
             <div style={{
-              backgroundColor: '#0d1117',
-              border: '1px solid #21262d',
-              borderRadius: 8,
+              backgroundColor: 'rgba(13, 17, 23, 0.6)',
+              border: '1px solid rgba(48, 54, 61, 0.6)',
+              borderRadius: 10,
               padding: 16,
               marginBottom: 20,
             }}>
@@ -917,15 +920,15 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
               <button
                 type="button"
                 style={{
-                  width: 40,
-                  height: 22,
-                  borderRadius: 11,
+                  width: 42,
+                  height: 24,
+                  borderRadius: 12,
                   border: 'none',
                   cursor: 'pointer',
                   position: 'relative' as const,
                   padding: 3,
                   backgroundColor: showPasswordField ? '#238636' : '#30363d',
-                  transition: 'background-color 0.2s',
+                  transition: 'background-color 0.2s ease',
                   flexShrink: 0,
                 }}
                 onClick={() => setShowPasswordField(!showPasswordField)}
@@ -933,12 +936,13 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 aria-label="Toggle password requirement"
               >
                 <div style={{
-                  width: 16,
-                  height: 16,
+                  width: 18,
+                  height: 18,
                   borderRadius: '50%',
                   backgroundColor: '#e6edf3',
-                  transition: 'transform 0.2s',
+                  transition: 'transform 0.2s ease',
                   transform: showPasswordField ? 'translateX(18px)' : 'translateX(0)',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
                 }} />
               </button>
             </div>
@@ -1205,9 +1209,9 @@ const styles: Record<string, React.CSSProperties> = {
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    backdropFilter: 'blur(4px)',
-    WebkitBackdropFilter: 'blur(4px)',
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1217,13 +1221,13 @@ const styles: Record<string, React.CSSProperties> = {
   modal: {
     backgroundColor: '#161b22',
     border: '1px solid #30363d',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 28,
     maxWidth: 480,
     width: '100%',
     fontFamily: FONT_BODY,
     color: '#c9d1d9',
-    boxShadow: '0 24px 64px rgba(0, 0, 0, 0.5)',
+    boxShadow: '0 24px 64px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255,255,255,0.03)',
     maxHeight: '90vh',
     overflowY: 'auto' as const,
     animation: 'frame-modal-enter 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
@@ -1244,22 +1248,23 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'none',
     border: 'none',
     color: '#8b949e',
-    fontSize: 18,
+    fontSize: 16,
     cursor: 'pointer',
     padding: '4px 8px',
     lineHeight: 1,
     transition: 'color 0.15s ease',
-    minWidth: 44,
-    minHeight: 44,
+    minWidth: 36,
+    minHeight: 36,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    borderRadius: 8,
   },
   error: {
-    backgroundColor: '#3d1f28',
-    border: '1px solid #6e3630',
-    borderRadius: 6,
-    padding: '8px 12px',
+    backgroundColor: 'rgba(248, 81, 73, 0.08)',
+    border: '1px solid rgba(248, 81, 73, 0.25)',
+    borderRadius: 8,
+    padding: '10px 14px',
     marginBottom: 16,
     fontSize: 13,
     color: '#f85149',
@@ -1276,17 +1281,18 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#8b949e',
   },
   input: {
-    padding: '8px 12px',
+    padding: '10px 14px',
     fontSize: 16, /* 16px prevents iOS auto-zoom on focus */
     backgroundColor: '#0d1117',
     border: '1px solid #30363d',
-    borderRadius: 6,
+    borderRadius: 8,
     color: '#c9d1d9',
     outline: 'none',
     fontFamily: 'inherit',
     boxSizing: 'border-box' as const,
     width: '100%',
     minHeight: 48,
+    transition: 'border-color 0.2s ease',
   },
   inputWrapper: {
     position: 'relative' as const,
@@ -1316,28 +1322,30 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 8,
   },
   cancelButton: {
-    padding: '10px 18px',
+    padding: '10px 20px',
     fontSize: 14,
     fontWeight: 500,
     backgroundColor: '#21262d',
     color: '#c9d1d9',
     border: '1px solid #30363d',
-    borderRadius: 6,
+    borderRadius: 8,
     cursor: 'pointer',
     fontFamily: 'inherit',
     minHeight: 44,
+    transition: 'background-color 0.15s ease, border-color 0.15s ease',
   },
   createButton: {
-    padding: '10px 18px',
+    padding: '10px 20px',
     fontSize: 14,
     fontWeight: 600,
     backgroundColor: '#238636',
     color: '#ffffff',
     border: 'none',
-    borderRadius: 6,
+    borderRadius: 8,
     cursor: 'pointer',
     fontFamily: 'inherit',
     minHeight: 44,
+    transition: 'background-color 0.15s ease',
   },
   buttonDisabled: {
     opacity: 0.5,

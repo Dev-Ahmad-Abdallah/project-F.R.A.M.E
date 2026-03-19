@@ -61,16 +61,20 @@ function injectKeyframes() {
   style.id = GATE_KEYFRAMES_ID;
   style.textContent = `
     @keyframes frameGateEnter {
-      0% { transform: scale(0.92) translateY(16px); opacity: 0; }
+      0% { transform: scale(0.96) translateY(12px); opacity: 0; }
       100% { transform: scale(1) translateY(0); opacity: 1; }
     }
     @keyframes frameGateOverlayFade {
       0% { opacity: 0; }
       100% { opacity: 1; }
     }
-    @keyframes frameGatePulse {
-      0%, 100% { box-shadow: 0 0 30px rgba(63,185,80,0.15); }
-      50% { box-shadow: 0 0 50px rgba(63,185,80,0.3); }
+    @keyframes frameGateGlow {
+      0%, 100% { box-shadow: 0 0 24px rgba(63,185,80,0.10); }
+      50% { box-shadow: 0 0 36px rgba(63,185,80,0.18); }
+    }
+    @keyframes frameGateShieldGlow {
+      0%, 100% { filter: drop-shadow(0 0 6px rgba(63,185,80,0.15)); }
+      50% { filter: drop-shadow(0 0 12px rgba(63,185,80,0.30)); }
     }
   `;
   document.head.appendChild(style);
@@ -104,11 +108,11 @@ const DeviceVerificationGate: React.FC<DeviceVerificationGateProps> = ({
         {/* Scanline effect */}
         <div style={gateStyles.scanlineOverlay} />
 
-        {/* Shield icon */}
+        {/* Shield icon with subtle green glow */}
         <div style={gateStyles.iconContainer}>
-          <svg width="56" height="56" viewBox="0 0 64 64" fill="none">
-            <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#3fb950" strokeWidth="2.5" fill="rgba(63,185,80,0.06)" />
-            <path d="M32 20v12M32 38h.01" stroke="#d29922" strokeWidth="3" strokeLinecap="round" />
+          <svg width="56" height="56" viewBox="0 0 64 64" fill="none" style={{ animation: 'frameGateShieldGlow 3s ease-in-out infinite' }}>
+            <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#3fb950" strokeWidth="2.5" fill="rgba(63,185,80,0.08)" />
+            <path d="M32 22v10M32 36h.01" stroke="#8b949e" strokeWidth="2.5" strokeLinecap="round" />
           </svg>
         </div>
 
@@ -166,7 +170,7 @@ const gateStyles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     zIndex: 999999,
     padding: 16,
-    animation: 'frameGateOverlayFade 0.3s ease-out',
+    animation: 'frameGateOverlayFade 0.35s ease-out',
   },
   modal: {
     position: 'relative' as const,
@@ -181,7 +185,7 @@ const gateStyles: Record<string, React.CSSProperties> = {
     color: '#c9d1d9',
     textAlign: 'center' as const,
     overflow: 'hidden',
-    animation: 'frameGateEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1), frameGatePulse 3s ease-in-out infinite',
+    animation: 'frameGateEnter 0.4s cubic-bezier(0.32, 0.72, 0, 1), frameGateGlow 4s ease-in-out infinite',
   },
   scanlineOverlay: {
     position: 'absolute' as const,
@@ -211,16 +215,16 @@ const gateStyles: Record<string, React.CSSProperties> = {
   description: {
     margin: '0 0 8px',
     fontSize: 14,
-    lineHeight: 1.6,
+    lineHeight: 1.5,
     color: '#c9d1d9',
-    fontWeight: 500,
+    fontWeight: 400,
     position: 'relative' as const,
     zIndex: 1,
   },
   subdescription: {
     margin: '0 0 20px',
-    fontSize: 13,
-    lineHeight: 1.5,
+    fontSize: 12,
+    lineHeight: 1.4,
     color: '#8b949e',
     position: 'relative' as const,
     zIndex: 1,
@@ -228,10 +232,10 @@ const gateStyles: Record<string, React.CSSProperties> = {
   deviceIdBox: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: 4,
-    padding: 14,
+    gap: 6,
+    padding: '14px 16px',
     backgroundColor: '#0d1117',
-    border: '1px solid #30363d',
+    border: '1px solid #21262d',
     borderRadius: 2,
     marginBottom: 24,
     position: 'relative' as const,
@@ -269,7 +273,7 @@ const gateStyles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     width: '100%',
     minHeight: 48,
-    transition: 'background-color 0.15s',
+    transition: 'background-color 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s, transform 0.1s',
     fontFamily: 'inherit',
     letterSpacing: '0.1em',
     textTransform: 'uppercase' as const,
@@ -277,7 +281,7 @@ const gateStyles: Record<string, React.CSSProperties> = {
   footnote: {
     margin: 0,
     fontSize: 12,
-    lineHeight: 1.5,
+    lineHeight: 1.4,
     color: '#6e7681',
     position: 'relative' as const,
     zIndex: 1,

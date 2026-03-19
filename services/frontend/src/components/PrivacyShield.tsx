@@ -41,17 +41,11 @@ const PrivacyShield: React.FC<PrivacyShieldProps> = ({
     }
   }, [isHidden, wasHidden]);
 
-  // Toast auto-dismiss
-  const [showToast, setShowToast] = useState(false);
-
+  // Toast removed — capture detection toast was annoying and unnecessary.
+  // Auto-dismiss the captureDetected flag silently without showing anything.
   useEffect(() => {
     if (captureDetected) {
-      setShowToast(true);
-      const timer = setTimeout(() => {
-        setShowToast(false);
-        onDismissCaptureWarning();
-      }, 5000);
-      return () => clearTimeout(timer);
+      onDismissCaptureWarning();
     }
   }, [captureDetected, onDismissCaptureWarning]);
 
@@ -83,31 +77,7 @@ const PrivacyShield: React.FC<PrivacyShieldProps> = ({
         />
       )}
 
-      {/* 4. Screen capture warning toast */}
-      {showToast && (
-        <div style={overlayStyles.captureToast} role="alert">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-            <path
-              d="M12 2L2 22h20L12 2zm0 15a1.5 1.5 0 110 3 1.5 1.5 0 010-3zm-1-8h2v6h-2V9z"
-              fill="#f85149"
-            />
-          </svg>
-          <span style={overlayStyles.captureToastText}>
-            Screen capture detected — content protection active
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              setShowToast(false);
-              onDismissCaptureWarning();
-            }}
-            style={overlayStyles.captureToastDismiss}
-            aria-label="Dismiss warning"
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      {/* Screen capture warning toast removed — unnecessary and annoying */}
     </>
   );
 };

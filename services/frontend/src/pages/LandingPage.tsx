@@ -342,8 +342,8 @@ function ScrollReveal({ children, delay = 0, style }: { children: React.ReactNod
       ref={ref}
       style={{
         opacity: visible ? 1 : 0,
-        transform: visible ? 'translateY(0)' : 'translateY(32px)',
-        transition: `opacity 0.7s ease ${delay}ms, transform 0.7s ease ${delay}ms`,
+        transform: visible ? 'translateY(0)' : 'translateY(16px)',
+        transition: `opacity 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${delay}ms, transform 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${delay}ms`,
         ...style,
       }}
     >
@@ -515,11 +515,12 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
               backgroundColor: C.accent,
               color: '#fff',
               border: 'none',
-              borderRadius: 4,
+              borderRadius: 6,
               cursor: 'pointer',
               fontFamily: C.font,
               minHeight: 44,
               letterSpacing: '0.02em',
+              transition: 'background-color 0.15s, transform 0.1s',
             }}>
               Sign In
             </button>
@@ -573,6 +574,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
           {/* Enhancement #8: Gradient text on headline */}
           <h1 className="frame-hero-title" style={{
             margin: 0,
+            lineHeight: 1.2,
             background: 'linear-gradient(135deg, #58a6ff 0%, #c9d1d9 40%, #f0f6fc 60%, #58a6ff 100%)',
             backgroundSize: '200% 200%',
             animation: 'frame-gradient-shift 6s ease infinite, frame-fade-in 0.8s ease-out',
@@ -587,11 +589,12 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
 
           {/* Enhancement #1: Typewriter subtitle */}
           <p className="frame-hero-subtitle" style={{
-            margin: '20px 0 0',
+            margin: '24px 0 0',
             color: C.textSecondary,
             position: 'relative',
             zIndex: 1,
             minHeight: 30,
+            lineHeight: 1.6,
           }}>
             {typedSubtitle}
             <span style={{
@@ -616,10 +619,10 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
               backgroundColor: C.accent,
               color: '#fff',
               border: 'none',
-              borderRadius: 4,
+              borderRadius: 8,
               cursor: 'pointer',
               fontFamily: C.font,
-              transition: 'transform 0.15s',
+              transition: 'transform 0.15s, background-color 0.15s',
               animation: 'frame-cta-pulse 2.5s ease-in-out infinite',
               minHeight: 48,
               letterSpacing: '0.02em',
@@ -633,10 +636,10 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
               backgroundColor: 'transparent',
               color: C.accent,
               border: `1px solid ${C.accent}`,
-              borderRadius: 4,
+              borderRadius: 8,
               cursor: 'pointer',
               fontFamily: C.font,
-              transition: 'background-color 0.15s',
+              transition: 'background-color 0.15s, border-color 0.15s, color 0.15s',
               minHeight: 48,
               letterSpacing: '0.02em',
             }}>
@@ -654,7 +657,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
                 fontWeight: 500,
                 backgroundColor: 'rgba(88,166,255,0.06)',
                 border: `1px solid ${C.border}`,
-                borderRadius: 4,
+                borderRadius: 8,
                 color: C.textSecondary,
                 cursor: 'pointer',
                 fontFamily: C.font,
@@ -731,19 +734,22 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
                   style={{
                     backgroundColor: C.cardBg,
                     border: `1px solid ${C.border}`,
-                    borderRadius: 3,
-                    padding: 28,
+                    borderRadius: 8,
+                    padding: 32,
                     transition: 'border-color 0.3s, transform 0.3s, box-shadow 0.3s',
                     cursor: 'default',
                     height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
                     borderTop: `2px solid ${C.success}20`,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
                   }}
                   onMouseEnter={handleCardEnter}
                   onMouseLeave={handleCardLeave}
                 >
                   <div style={{ marginBottom: 16 }}>{f.icon}</div>
-                  <h3 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 600, color: C.white }}>{f.title}</h3>
-                  <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: C.textSecondary }}>{f.desc}</p>
+                  <h3 style={{ margin: '0 0 10px', fontSize: 17, fontWeight: 600, color: C.white, lineHeight: 1.2 }}>{f.title}</h3>
+                  <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: C.textSecondary, flex: 1 }}>{f.desc}</p>
                 </div>
               </ScrollReveal>
             ))}
@@ -815,8 +821,8 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
                       </span>
                       {step.icon}
                     </div>
-                    <h3 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 600, color: C.white }}>{step.title}</h3>
-                    <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: C.textSecondary, maxWidth: 220 }}>{step.desc}</p>
+                    <h3 style={{ margin: '0 0 10px', fontSize: 17, fontWeight: 600, color: C.white, lineHeight: 1.2 }}>{step.title}</h3>
+                    <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: C.textSecondary, maxWidth: 240 }}>{step.desc}</p>
                   </div>
                 </ScrollReveal>
                 {/* Connector line between steps (desktop only) — Enhancement #7 partial: animated dashes */}
@@ -867,10 +873,11 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
             <div style={{
               backgroundColor: C.cardBg,
               border: `1px solid ${C.border}`,
-              borderRadius: 3,
-              padding: 'clamp(20px, 3vw, 40px)',
+              borderRadius: 8,
+              padding: 'clamp(24px, 3vw, 40px)',
               textAlign: 'center',
               borderTop: `2px solid ${C.success}30`,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
             }}>
               <div className="frame-arch-diagram">
                 {/* Client A */}
@@ -954,9 +961,10 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
               Ready for private messaging?
             </h2>
             <p style={{
-              margin: '12px 0 32px',
+              margin: '16px 0 36px',
               fontSize: 16,
               color: C.textSecondary,
+              lineHeight: 1.6,
             }}>
               Join F.R.A.M.E. and take control of your conversations.
             </p>
@@ -968,12 +976,13 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
               backgroundColor: C.accent,
               color: '#fff',
               border: 'none',
-              borderRadius: 4,
+              borderRadius: 8,
               cursor: 'pointer',
               fontFamily: C.font,
               animation: 'frame-cta-pulse 2.5s ease-in-out infinite',
               minHeight: 48,
               letterSpacing: '0.02em',
+              transition: 'background-color 0.15s, transform 0.1s',
             }}>
               Get Started
             </button>
@@ -1008,9 +1017,9 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
             <button type="button" onClick={onGetStarted} style={footerLink}>Sign In</button>
             <button type="button" onClick={onGetStarted} style={footerLink}>Register</button>
             <a href="https://github.com" target="_blank" rel="noopener noreferrer" style={{ ...footerLink, textDecoration: 'none' }}>GitHub</a>
-            <a href="#" style={{ ...footerLink, textDecoration: 'none' }}>Documentation</a>
+            <button type="button" onClick={() => scrollTo('security')} style={footerLink}>Documentation</button>
           </div>
-          <div style={{ width: 48, height: 1, backgroundColor: C.border, margin: '0 auto 20px' }} />
+          <div style={{ width: 48, height: 1, backgroundColor: C.border, margin: '0 auto 24px' }} />
           <p style={{
             margin: 0,
             fontSize: 'clamp(12px, 2.5vw, 14px)',
@@ -1039,13 +1048,14 @@ const navLink: React.CSSProperties = {
   background: 'none',
   border: 'none',
   color: C.textSecondary,
-  fontSize: 12,
+  fontSize: 13,
   cursor: 'pointer',
   fontFamily: C.font,
-  padding: '4px 8px',
-  transition: 'color 0.15s',
+  padding: '6px 12px',
+  borderRadius: 4,
+  transition: 'color 0.15s, background-color 0.15s',
   textTransform: 'uppercase' as const,
-  letterSpacing: '0.08em',
+  letterSpacing: '0.06em',
   fontWeight: 600,
 };
 
@@ -1056,12 +1066,14 @@ const footerLink: React.CSSProperties = {
   fontSize: 14,
   cursor: 'pointer',
   fontFamily: C.font,
-  padding: '12px 8px',
+  padding: '12px 12px',
   minHeight: 48,
   minWidth: 48,
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
+  borderRadius: 4,
+  transition: 'color 0.15s, background-color 0.15s',
 };
 
 function archBox(trusted: boolean): React.CSSProperties {
@@ -1069,12 +1081,12 @@ function archBox(trusted: boolean): React.CSSProperties {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 6,
-    padding: 'clamp(12px, 2vw, 16px) clamp(12px, 2.5vw, 20px)',
+    gap: 8,
+    padding: 'clamp(14px, 2vw, 20px) clamp(16px, 2.5vw, 24px)',
     backgroundColor: trusted ? 'rgba(63,185,80,0.04)' : 'rgba(139,148,158,0.04)',
     border: `1px solid ${trusted ? C.success + '40' : C.border}`,
-    borderRadius: 3,
-    minWidth: 80,
+    borderRadius: 8,
+    minWidth: 88,
     maxWidth: '100%',
   };
 }

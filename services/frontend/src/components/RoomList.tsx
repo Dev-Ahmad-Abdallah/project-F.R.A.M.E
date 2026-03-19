@@ -407,7 +407,7 @@ const RoomList: React.FC<RoomListProps> = ({
           ...styles.roomItem,
           ...(isMobile ? { minHeight: 56, padding: '10px 12px' } : {}),
           ...(isSelected ? styles.roomItemSelected : {}),
-          ...(isHovered && !isSelected ? { backgroundColor: 'rgba(177, 186, 196, 0.04)' } : {}),
+          ...(isHovered && !isSelected ? { backgroundColor: 'rgba(177, 186, 196, 0.03)' } : {}),
           ...(isFocusedByKeyboard && !isSelected ? { backgroundColor: '#1c2128', outline: '2px solid #58a6ff', outlineOffset: -2 } : {}),
           transition: 'background-color 0.15s ease, border-color 0.15s ease',
           // Unread pulse animation
@@ -698,7 +698,7 @@ const RoomList: React.FC<RoomListProps> = ({
             ...styles.sectionHeader,
             ...(isMobile ? { fontSize: 10, padding: '8px 12px 3px', letterSpacing: '0.08em' } : {}),
           }}>
-            {starredRooms.length > 0 ? 'All Conversations' : 'Conversations'}
+            {starredRooms.length > 0 ? 'All Conversations' : 'CONVERSATIONS'}
           </div>
           {normalRooms.map(renderRoomItem)}
         </>
@@ -789,7 +789,8 @@ const styles: Record<string, React.CSSProperties> = {
   emptyText: {
     margin: 0,
     fontSize: 14,
-    color: '#8b949e',
+    fontWeight: 600,
+    color: '#c9d1d9',
   },
   emptyHint: {
     margin: '8px 0 0',
@@ -797,8 +798,8 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#8b949e',
   },
   sectionHeader: {
-    padding: '12px 16px 4px',
-    fontSize: 10,
+    padding: '14px 16px 6px',
+    fontSize: 11,
     fontWeight: 600,
     color: '#484f58',
     textTransform: 'uppercase' as const,
@@ -814,7 +815,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '10px 16px',
     backgroundColor: 'transparent',
     border: 'none',
-    borderBottom: '1px solid rgba(33, 38, 45, 0.6)',
+    borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
     cursor: 'pointer',
     textAlign: 'left',
     width: '100%',
@@ -825,8 +826,8 @@ const styles: Record<string, React.CSSProperties> = {
     transition: 'background-color 0.15s ease, border-color 0.15s ease',
   },
   roomItemSelected: {
-    backgroundColor: 'rgba(88, 166, 255, 0.06)',
-    borderLeft: '3px solid #58a6ff',
+    backgroundColor: 'rgba(63, 185, 80, 0.06)',
+    borderLeft: '3px solid #3fb950',
   },
   avatar: {
     width: 40,
@@ -836,10 +837,11 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: 600,
     color: '#ffffff',
     flexShrink: 0,
+    border: 'none',
   },
   roomInfo: {
     flex: 1,
@@ -862,6 +864,7 @@ const styles: Record<string, React.CSSProperties> = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     lineHeight: '20px',
+    display: 'block',
   },
   timestamp: {
     fontSize: 11,
@@ -882,7 +885,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   previewText: {
     fontSize: 13,
-    color: '#6e7681',
+    color: '#8b949e',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
@@ -895,10 +898,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     borderRadius: 10,
     padding: '2px 7px',
-    minWidth: 18,
+    minWidth: 20,
     textAlign: 'center',
     flexShrink: 0,
     marginLeft: 8,
+    lineHeight: '16px',
   },
   actionButtons: {
     display: 'flex',
@@ -936,7 +940,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '10px 16px',
     backgroundColor: 'transparent',
     border: 'none',
-    borderTop: '1px solid rgba(33, 38, 45, 0.6)',
+    borderTop: '1px solid rgba(255, 255, 255, 0.04)',
     cursor: 'pointer',
     fontSize: 12,
     color: '#484f58',

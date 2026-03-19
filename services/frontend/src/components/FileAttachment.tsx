@@ -25,6 +25,10 @@ interface FileAttachmentProps {
   fileKey: string;   // AES key (base64) — from the E2EE message content
   fileIv: string;    // IV (base64) — from the E2EE message content
   isSent: boolean;   // true if sent by current user
+  /** If true, the file can only be downloaded once, then shows an expired message. */
+  viewOnce?: boolean;
+  /** Called after a view-once file has been downloaded. */
+  onConsumed?: () => void;
 }
 
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
@@ -48,8 +52,11 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
   fileKey,
   fileIv,
   isSent,
+  viewOnce,
+  onConsumed,
 }) => {
   const [downloading, setDownloading] = useState(false);
+  const [consumed, setConsumed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<string | null>(null);
@@ -84,15 +91,23 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
     };
   }, []);
 
-  // Auto-decrypt inline images for preview
+  // Auto-decrypt images for preview (both inline and server-hosted)
   useEffect(() => {
-    if (!isImage || !isInline || hasAutoDecrypted.current || !fileData) return;
+    if (!isImage || hasAutoDecrypted.current) return;
     hasAutoDecrypted.current = true;
 
     void (async () => {
       try {
-        const encryptedBytes = Uint8Array.from(atob(fileData), (c) => c.charCodeAt(0));
-        const decryptedBytes = await decryptFile(encryptedBytes, fileKey, fileIv);
+        let decryptedBytes: Uint8Array;
+        if (isInline && fileData) {
+          const encryptedBytes = Uint8Array.from(atob(fileData), (c) => c.charCodeAt(0));
+          decryptedBytes = await decryptFile(encryptedBytes, fileKey, fileIv);
+        } else if (fileId) {
+          const encryptedBuffer = await downloadFile(fileId);
+          decryptedBytes = await decryptFile(new Uint8Array(encryptedBuffer), fileKey, fileIv);
+        } else {
+          return;
+        }
         const blob = new Blob([decryptedBytes], { type: mimeType });
         const url = URL.createObjectURL(blob);
         if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
@@ -102,7 +117,7 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
         console.error('[FileAttachment] Auto-decrypt image failed:', err);
       }
     })();
-  }, [isImage, isInline, fileData, fileKey, fileIv, mimeType]);
+  }, [isImage, isInline, fileData, fileId, fileKey, fileIv, mimeType]);
 
   /** Decrypt inline data and return a Blob URL */
   const decryptInlineData = useCallback(async (): Promise<string> => {
@@ -163,6 +178,10 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
       }
 
       setDownloadProgress(null);
+      if (viewOnce && !consumed) {
+        setConsumed(true);
+        onConsumed?.();
+      }
     } catch (err) {
       console.error('[FileAttachment] Download/decrypt failed:', err);
       setError('Failed to download file');
@@ -170,7 +189,21 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
     } finally {
       setDownloading(false);
     }
-  }, [downloading, isInline, isImage, fileName, decryptInlineData, decryptServerData]);
+  }, [downloading, isInline, isImage, fileName, decryptInlineData, decryptServerData, viewOnce, consumed, onConsumed]);
+
+  if (consumed) {
+    return (
+      <div style={{
+        ...containerStyle,
+        backgroundColor: isSent ? 'rgba(255, 255, 255, 0.06)' : 'rgba(13, 17, 23, 0.5)',
+      }}>
+        <div style={fileInfoRowStyle}>
+          <span style={{ fontSize: 12, opacity: 0.7 }}>&#128065;</span>
+          <span style={{ fontStyle: 'italic', color: '#8b949e', fontSize: 13 }}>File expired</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -248,8 +281,11 @@ const containerStyle: React.CSSProperties = {
   border: 'none',
   borderRadius: 12,
   padding: 8,
-  maxWidth: 320,
-  minWidth: 200,
+  width: '100%',
+  maxWidth: '100%',
+  minWidth: 0,
+  overflow: 'hidden',
+  boxSizing: 'border-box',
 };
 
 const previewContainerStyle: React.CSSProperties = {
@@ -262,7 +298,7 @@ const previewContainerStyle: React.CSSProperties = {
 
 const previewImageStyle: React.CSSProperties = {
   display: 'block',
-  maxWidth: 300,
+  maxWidth: '100%',
   width: '100%',
   maxHeight: 280,
   objectFit: 'contain',
@@ -273,12 +309,17 @@ const fileInfoRowStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 8,
+  width: '100%',
+  overflow: 'hidden',
+  boxSizing: 'border-box',
 };
 
 const fileIconStyle: React.CSSProperties = {
-  fontSize: 24,
+  fontSize: 22,
   flexShrink: 0,
   lineHeight: 1,
+  width: 32,
+  textAlign: 'center',
 };
 
 const fileDetailsStyle: React.CSSProperties = {
@@ -308,15 +349,15 @@ const downloadButtonStyle: React.CSSProperties = {
   background: 'none',
   border: 'none',
   borderRadius: '50%',
-  padding: 6,
-  width: 32,
-  height: 32,
+  padding: 4,
+  width: 28,
+  height: 28,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
   flexShrink: 0,
   transition: 'background-color 0.15s, opacity 0.15s',
-  backgroundColor: 'rgba(88, 166, 255, 0.1)',
+  backgroundColor: 'rgba(88, 166, 255, 0.12)',
 };
 
 const progressStyle: React.CSSProperties = {
