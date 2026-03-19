@@ -869,7 +869,7 @@ function App() {
   if (isLocked) {
     return (
       <div style={styles.lockOverlay}>
-        <div style={styles.lockCard}>
+        <div className="frame-lock-card" style={styles.lockCard}>
           <svg width="48" height="48" viewBox="0 0 48 48" fill="none" style={{ marginBottom: 16 }}>
             <rect x="10" y="22" width="28" height="20" rx="4" stroke="#58a6ff" strokeWidth="2" fill="rgba(88,166,255,0.06)" />
             <path d="M16 22v-6a8 8 0 0116 0v6" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" />
@@ -882,6 +882,7 @@ function App() {
           <input
             id="lock-passphrase"
             type="password"
+            className="frame-lock-input"
             style={styles.lockInput}
             value={lockPassphrase}
             onChange={(e) => setLockPassphrase(e.target.value)}
@@ -890,7 +891,7 @@ function App() {
             aria-label="User ID to unlock"
             autoFocus
           />
-          <div style={styles.lockActions}>
+          <div className="frame-lock-actions" style={styles.lockActions}>
             <button type="button" style={styles.lockUnlockButton} onClick={handleUnlock}>Unlock</button>
             <button type="button" style={styles.lockLogoutButton} onClick={handleLogout}>Log out</button>
           </div>
@@ -1214,8 +1215,8 @@ function App() {
       </a>
       {/* Session timeout warning */}
       {isWarning && timeRemaining < Infinity && (
-        <div style={styles.sessionWarningBanner} onClick={() => resetTimer()} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') resetTimer(); }}>
-          Session expires in {Math.ceil(timeRemaining / 1000)} seconds — click to stay active
+        <div className="frame-session-warning" style={styles.sessionWarningBanner} onClick={() => resetTimer()} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') resetTimer(); }}>
+          Session expires in {Math.ceil(timeRemaining / 1000)}s — {isMobile ? 'tap' : 'click'} to stay active
         </div>
       )}
       {/* Toast notifications */}
@@ -1223,7 +1224,7 @@ function App() {
 
       {/* Guest mode banner */}
       {auth.guest && (
-        <div style={{
+        <div className="frame-guest-banner" style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -1277,6 +1278,7 @@ function App() {
       {/* Sidebar — fluid width via CSS class, overlay on mobile */}
       {(showSidebar || isMobile) && (
         <aside
+          ref={sidebarRef}
           className={`frame-sidebar${isMobile && !sidebarOpen ? ' frame-sidebar-hidden' : ''}`}
           style={{ flexShrink: 0 }}
         >
@@ -1290,6 +1292,7 @@ function App() {
           </div>
           {/* User info — click to open profile settings */}
           <div
+            className="frame-user-info"
             style={styles.userInfo}
             onClick={() => {
               setActiveView('settings');
@@ -1305,8 +1308,8 @@ function App() {
             }}
           >
             <div style={{ position: 'relative' as const, flexShrink: 0 }}>
-              <div style={styles.userAvatar}>
-                <div style={styles.userAvatarInner}>
+              <div className="frame-user-avatar" style={styles.userAvatar}>
+                <div className="frame-user-avatar-inner" style={styles.userAvatarInner}>
                   {auth.userId.charAt(0) === '@'
                     ? auth.userId.charAt(1).toUpperCase()
                     : auth.userId.charAt(0).toUpperCase()}
@@ -1326,8 +1329,8 @@ function App() {
               }} />
             </div>
             <div style={styles.userDetails}>
-              <span style={styles.userName}>{DOMPurify.sanitize(userDisplayName || formatDisplayName(auth.userId), PURIFY_CONFIG)}</span>
-              <span style={styles.userStatus} role="status" aria-live="polite">
+              <span className="frame-user-name" style={styles.userName}>{DOMPurify.sanitize(userDisplayName || formatDisplayName(auth.userId), PURIFY_CONFIG)}</span>
+              <span className="frame-user-status" style={styles.userStatus} role="status" aria-live="polite">
                 <span style={{
                   display: 'inline-block',
                   width: 7,
@@ -1339,7 +1342,7 @@ function App() {
                 }} aria-hidden="true" />
                 {connectionLost ? 'Reconnecting...' : (userStatus === 'online' ? 'Online' : userStatus === 'away' ? 'Away' : userStatus === 'busy' ? 'Busy' : userStatus === 'offline' ? 'Offline' : 'Online')}
               </span>
-              <span style={styles.userDevice}>
+              <span className="frame-user-device" style={styles.userDevice}>
                 <svg width="11" height="11" viewBox="0 0 16 16" fill="none" style={{ marginRight: 4, verticalAlign: 'middle' }}>
                   <path d="M8 1L2 4v4.5c0 3.5 2.5 6.2 6 7.5 3.5-1.3 6-4 6-7.5V4L8 1z" stroke="#3fb950" strokeWidth="1.5" fill="rgba(63,185,80,0.1)" />
                   <path d="M6 8.5l1.5 1.5L10.5 6" stroke="#3fb950" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
@@ -1401,18 +1404,24 @@ function App() {
             <div style={styles.scrollFadeOverlay} />
           </div>
 
-          {/* Bottom actions */}
-          <div style={styles.sidebarActions}>
+          {/* Bottom actions — tab bar on mobile, row on desktop */}
+          <div className={isMobile ? 'frame-sidebar-actions-mobile' : ''} style={isMobile ? undefined : styles.sidebarActions}>
             <button
               type="button"
-              style={styles.newChatButton}
+              style={isMobile ? undefined : styles.newChatButton}
               onClick={() => setShowNewChatDialog(true)}
+              aria-label="New Chat"
+              title="New Chat"
             >
-              + New Chat
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path d="M10 4v12M4 10h12" stroke={isMobile ? '#8b949e' : '#ffffff'} strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              {isMobile && <span>New Chat</span>}
+              {!isMobile && ' New Chat'}
             </button>
             <button
               type="button"
-              style={styles.settingsButton}
+              style={isMobile ? undefined : styles.settingsButton}
               onClick={() => {
                 setActiveView('settings');
                 if (isMobile) setSidebarOpen(false);
@@ -1420,40 +1429,44 @@ function App() {
               aria-label="Settings"
               title="Settings"
             >
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 18 18" fill="none" aria-hidden="true">
                 <circle cx="9" cy="9" r="2.5" stroke="#8b949e" strokeWidth="1.5" fill="none" />
                 <path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.34 3.34l1.42 1.42M13.24 13.24l1.42 1.42M3.34 14.66l1.42-1.42M13.24 4.76l1.42-1.42" stroke="#8b949e" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
+              {isMobile && <span>Settings</span>}
             </button>
             <button
               type="button"
-              style={styles.logoutButton}
+              style={isMobile ? undefined : styles.logoutButton}
               onClick={handleLogout}
               aria-label="Log out"
               title="Log out"
             >
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 18 18" fill="none" aria-hidden="true">
                 <path d="M6 15H4a1 1 0 01-1-1V4a1 1 0 011-1h2M12 12l3-3-3-3M7 9h8" stroke="#8b949e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
+              {isMobile && <span>Log out</span>}
             </button>
-            <div style={{ position: 'relative' as const }}>
-              <button type="button" style={styles.shortcutsHelpButton} onClick={() => setShowShortcutsHelp((v) => !v)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts">?</button>
-              {showShortcutsHelp && (
-                <div style={styles.shortcutsPopup} role="dialog" aria-label="Keyboard shortcuts">
-                  <div style={styles.shortcutsPopupTitle}>Keyboard Shortcuts</div>
-                  <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>{navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}+K</kbd><span>Search conversations</span></div>
-                  <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>{navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}+N</kbd><span>New chat</span></div>
-                  <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>{navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}+,</kbd><span>Settings</span></div>
-                  <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>Esc</kbd><span>Close / Go back</span></div>
-                  <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>{'\u2191'}/{'\u2193'}</kbd><span>Navigate rooms</span></div>
-                  <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>Enter</kbd><span>Select room</span></div>
-                </div>
-              )}
-            </div>
+            {!isMobile && (
+              <div style={{ position: 'relative' as const }}>
+                <button type="button" className="frame-shortcuts-btn" style={styles.shortcutsHelpButton} onClick={() => setShowShortcutsHelp((v) => !v)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts">?</button>
+                {showShortcutsHelp && (
+                  <div style={styles.shortcutsPopup} role="dialog" aria-label="Keyboard shortcuts">
+                    <div style={styles.shortcutsPopupTitle}>Keyboard Shortcuts</div>
+                    <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>{navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}+K</kbd><span>Search conversations</span></div>
+                    <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>{navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}+N</kbd><span>New chat</span></div>
+                    <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>{navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}+,</kbd><span>Settings</span></div>
+                    <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>Esc</kbd><span>Close / Go back</span></div>
+                    <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>{'\u2191'}/{'\u2193'}</kbd><span>Navigate rooms</span></div>
+                    <div style={styles.shortcutsPopupRow}><kbd style={styles.kbd}>Enter</kbd><span>Select room</span></div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* F.R.A.M.E. sidebar footer branding */}
-          <div style={{ padding: '8px 16px 10px', borderTop: '1px solid #30363d', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+          <div className="frame-sidebar-footer" style={{ padding: '8px 16px 10px', borderTop: '1px solid #30363d', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
             <svg width="12" height="12" viewBox="0 0 64 64" fill="none" aria-hidden="true" style={{ opacity: 0.45, flexShrink: 0 }}>
               <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="3" fill="rgba(88,166,255,0.08)" />
               <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />

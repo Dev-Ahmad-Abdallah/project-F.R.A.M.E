@@ -8,6 +8,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getProfile, updateProfile, updateStatus } from '../api/authAPI';
 import type { UserStatus } from '../api/authAPI';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface ProfileSettingsProps {
   userId: string;
@@ -25,6 +26,7 @@ const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
 ];
 
 const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayNameChange, onStatusChange }) => {
+  const isMobile = useIsMobile();
   const [displayName, setDisplayName] = useState('');
   const [editValue, setEditValue] = useState('');
   const [isEditing, setIsEditing] = useState(false);
@@ -140,24 +142,42 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
     .toUpperCase();
 
   return (
-    <div style={styles.container}>
+    <div style={{
+      ...styles.container,
+      ...(isMobile ? { maxWidth: '100%', padding: '16px 0' } : {}),
+    }}>
       <h3 style={styles.heading}>Profile</h3>
 
-      <div style={styles.profileCard}>
+      <div style={{
+        ...styles.profileCard,
+        ...(isMobile ? { flexDirection: 'column' as const, alignItems: 'center', gap: 12, padding: '20px 14px' } : {}),
+      }}>
         {/* Avatar */}
-        <div style={styles.avatar}>
+        <div style={{
+          ...styles.avatar,
+          ...(isMobile ? { width: 64, height: 64, fontSize: 28 } : {}),
+        }}>
           {initials}
         </div>
 
-        <div style={styles.infoColumn}>
+        <div style={{
+          ...styles.infoColumn,
+          ...(isMobile ? { width: '100%' } : {}),
+        }}>
           {/* Display name */}
           <div style={styles.fieldRow}>
             <label style={styles.fieldLabel}>Display Name</label>
             {isEditing ? (
-              <div style={styles.editRow}>
+              <div style={{
+                ...styles.editRow,
+                ...(isMobile ? { flexDirection: 'column' as const, gap: 8 } : {}),
+              }}>
                 <input
                   type="text"
-                  style={styles.editInput}
+                  style={{
+                    ...styles.editInput,
+                    ...(isMobile ? { width: '100%', minHeight: 44, fontSize: 15, padding: '10px 12px' } : {}),
+                  }}
                   value={editValue}
                   onChange={(e) => setEditValue(e.target.value)}
                   onKeyDown={handleKeyDown}
@@ -165,26 +185,38 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
                   autoFocus
                   disabled={isSaving}
                 />
-                <button
-                  type="button"
-                  style={styles.saveButton}
-                  onClick={() => void handleSave()}
-                  disabled={isSaving}
-                >
-                  {isSaving ? 'Saving...' : 'Save'}
-                </button>
-                <button
-                  type="button"
-                  style={styles.cancelButton}
-                  onClick={() => {
-                    setIsEditing(false);
-                    setEditValue(displayName);
-                    setError(null);
-                  }}
-                  disabled={isSaving}
-                >
-                  Cancel
-                </button>
+                <div style={{
+                  display: 'flex',
+                  gap: 8,
+                  ...(isMobile ? { width: '100%' } : {}),
+                }}>
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.saveButton,
+                      ...(isMobile ? { flex: 1, minHeight: 44, fontSize: 14 } : {}),
+                    }}
+                    onClick={() => void handleSave()}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? 'Saving...' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.cancelButton,
+                      ...(isMobile ? { flex: 1, minHeight: 44, fontSize: 14 } : {}),
+                    }}
+                    onClick={() => {
+                      setIsEditing(false);
+                      setEditValue(displayName);
+                      setError(null);
+                    }}
+                    disabled={isSaving}
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             ) : (
               <div style={styles.displayRow}>
@@ -193,7 +225,10 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
                 </span>
                 <button
                   type="button"
-                  style={styles.editButton}
+                  style={{
+                    ...styles.editButton,
+                    ...(isMobile ? { minHeight: 44, minWidth: 44, padding: '6px 14px', fontSize: 13 } : {}),
+                  }}
                   onClick={() => setIsEditing(true)}
                 >
                   Edit
@@ -211,11 +246,26 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
       </div>
 
       {/* Status section */}
-      <div style={{ ...styles.profileCard, marginTop: 12 }}>
-        <div style={styles.infoColumn}>
+      <div style={{
+        ...styles.profileCard,
+        marginTop: 12,
+        ...(isMobile ? { padding: '16px 14px' } : {}),
+      }}>
+        <div style={{
+          ...styles.infoColumn,
+          ...(isMobile ? { width: '100%' } : {}),
+        }}>
           <div style={styles.fieldRow}>
             <label style={styles.fieldLabel}>Status</label>
-            <div style={{ display: 'flex', gap: 6 }}>
+            <div style={{
+              display: 'flex',
+              gap: 6,
+              ...(isMobile ? {
+                display: 'grid' as const,
+                gridTemplateColumns: '1fr 1fr',
+                gap: 8,
+              } : {}),
+            }}>
               {STATUS_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
@@ -232,8 +282,10 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
                     fontFamily: 'inherit',
                     display: 'flex',
                     alignItems: 'center',
+                    justifyContent: 'center',
                     gap: 5,
                     transition: 'all 0.15s',
+                    ...(isMobile ? { minHeight: 44, fontSize: 13, padding: '8px 12px' } : {}),
                   }}
                   onClick={() => void handleStatusChange(opt.value)}
                   disabled={isSavingStatus}
@@ -246,10 +298,16 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
           </div>
           <div style={styles.fieldRow}>
             <label style={styles.fieldLabel}>Status Message</label>
-            <div style={styles.editRow}>
+            <div style={{
+              ...styles.editRow,
+              ...(isMobile ? { flexDirection: 'column' as const, gap: 8 } : {}),
+            }}>
               <input
                 type="text"
-                style={styles.editInput}
+                style={{
+                  ...styles.editInput,
+                  ...(isMobile ? { width: '100%', minHeight: 44, fontSize: 15, padding: '10px 12px' } : {}),
+                }}
                 value={statusMessage}
                 onChange={(e) => setStatusMessage(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleStatusMessageSave(); } }}
@@ -259,7 +317,10 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
               />
               <button
                 type="button"
-                style={styles.saveButton}
+                style={{
+                  ...styles.saveButton,
+                  ...(isMobile ? { width: '100%', minHeight: 44, fontSize: 14 } : {}),
+                }}
                 onClick={() => void handleStatusMessageSave()}
                 disabled={isSavingStatus}
               >

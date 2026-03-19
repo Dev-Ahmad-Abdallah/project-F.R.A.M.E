@@ -423,8 +423,8 @@ const RoomList: React.FC<RoomListProps> = ({
         aria-label={`${displayName}${unread > 0 ? `, ${unread} unread` : ''}`}
         tabIndex={isFocusedByKeyboard ? 0 : -1}
       >
-        {/* Swipe hint left (star) */}
-        {isHovered && !isStarred && (
+        {/* Swipe hint left (star) — desktop only */}
+        {!isMobile && isHovered && !isStarred && (
           <div style={{
             position: 'absolute' as const,
             left: 4,
@@ -472,10 +472,15 @@ const RoomList: React.FC<RoomListProps> = ({
 
         {/* Room info */}
         <div style={styles.roomInfo}>
-          <div style={styles.roomHeader}>
+          <div style={{
+            ...styles.roomHeader,
+            ...(isMobile ? { gap: 6 } : {}),
+          }}>
             <span style={{
               ...styles.roomName,
               ...(unread > 0 ? { color: '#f0f6fc', fontWeight: 700 } : {}),
+              minWidth: 0,
+              flex: 1,
             }}>{displayName}</span>
             {room.isAnonymous && (
               <span style={{
@@ -507,10 +512,15 @@ const RoomList: React.FC<RoomListProps> = ({
               {room.members.length} member{room.members.length !== 1 ? 's' : ''}
             </div>
           )}
-          <div style={styles.roomPreview}>
+          <div style={{
+            ...styles.roomPreview,
+            minWidth: 0,
+          }}>
             <span style={{
               ...styles.previewText,
               ...(unread > 0 ? { color: '#c9d1d9' } : {}),
+              minWidth: 0,
+              flex: 1,
             }}>
               {room.lastMessage
                 ? room.lastMessage.body
@@ -529,50 +539,61 @@ const RoomList: React.FC<RoomListProps> = ({
                 : <span style={{ fontStyle: 'italic' }}>Say hello! {'\u{1F44B}'}</span>}
             </span>
             {unread > 0 && (
-              <span style={styles.unreadBadge}>
+              <span style={{
+                ...styles.unreadBadge,
+                ...(isMobile ? {
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: '2px 8px',
+                  minWidth: 20,
+                  borderRadius: 10,
+                } : {}),
+              }}>
                 {unread > 99 ? '99+' : unread}
               </span>
             )}
           </div>
         </div>
 
-        {/* Action buttons (star + archive) */}
-        <div style={styles.actionButtons}>
-          {/* Star button with pop animation */}
-          <button
-            type="button"
-            style={{
-              ...styles.starButton,
-              ...(isStarred
-                ? { color: '#d29922', opacity: 1 }
-                : { opacity: isHovered ? 0.7 : 0 }),
-              ...(isStarAnimating ? {
-                animation: 'frame-star-pop 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-              } : {}),
-            }}
-            onClick={(e) => toggleStar(room.roomId, e)}
-            title={isStarred ? 'Unstar' : 'Star'}
-            aria-label={isStarred ? 'Unstar conversation' : 'Star conversation'}
-          >
-            {isStarred ? '\u2605' : '\u2606'}
-          </button>
-          {/* Archive button: visible on hover */}
-          <button
-            type="button"
-            style={{
-              ...styles.archiveButton,
-              opacity: isHovered ? 0.7 : 0,
-            }}
-            onClick={(e) => toggleArchive(room.roomId, e)}
-            title={isArchived ? 'Unarchive' : 'Archive'}
-            aria-label={isArchived ? 'Unarchive conversation' : 'Archive conversation'}
-          >
-            {isArchived ? '\u21A9' : '\u2193'}
-          </button>
-        </div>
+        {/* Action buttons (star + archive) — hidden on mobile; use swipe/long-press instead */}
+        {!isMobile && (
+          <div style={styles.actionButtons}>
+            {/* Star button with pop animation */}
+            <button
+              type="button"
+              style={{
+                ...styles.starButton,
+                ...(isStarred
+                  ? { color: '#d29922', opacity: 1 }
+                  : { opacity: isHovered ? 0.7 : 0 }),
+                ...(isStarAnimating ? {
+                  animation: 'frame-star-pop 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+                } : {}),
+              }}
+              onClick={(e) => toggleStar(room.roomId, e)}
+              title={isStarred ? 'Unstar' : 'Star'}
+              aria-label={isStarred ? 'Unstar conversation' : 'Star conversation'}
+            >
+              {isStarred ? '\u2605' : '\u2606'}
+            </button>
+            {/* Archive button: visible on hover */}
+            <button
+              type="button"
+              style={{
+                ...styles.archiveButton,
+                opacity: isHovered ? 0.7 : 0,
+              }}
+              onClick={(e) => toggleArchive(room.roomId, e)}
+              title={isArchived ? 'Unarchive' : 'Archive'}
+              aria-label={isArchived ? 'Unarchive conversation' : 'Archive conversation'}
+            >
+              {isArchived ? '\u21A9' : '\u2193'}
+            </button>
+          </div>
+        )}
 
-        {/* Swipe hint right (archive) */}
-        {isHovered && !isArchived && (
+        {/* Swipe hint right (archive) — desktop only */}
+        {!isMobile && isHovered && !isArchived && (
           <div style={{
             position: 'absolute' as const,
             right: 4,
@@ -662,8 +683,11 @@ const RoomList: React.FC<RoomListProps> = ({
       {/* Starred section */}
       {starredRooms.length > 0 && (
         <>
-          <div style={styles.sectionHeader}>
-            <span style={{ color: '#d29922', marginRight: 6, fontSize: 10 }}>&#9733;</span>
+          <div style={{
+            ...styles.sectionHeader,
+            ...(isMobile ? { fontSize: 10, padding: '8px 12px 3px', letterSpacing: '0.08em' } : {}),
+          }}>
+            <span style={{ color: '#d29922', marginRight: 6, fontSize: isMobile ? 9 : 10 }}>&#9733;</span>
             Starred
           </div>
           {starredRooms.map(renderRoomItem)}
@@ -673,7 +697,10 @@ const RoomList: React.FC<RoomListProps> = ({
       {/* All Conversations section */}
       {normalRooms.length > 0 && (
         <>
-          <div style={styles.sectionHeader}>
+          <div style={{
+            ...styles.sectionHeader,
+            ...(isMobile ? { fontSize: 10, padding: '8px 12px 3px', letterSpacing: '0.08em' } : {}),
+          }}>
             {starredRooms.length > 0 ? 'All Conversations' : 'Conversations'}
           </div>
           {normalRooms.map(renderRoomItem)}

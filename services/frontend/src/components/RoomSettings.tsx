@@ -306,6 +306,11 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
           maxWidth: '100vw',
           borderLeft: 'none',
           borderRadius: 0,
+          position: 'fixed' as const,
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
         } : {}),
       }} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
@@ -313,7 +318,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
           <span style={styles.panelTitle}>Room Settings</span>
           <button
             type="button"
-            style={styles.closeButton}
+            style={{
+              ...styles.closeButton,
+              ...(isMobile ? { width: 44, height: 44, fontSize: 22 } : {}),
+            }}
             onClick={onClose}
             aria-label="Close settings"
           >
@@ -353,24 +361,30 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  padding: '14px 0',
+                  padding: isMobile ? '18px 0' : '14px 0',
                   marginBottom: 10,
                   backgroundColor: 'rgba(88, 166, 255, 0.04)',
                   borderRadius: 8,
                   border: '1px solid rgba(88, 166, 255, 0.15)',
                 }}>
                   <span style={{
-                    fontSize: 28,
+                    fontSize: isMobile ? 32 : 28,
                     fontWeight: 800,
                     fontFamily: 'monospace',
-                    letterSpacing: '0.2em',
+                    letterSpacing: '0.25em',
                     color: '#58a6ff',
                     userSelect: 'all' as const,
+                    textAlign: 'center' as const,
                   }}>
                     {inviteCode}
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+                <div style={{
+                  display: 'flex',
+                  gap: 6,
+                  flexWrap: 'wrap' as const,
+                  ...(isMobile ? { flexDirection: 'column' as const, gap: 8 } : {}),
+                }}>
                   <button
                     type="button"
                     style={{
@@ -385,6 +399,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                       cursor: 'pointer',
                       fontFamily: 'inherit',
                       transition: 'all 0.15s ease',
+                      ...(isMobile ? { width: '100%', minHeight: 48, fontSize: 14 } : {}),
                     }}
                     onClick={() => {
                       void navigator.clipboard.writeText(inviteCode);
@@ -408,6 +423,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                       cursor: 'pointer',
                       fontFamily: 'inherit',
                       transition: 'all 0.15s ease',
+                      ...(isMobile ? { width: '100%', minHeight: 48, fontSize: 14 } : {}),
                     }}
                     onClick={() => {
                       const link = `${window.location.origin}/join/${inviteCode}`;

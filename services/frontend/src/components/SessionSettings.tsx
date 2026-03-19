@@ -191,15 +191,24 @@ const SessionSettings: React.FC = () => {
       )}
 
       {/* Session Timeout — custom dropdown */}
-      <div style={styles.row}>
+      <div style={{
+        ...styles.row,
+        ...(isMobile ? { flexDirection: 'column' as const, alignItems: 'stretch', gap: 8 } : {}),
+      }}>
         <label htmlFor="session-timeout" style={styles.label}>
           Session Timeout
         </label>
-        <div ref={dropdownRef} style={styles.dropdownWrapper}>
+        <div ref={dropdownRef} style={{
+          ...styles.dropdownWrapper,
+          ...(isMobile ? { width: '100%' } : {}),
+        }}>
           <button
             type="button"
             id="session-timeout"
-            style={styles.customSelect}
+            style={{
+              ...styles.customSelect,
+              ...(isMobile ? { width: '100%', minHeight: 48, fontSize: 15, padding: '10px 14px', justifyContent: 'space-between' } : {}),
+            }}
             onClick={() => setShowDropdown((p) => !p)}
             aria-haspopup="listbox"
             aria-expanded={showDropdown}
@@ -213,7 +222,10 @@ const SessionSettings: React.FC = () => {
             </svg>
           </button>
           {showDropdown && (
-            <div style={styles.dropdownMenu} role="listbox">
+            <div style={{
+              ...styles.dropdownMenu,
+              ...(isMobile ? { left: 0, right: 0, minWidth: 'unset' } : {}),
+            }} role="listbox">
               {SESSION_TIMEOUT_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
@@ -223,6 +235,7 @@ const SessionSettings: React.FC = () => {
                   style={{
                     ...styles.dropdownItem,
                     ...(opt.value === timeoutMs ? styles.dropdownItemActive : {}),
+                    ...(isMobile ? { minHeight: 44, fontSize: 15, padding: '10px 14px' } : {}),
                   }}
                   onClick={() => handleTimeoutChange(opt.value)}
                 >
@@ -244,7 +257,10 @@ const SessionSettings: React.FC = () => {
       </p>
 
       {/* Auto-lock toggle */}
-      <div style={styles.row}>
+      <div style={{
+        ...styles.row,
+        ...(isMobile ? { minHeight: 48, padding: '4px 0' } : {}),
+      }}>
         <label htmlFor="auto-lock" style={styles.label}>
           Auto-lock on inactivity
         </label>
@@ -257,12 +273,16 @@ const SessionSettings: React.FC = () => {
           style={{
             ...styles.toggle,
             backgroundColor: autoLock ? '#238636' : '#30363d',
+            ...(isMobile ? { width: 52, height: 30, borderRadius: 15 } : {}),
           }}
         >
           <span
             style={{
               ...styles.toggleKnob,
-              transform: autoLock ? 'translateX(18px)' : 'translateX(2px)',
+              ...(isMobile ? { width: 24, height: 24, top: 3 } : {}),
+              transform: autoLock
+                ? `translateX(${isMobile ? 22 : 18}px)`
+                : `translateX(${isMobile ? 3 : 2}px)`,
             }}
           />
         </button>

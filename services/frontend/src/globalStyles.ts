@@ -605,6 +605,79 @@ input::placeholder { color: #8b949e; }
   }
 }
 
+/* ══════════════════════════════════════════════════
+   CHAT WINDOW MOBILE OPTIMIZATIONS (320px - 600px)
+   ══════════════════════════════════════════════════ */
+@media (max-width: 600px) {
+
+  /* ── 1. Message bubbles: wider, better padding, min 14px font ── */
+  .frame-msg-bubble,
+  .frame-msg-row > div:not(.frame-msg-hover-actions) {
+    max-width: 85% !important;
+    padding: 10px 14px !important;
+    font-size: clamp(14px, 3.8vw, 16px) !important;
+    line-height: 1.45 !important;
+  }
+
+  /* ── 2. Header: compact single-line ── */
+  .frame-chat-header-name {
+    font-size: clamp(14px, 3.8vw, 16px) !important;
+    max-width: 50vw !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  /* ── 5. Input area: taller touch target ── */
+  .frame-chat-input-area {
+    padding: 6px 8px !important;
+  }
+
+  .frame-chat-textarea {
+    min-height: 48px !important;
+    font-size: 16px !important;
+    padding: 12px 6px !important;
+  }
+
+  /* ── 8. Typing indicator: compact ── */
+  .frame-typing-compact {
+    font-size: 11px !important;
+    padding: 2px 6px !important;
+    min-height: 16px !important;
+  }
+
+  /* ── 10. Long-press: disable native context menu and text selection on msg bubbles ── */
+  .frame-msg-row {
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    -webkit-touch-callout: none !important;
+  }
+
+  /* ── 12. Reactions: smaller badges on mobile ── */
+  .frame-reaction-badge {
+    padding: 1px 5px !important;
+    font-size: 11px !important;
+    gap: 2px !important;
+  }
+
+  /* ── 15. Date separators: smaller on mobile ── */
+  .frame-date-sep-text {
+    font-size: 10px !important;
+    letter-spacing: 0.04em !important;
+  }
+}
+
+/* ── Bottom sheet animations (global, outside media query) ── */
+@keyframes frame-bottom-sheet-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes frame-overlay-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* 2. Safe area insets for notched phones (fixed bottom elements) */
 @media (max-width: 600px) {
   .frame-chat-input-area,

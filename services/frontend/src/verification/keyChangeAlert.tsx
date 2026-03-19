@@ -112,9 +112,13 @@ const FingerprintDiffDisplay: React.FC<{
   groups: string[];
   color: string;
   isNew: boolean;
-}> = ({ oldGroups, newGroups, label, groups, color, isNew }) => {
+  isMobile?: boolean;
+}> = ({ oldGroups, newGroups, label, groups, color, isNew, isMobile }) => {
   return (
-    <div style={styles.fingerprintColumn}>
+    <div style={{
+      ...styles.fingerprintColumn,
+      ...(isMobile ? { flex: 'none', width: '100%' } : {}),
+    }}>
       <p style={{ ...styles.fingerprintLabel, color }}>{label}</p>
       <div style={{
         display: 'flex',
@@ -472,6 +476,7 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
             groups={oldGroups}
             color="#f85149"
             isNew={false}
+            isMobile={isMobile}
           />
           <FingerprintDiffDisplay
             oldGroups={oldGroups}
@@ -480,6 +485,7 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
             groups={newGroups}
             color="#3fb950"
             isNew={true}
+            isMobile={isMobile}
           />
         </div>
 

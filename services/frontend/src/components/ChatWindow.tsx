@@ -371,8 +371,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [sendButtonAnimating, setSendButtonAnimating] = useState(false);
   // Emoji picker state
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  // Mobile "more" menu state (for auto-delete / leave)
+  // Mobile "more" menu state (bottom sheet for auto-delete / leave / info)
   const [showMobileMoreMenu, setShowMobileMoreMenu] = useState(false);
+  // Mobile emoji bottom sheet
+  const [showMobileEmojiSheet, setShowMobileEmojiSheet] = useState(false);
+  // Long-press timer for mobile context menu
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggeredRef = useRef(false);
   // Rotating placeholder index
   const [placeholderIndex, setPlaceholderIndex] = useState(() => Math.floor(Math.random() * 5));
   const emojiPickerRef = useRef<HTMLDivElement>(null);
@@ -508,6 +513,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         }
         .frame-reaction-badge:hover {
           border-color: #58a6ff !important;
+        }
+        @keyframes frame-bottom-sheet-slide-up {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+        @keyframes frame-overlay-fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
       `;
       document.head.appendChild(style);
@@ -1063,6 +1076,32 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, []);
 
+  // ── Long-press handlers for mobile context menu (item 10) ──
+  const handleTouchStart = useCallback((eventId: string, senderId: string) => {
+    longPressTriggeredRef.current = false;
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      if (deletedEventIds.has(eventId)) return;
+      setContextMenuEventId(eventId);
+      // On mobile, position doesn't matter — we render as bottom sheet
+      setContextMenuPos({ x: 0, y: 0 });
+    }, 500);
+  }, [deletedEventIds]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleTouchMove = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     if (messages.length === 0) return;
     const latestOther = [...messages]
@@ -1245,7 +1284,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         elements.push(
           <div key={`date-${event.eventId}`} style={styles.dateSeparator}>
             <div style={styles.dateSeparatorLine} />
-            <span style={styles.dateSeparatorText}>{formatDateSeparator(msgDate)}</span>
+            <span className="frame-date-sep-text" style={{ ...styles.dateSeparatorText, ...(isMobile ? { fontSize: 10 } : {}) }}>{formatDateSeparator(msgDate)}</span>
             <div style={styles.dateSeparatorLine} />
           </div>
         );
@@ -1340,11 +1379,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           style={{
             display: 'flex', alignItems: 'flex-end', gap: 8,
             alignSelf: isOwn ? 'flex-end' : 'flex-start',
-            maxWidth: 'clamp(200px, 75%, 600px)',
+            maxWidth: isMobile ? '85%' : 'clamp(200px, 75%, 600px)',
             marginTop: isFirstInGroup ? 12 : 4,
             position: 'relative' as const,
             ...(hasPopIn ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}),
           }}
+          onTouchStart={isMobile ? () => handleTouchStart(event.eventId, event.senderId) : undefined}
+          onTouchEnd={isMobile ? handleTouchEnd : undefined}
+          onTouchMove={isMobile ? handleTouchMove : undefined}
         >
           {!isOwn && (
             <div style={{
@@ -1364,15 +1406,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
           )}
           <div
-            style={{ ...styles.messageBubble, ...(isOwn ? styles.ownMessage : styles.otherMessage), ...(hasError ? styles.previousSessionMessage : {}), ...bubbleRadius, marginTop: 0, position: 'relative' as const }}
-            onContextMenu={(e) => handleMessageContextMenu(e, event.eventId, event.senderId)}
+            style={{ ...styles.messageBubble, ...(isMobile ? { padding: '10px 14px', fontSize: 'clamp(14px, 3.8vw, 16px)' } : {}), ...(isOwn ? styles.ownMessage : styles.otherMessage), ...(hasError ? styles.previousSessionMessage : {}), ...bubbleRadius, marginTop: 0, position: 'relative' as const }}
+            onContextMenu={isMobile ? undefined : (e) => handleMessageContextMenu(e, event.eventId, event.senderId)}
             onClick={(e) => handleMessageClick(e, event.eventId)}
           >
             {/* Reply quote block */}
             {decrypted.plaintext != null && Boolean(decrypted.plaintext.replyTo) && (() => {
               const rt = decrypted.plaintext.replyTo as { eventId: string; senderId: string; body: string };
               const replyColor = getAvatarColor(rt.senderId);
-              const replyPreview = typeof rt.body === 'string' && rt.body.length > 80 ? rt.body.slice(0, 80) + '...' : rt.body;
+              const truncLen = isMobile ? 60 : 80;
+              const replyPreview = typeof rt.body === 'string' && rt.body.length > truncLen ? rt.body.slice(0, truncLen) + '...' : rt.body;
               return (
                 <div
                   style={{ borderLeft: `3px solid ${replyColor}`, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: '0 6px 6px 0', padding: '4px 8px', marginBottom: 4, cursor: 'pointer', maxWidth: '100%', overflow: 'hidden' }}
@@ -1454,8 +1497,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     <button
                       key={emoji}
                       type="button"
+                      className="frame-reaction-badge"
                       // eslint-disable-next-line security/detect-object-injection
-                      style={{ ...styles.reactionBadge, ...(reactions[emoji].users.includes(currentUserId) ? styles.reactionBadgeOwn : {}) }}
+                      style={{ ...styles.reactionBadge, ...(isMobile ? { padding: '1px 5px', fontSize: 11, gap: 2 } : {}), ...(reactions[emoji].users.includes(currentUserId) ? styles.reactionBadgeOwn : {}) }}
                       onClick={() => void handleReact(event.eventId, emoji)}
                       // eslint-disable-next-line security/detect-object-injection
                       title={reactions[emoji].users.map((u: string) => formatDisplayName(u)).join(', ')}
@@ -1519,7 +1563,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     return elements;
-  }, [messages, filteredMessages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, scrollToMessage, searchQuery, unreadDividerEventId, handleMessageClick]);
+  }, [messages, filteredMessages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, scrollToMessage, searchQuery, unreadDividerEventId, handleMessageClick, isMobile, handleTouchStart, handleTouchEnd, handleTouchMove]);
 
   const renderWelcome = () => {
     if (messages.length > 0 || optimisticMessages.length > 0) return null;
@@ -1738,26 +1782,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             <button type="button" style={styles.leaveButton} title="Leave conversation" onClick={onLeave}>Leave</button>
           )}
           {isMobile && (
-            <>
-              <button type="button" style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#8b949e', fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', flexShrink: 0, minWidth: 44, minHeight: 44 }} title="More options" onClick={() => setShowMobileMoreMenu(!showMobileMoreMenu)} aria-label="More options">
-                &#8943;
-              </button>
-              {showMobileMoreMenu && (
-                <div style={{ position: 'absolute' as const, top: '100%', right: 0, marginTop: 4, backgroundColor: '#21262d', border: '1px solid #30363d', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', padding: 6, zIndex: 100, minWidth: 170, animation: 'frame-context-menu-in 0.15s ease-out' }}>
-                  <button type="button" style={{ display: 'block', width: '100%', padding: '10px 12px', fontSize: 13, color: disappearingSettings?.enabled ? '#d29922' : '#c9d1d9', backgroundColor: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', minHeight: 44 }} onClick={() => { setShowMobileMoreMenu(false); setShowDisappearingMenu(!showDisappearingMenu); }}>
-                    {disappearingSettings?.enabled ? 'Auto-delete ON' : 'Auto-delete'}
-                  </button>
-                  <button type="button" style={{ display: 'block', width: '100%', padding: '10px 12px', fontSize: 13, color: '#c9d1d9', backgroundColor: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', minHeight: 44 }} onClick={() => { setShowMobileMoreMenu(false); onOpenSettings?.(); }}>
-                    Room Settings
-                  </button>
-                  {onLeave && (
-                    <button type="button" style={{ display: 'block', width: '100%', padding: '10px 12px', fontSize: 13, color: '#f85149', backgroundColor: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', minHeight: 44 }} onClick={() => { setShowMobileMoreMenu(false); onLeave(); }}>
-                      Leave Conversation
-                    </button>
-                  )}
-                </div>
-              )}
-            </>
+            <button type="button" style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#8b949e', fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', flexShrink: 0, minWidth: 44, minHeight: 44 }} title="More options" onClick={() => setShowMobileMoreMenu(!showMobileMoreMenu)} aria-label="More options">
+              &#8943;
+            </button>
           )}
           {!isMobile && (
             <button type="button" style={styles.infoButton} title="Room info" aria-label="Room info" onClick={() => onOpenSettings?.()}>i</button>
