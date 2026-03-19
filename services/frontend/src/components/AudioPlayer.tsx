@@ -4,9 +4,11 @@ interface AudioPlayerProps {
   audioBase64: string;
   durationMs: number;
   isSent?: boolean;
+  /** MIME type of the audio data (e.g. 'audio/webm;codecs=opus', 'audio/mp4'). Defaults to 'audio/webm'. */
+  mimeType?: string;
 }
 
-const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSent }) => {
+const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSent, mimeType = 'audio/webm' }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(durationMs / 1000);
@@ -46,7 +48,9 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
 
   const getAudioElement = useCallback((): HTMLAudioElement => {
     if (!audioRef.current) {
-      const audio = new Audio(`data:audio/webm;base64,${audioBase64}`);
+      // Use the actual MIME type from recording (e.g. 'audio/mp4' on Safari)
+      const dataUriMime = mimeType.split(';')[0] || 'audio/webm';
+      const audio = new Audio(`data:${dataUriMime};base64,${audioBase64}`);
       audio.addEventListener('loadedmetadata', () => {
         if (audio.duration && isFinite(audio.duration)) {
           setDuration(audio.duration);
@@ -60,7 +64,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
       audioRef.current = audio;
     }
     return audioRef.current;
-  }, [audioBase64, cleanupInterval]);
+  }, [audioBase64, mimeType, cleanupInterval]);
 
   const togglePlay = useCallback(() => {
     const audio = getAudioElement();
@@ -92,12 +96,13 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
     if (!isPlaying) {
       audio.play().then(() => {
         setIsPlaying(true);
+        cleanupInterval();
         progressIntervalRef.current = setInterval(() => {
           setCurrentTime(audio.currentTime);
         }, 50);
       }).catch(() => undefined);
     }
-  }, [duration, isPlaying, getAudioElement]);
+  }, [duration, isPlaying, getAudioElement, cleanupInterval]);
 
   const formatTime = (seconds: number): string => {
     const m = Math.floor(seconds / 60);

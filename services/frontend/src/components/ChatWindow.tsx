@@ -958,7 +958,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
-  const handleVoiceSend = useCallback(async (audioBase64: string, durationMs: number) => {
+  const handleVoiceSend = useCallback(async (audioBase64: string, durationMs: number, mimeType?: string) => {
     setIsRecordingVoice(false);
     if (!roomId) return;
     try {
@@ -968,6 +968,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         audioData: audioBase64,
         duration: durationMs,
       };
+      // Include the actual MIME type so receivers (especially Safari) can play it back correctly
+      if (mimeType) {
+        voiceContent.audioMimeType = mimeType;
+      }
       const encrypted = await encryptForRoom(roomId, 'm.room.message', voiceContent, memberUserIds);
       await sendMessage(roomId, 'm.room.encrypted', encrypted);
       playSendSound();
@@ -1407,10 +1411,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     return obj != null && obj.msgtype === 'm.audio' && typeof obj.audioData === 'string';
   }
 
-  function getAudioContent(content: unknown): { audioData: string; duration: number } | null {
+  function getAudioContent(content: unknown): { audioData: string; duration: number; mimeType?: string } | null {
     const obj = parseContentIfString(content);
     if (obj != null && obj.msgtype === 'm.audio' && typeof obj.audioData === 'string') {
-      return { audioData: String(obj.audioData), duration: Number(obj.duration) || 0 };
+      return {
+        audioData: String(obj.audioData),
+        duration: Number(obj.duration) || 0,
+        mimeType: typeof obj.audioMimeType === 'string' ? String(obj.audioMimeType) : undefined,
+      };
     }
     return null;
   }
@@ -1778,6 +1786,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                             audioBase64={audio.audioData}
                             durationMs={audio.duration}
                             isSent={isOwn}
+                            mimeType={audio.mimeType}
                           />
                         ) : null;
                       })()
@@ -2357,7 +2366,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       {isRecordingVoice ? (
         <div style={{ padding: 8, borderTop: '1px solid #f85149', backgroundColor: 'rgba(248,81,73,0.05)' }}>
           <VoiceRecorder
-            onSend={(audio, dur) => { void handleVoiceSend(audio, dur); }}
+            onSend={(audio, dur, mime) => { void handleVoiceSend(audio, dur, mime); }}
             onCancel={() => setIsRecordingVoice(false)}
           />
         </div>
