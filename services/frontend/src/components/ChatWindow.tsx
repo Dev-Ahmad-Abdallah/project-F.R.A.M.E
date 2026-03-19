@@ -978,8 +978,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     } catch (err) {
       console.error('[VoiceSend] Failed:', err);
       playErrorSound();
+      showToast?.('error', 'Failed to send voice message. Please try again.', { duration: 4000, dedupeKey: 'voice-fail' });
     }
-  }, [roomId, memberUserIds]);
+  }, [roomId, memberUserIds, showToast]);
 
   // ── File attachment: staging ──
 
@@ -2221,8 +2222,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       <div ref={messageListRef} style={{ ...styles.messageList, position: 'relative' as const }} onScroll={handleScroll}>
         {/* Subtle F.R.A.M.E. watermark */}
-        <div style={{ position: 'fixed' as const, bottom: 80, right: 24, pointerEvents: 'none' as const, opacity: 0.05, zIndex: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <svg width="20" height="20" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <div style={{ position: 'fixed' as const, bottom: 80, right: 24, pointerEvents: 'none' as const, opacity: 0.05, zIndex: 0, display: 'flex', alignItems: 'center', gap: 6 }} aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 64 64" fill="none">
             <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="4" fill="rgba(88,166,255,0.15)" />
             <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
           </svg>

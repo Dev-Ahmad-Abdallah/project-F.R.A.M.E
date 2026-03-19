@@ -602,13 +602,20 @@ function App() {
           // Check device verification status from the server on each app load.
           // If this is the user's only device, auto-verify it (no gate needed).
           // If there are other devices, the gate blocks until verification.
-          if (await deviceNeedsVerification(currentAuth.deviceId, currentAuth.userId)) {
+          // First check localStorage for a previously persisted verification.
+          let locallyVerified = false;
+          try {
+            locallyVerified = localStorage.getItem(`frame-device-verified:${currentAuth.deviceId}`) === 'true';
+          } catch { /* localStorage may be unavailable */ }
+
+          if (!locallyVerified && await deviceNeedsVerification(currentAuth.deviceId, currentAuth.userId)) {
             try {
               const deviceListResp = await listUserDevices(currentAuth.userId);
               const deviceCount = deviceListResp.devices?.length ?? 0;
               if (deviceCount <= 1) {
                 // First/only device — auto-verify on server, no gate
                 await setDeviceVerified(currentAuth.deviceId);
+                try { localStorage.setItem(`frame-device-verified:${currentAuth.deviceId}`, 'true'); } catch { /* */ }
               } else {
                 // Multiple devices — must verify
                 setShowDeviceGate(true);
@@ -1731,6 +1738,11 @@ function App() {
         <DeviceVerificationGate
           deviceId={auth.deviceId}
           onVerify={() => {
+            // Persist verification to server AND localStorage so gate doesn't reappear
+            void setDeviceVerified(auth.deviceId);
+            try {
+              localStorage.setItem(`frame-device-verified:${auth.deviceId}`, 'true');
+            } catch { /* localStorage may be unavailable */ }
             setShowDeviceGate(false);
             setActiveView('link-device');
           }}
