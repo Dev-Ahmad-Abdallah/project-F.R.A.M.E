@@ -109,7 +109,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [username, roomType, roomName, currentUserId, onCreated]);
+  }, [username, roomType, roomName, isPrivate, roomPassword, currentUserId, onCreated]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {

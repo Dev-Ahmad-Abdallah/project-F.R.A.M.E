@@ -62,6 +62,7 @@ interface OptimisticMessage {
   body: string;
   timestamp: number;
   status: MessageSendStatus;
+  viewOnce?: boolean;
 }
 
 interface ChatWindowProps {
@@ -116,6 +117,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [contextMenuEventId, setContextMenuEventId] = useState<string | null>(null);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [deletedEventIds, setDeletedEventIds] = useState<Set<string>>(new Set());
+  const [viewOnceMode, setViewOnceMode] = useState(false);
+  const [viewedOnceIds, setViewedOnceIds] = useState<Set<string>>(new Set());
+  const [hiddenOnceIds, setHiddenOnceIds] = useState<Set<string>>(new Set());
+  const [expiredEventIds, setExpiredEventIds] = useState<Set<string>>(new Set());
+  const [disappearingSettings, setDisappearingSettings] = useState<{
+    enabled: boolean;
+    timeoutSeconds: number;
+  } | null>(null);
+  const [showDisappearingMenu, setShowDisappearingMenu] = useState(false);
 
   // Inline rename state
   const [isEditingName, setIsEditingName] = useState(false);
@@ -171,6 +181,66 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     const interval = setInterval(() => setTick((t) => t + 1), 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Fetch disappearing messages settings from the server
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { getRoomSettingsAPI } = await import('../api/roomsAPI');
+        const resp = await getRoomSettingsAPI(roomId);
+        if (!cancelled && resp.settings?.disappearingMessages) {
+          setDisappearingSettings(resp.settings.disappearingMessages as { enabled: boolean; timeoutSeconds: number });
+        }
+      } catch { /* settings not available yet */ }
+    })();
+    return () => { cancelled = true; };
+  }, [roomId]);
+
+  // Expire messages client-side based on disappearing settings
+  useEffect(() => {
+    if (!disappearingSettings?.enabled) return;
+    const checkExpired = () => {
+      const now = Date.now();
+      const timeoutMs = disappearingSettings.timeoutSeconds * 1000;
+      const newExpired = new Set(expiredEventIds);
+      let changed = false;
+      for (const msg of messages) {
+        const msgTime = new Date(msg.event.originServerTs).getTime();
+        if (now - msgTime > timeoutMs && !newExpired.has(msg.event.eventId)) {
+          newExpired.add(msg.event.eventId);
+          changed = true;
+        }
+      }
+      if (changed) setExpiredEventIds(newExpired);
+    };
+    checkExpired();
+    const disappearTimer = setInterval(checkExpired, 5000);
+    return () => clearInterval(disappearTimer);
+  }, [disappearingSettings, messages, expiredEventIds]);
+
+  // View-once auto-hide: when a view-once message from another user is displayed,
+  // mark it as viewed and hide it after 5 seconds.
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (const msg of messages) {
+      const eventId = msg.event.eventId;
+      const isOwn = msg.event.senderId === currentUserId;
+      const isViewOnce = msg.plaintext && (msg.plaintext as Record<string, unknown>).viewOnce === true;
+      if (isViewOnce && !isOwn && !viewedOnceIds.has(eventId) && !hiddenOnceIds.has(eventId)) {
+        // Mark as viewed
+        setViewedOnceIds((prev) => new Set(prev).add(eventId));
+        // Start 5-second timer to hide
+        const timer = setTimeout(() => {
+          setHiddenOnceIds((prev) => new Set(prev).add(eventId));
+        }, 5000);
+        timers.push(timer);
+      }
+    }
+    return () => {
+      for (const t of timers) clearTimeout(t);
+    };
+  }, [messages, currentUserId, viewedOnceIds, hiddenOnceIds]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -258,6 +328,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     const text = retryText || inputValue.trim();
     if (!text || isSending) return;
 
+    // Capture view-once state before resetting
+    const isViewOnce = viewOnceMode;
+
     // Create optimistic message
     const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const optimistic: OptimisticMessage = {
@@ -265,18 +338,25 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       body: text,
       timestamp: Date.now(),
       status: 'sending',
+      viewOnce: isViewOnce,
     };
 
     setOptimisticMessages((prev) => [...prev, optimistic]);
-    if (!retryText) setInputValue('');
+    if (!retryText) {
+      setInputValue('');
+      setViewOnceMode(false);
+    }
     setIsSending(true);
 
     try {
       // Always encrypt — no plaintext bypass (Security Finding 1)
-      const plaintext = {
+      const plaintext: Record<string, unknown> = {
         msgtype: 'm.text',
         body: text,
       };
+      if (isViewOnce) {
+        plaintext.viewOnce = true;
+      }
 
       const encryptedContent = await encryptForRoom(
         roomId,
@@ -319,17 +399,18 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
-  // Close context menu on click anywhere
+  // Close context menu and disappearing menu on click anywhere
   useEffect(() => {
     const handleClick = () => {
       setContextMenuEventId(null);
       setContextMenuPos(null);
+      setShowDisappearingMenu(false);
     };
-    if (contextMenuEventId) {
+    if (contextMenuEventId || showDisappearingMenu) {
       window.addEventListener('click', handleClick);
       return () => window.removeEventListener('click', handleClick);
     }
-  }, [contextMenuEventId]);
+  }, [contextMenuEventId, showDisappearingMenu]);
 
   const handleMessageContextMenu = (
     e: React.MouseEvent,
@@ -493,7 +574,60 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, position: 'relative' as const }}>
+          {/* Disappearing messages toggle */}
+          <button
+            type="button"
+            style={{
+              ...styles.disappearingButton,
+              ...(disappearingSettings?.enabled ? styles.disappearingButtonActive : {}),
+            }}
+            title="Disappearing messages"
+            onClick={() => setShowDisappearingMenu(!showDisappearingMenu)}
+          >
+            {disappearingSettings?.enabled ? 'Auto-delete ON' : 'Auto-delete'}
+          </button>
+          {showDisappearingMenu && (
+            <div style={styles.disappearingMenu}>
+              <div style={styles.disappearingMenuTitle}>Disappearing Messages</div>
+              {[
+                { label: 'Off', seconds: 0 },
+                { label: '30 seconds', seconds: 30 },
+                { label: '5 minutes', seconds: 300 },
+                { label: '1 hour', seconds: 3600 },
+                { label: '24 hours', seconds: 86400 },
+              ].map((opt) => (
+                <button
+                  key={opt.seconds}
+                  type="button"
+                  style={{
+                    ...styles.disappearingMenuItem,
+                    ...(disappearingSettings?.enabled && disappearingSettings.timeoutSeconds === opt.seconds
+                      ? { color: '#58a6ff' }
+                      : {}),
+                    ...(!disappearingSettings?.enabled && opt.seconds === 0 ? { color: '#58a6ff' } : {}),
+                  }}
+                  onClick={async () => {
+                    try {
+                      const { updateRoomSettings } = await import('../api/roomsAPI');
+                      const newSettings = opt.seconds === 0
+                        ? { disappearingMessages: { enabled: false, timeoutSeconds: 0 } }
+                        : { disappearingMessages: { enabled: true, timeoutSeconds: opt.seconds } };
+                      await updateRoomSettings(roomId, newSettings);
+                      setDisappearingSettings(
+                        opt.seconds === 0 ? null : { enabled: true, timeoutSeconds: opt.seconds },
+                      );
+                    } catch (err) {
+                      console.error('Failed to update disappearing settings:', err);
+                    }
+                    setShowDisappearingMenu(false);
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
           {onLeave && (
             <button
               type="button"
@@ -531,6 +665,20 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           const hasError = decrypted.decryptionError !== null;
 
           const isDeleted = deletedEventIds.has(event.eventId);
+          const isExpired = expiredEventIds.has(event.eventId);
+          const isViewOnce = decrypted.plaintext && (decrypted.plaintext as Record<string, unknown>).viewOnce === true;
+          const isHiddenOnce = hiddenOnceIds.has(event.eventId);
+
+          if (isViewOnce && isHiddenOnce && !isOwn) {
+            return (
+              <div key={event.eventId} style={{ ...styles.messageBubble, ...(isMobile ? { maxWidth: '85%' } : {}), ...styles.otherMessage, opacity: 0.5 }}>
+                <div style={styles.messageBody}>
+                  <span style={styles.viewOnceIcon} title="View-once message">&#128065;</span>
+                  <span style={{ fontStyle: 'italic', color: '#8b949e' }}>Viewed</span>
+                </div>
+              </div>
+            );
+          }
 
           return (
             <div
@@ -553,8 +701,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               <div style={styles.messageBody}>
                 {isDeleted ? (
                   <span style={styles.deletedText}>This message was deleted</span>
+                ) : isExpired ? (
+                  <span style={styles.expiredText}>Message expired</span>
                 ) : (
                   <>
+                    {isViewOnce && <span style={styles.viewOnceIcon} title="View-once message">&#128065;</span>}
                     {renderEncryptionIcon(decrypted)}
                     <span
                       style={hasError ? styles.errorText : undefined}
@@ -610,13 +761,25 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {/* Input area */}
       <div style={{ ...styles.inputArea, ...(isMobile ? { padding: '8px 10px', gap: 6 } : {}) }}>
+        <button
+          type="button"
+          style={{
+            ...styles.viewOnceToggle,
+            ...(viewOnceMode ? styles.viewOnceToggleActive : {}),
+          }}
+          onClick={() => setViewOnceMode((v) => !v)}
+          title={viewOnceMode ? 'View-once enabled — recipient can only view this once' : 'Enable view-once mode'}
+          aria-label="Toggle view-once mode"
+        >
+          &#128065;
+        </button>
         <input
           type="text"
           style={{ ...styles.input, ...(isMobile ? { padding: '10px 12px', fontSize: 16 } : {}) }}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
+          placeholder={viewOnceMode ? 'View-once message...' : 'Type a message...'}
           disabled={isSending}
           aria-label="Message input"
         />
@@ -960,6 +1123,57 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid rgba(248, 81, 73, 0.3)',
     borderRadius: 6,
     cursor: 'pointer',
+    fontFamily: 'inherit',
+  },
+  disappearingButton: {
+    padding: '4px 8px',
+    fontSize: 10,
+    fontWeight: 600,
+    backgroundColor: 'transparent',
+    color: '#8b949e',
+    border: '1px solid #30363d',
+    borderRadius: 6,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    whiteSpace: 'nowrap' as const,
+  },
+  disappearingButtonActive: {
+    backgroundColor: 'rgba(210, 153, 34, 0.15)',
+    color: '#d29922',
+    borderColor: '#d29922',
+  },
+  disappearingMenu: {
+    position: 'absolute' as const,
+    top: '100%',
+    right: 0,
+    marginTop: 4,
+    backgroundColor: '#21262d',
+    border: '1px solid #30363d',
+    borderRadius: 8,
+    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+    padding: 6,
+    zIndex: 100,
+    minWidth: 160,
+  },
+  disappearingMenuTitle: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#8b949e',
+    padding: '4px 8px 6px',
+    borderBottom: '1px solid #30363d',
+    marginBottom: 4,
+  },
+  disappearingMenuItem: {
+    display: 'block',
+    width: '100%',
+    padding: '6px 8px',
+    fontSize: 12,
+    color: '#c9d1d9',
+    backgroundColor: 'transparent',
+    border: 'none',
+    borderRadius: 4,
+    cursor: 'pointer',
+    textAlign: 'left' as const,
     fontFamily: 'inherit',
   },
 };

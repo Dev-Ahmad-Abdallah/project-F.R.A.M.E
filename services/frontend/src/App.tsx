@@ -492,6 +492,8 @@ function App() {
       case 'settings':
         return (
           <div style={styles.settingsContainer}>
+            <SessionSettings />
+            <div style={{ borderTop: '1px solid #30363d', width: '100%', maxWidth: 440, margin: '8px 0 20px' }} />
             <DeviceList
               userId={auth.userId}
               currentDeviceId={auth.deviceId}
