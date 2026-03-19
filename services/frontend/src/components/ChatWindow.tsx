@@ -820,45 +820,72 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     return () => clearInterval(disappearTimer);
   }, [disappearingSettings, messages, expiredEventIds]);
 
-  // View-once auto-hide + server-side deletion
+  // View-once timer refs — keyed by eventId so we can clean up on unmount
+  const viewOnceTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  // Clean up all view-once timers on unmount
   useEffect(() => {
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    for (const msg of messages) {
-      const eventId = msg.event.eventId;
-      const isOwn = msg.event.senderId === currentUserId;
-      const isViewOnce = msg.plaintext && msg.plaintext.viewOnce === true;
-      if (isViewOnce && !isOwn && !viewedOnceIds.has(eventId) && !hiddenOnceIds.has(eventId)) {
-        setViewedOnceIds((prev) => {
-          const next = new Set(prev);
-          next.add(eventId);
-          try { localStorage.setItem('frame-viewed-once', JSON.stringify([...next])); } catch { /* ignore localStorage errors */ }
-          return next;
-        });
-        const timer = setTimeout(() => {
-          setHiddenOnceIds((prev) => {
-            const next = new Set(prev);
-            next.add(eventId);
-            try { localStorage.setItem('frame-hidden-once', JSON.stringify([...next])); } catch { /* ignore localStorage errors */ }
-            return next;
-          });
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.event.eventId === eventId
-                ? { ...m, plaintext: null, decryptionError: 'View-once message already viewed' }
-                : m,
-            ),
-          );
-          deleteMessage(eventId).catch((err) =>
-            console.error('[ViewOnce] Failed to delete from server:', err),
-          );
-        }, 5000);
-        timers.push(timer);
-      }
-    }
     return () => {
-      for (const t of timers) clearTimeout(t);
+      for (const t of Object.values(viewOnceTimersRef.current)) clearTimeout(t);
     };
-  }, [messages, currentUserId, viewedOnceIds, hiddenOnceIds]);
+  }, []);
+
+  /** Get the display type label for a view-once message */
+  const getViewOnceType = useCallback((plaintext: Record<string, unknown>): string => {
+    const msgtype = plaintext?.msgtype as string;
+    if (msgtype === 'm.audio') return '\uD83C\uDFA4 Voice message';
+    if (msgtype === 'm.image') return '\uD83D\uDCF7 Photo';
+    if (msgtype === 'm.file') return `\uD83D\uDCCE ${(plaintext.filename as string) || 'File'}`;
+    return '\uD83D\uDCAC Message';
+  }, []);
+
+  /** Get auto-hide duration for view-once message types */
+  const getViewOnceDuration = useCallback((plaintext: Record<string, unknown>): number => {
+    const msgtype = plaintext?.msgtype as string;
+    if (msgtype === 'm.audio') {
+      // Audio: playback duration + 3 seconds buffer, min 10s
+      const dur = (plaintext.duration as number) || 5000;
+      return dur + 3000;
+    }
+    if (msgtype === 'm.image') return 30000; // Images: 30 seconds
+    if (msgtype === 'm.file') return 10000;  // Files: 10 seconds to download
+    return 5000; // Text: 5 seconds
+  }, []);
+
+  /** Reveal a view-once message: mark as viewed, start auto-hide timer */
+  const revealViewOnce = useCallback((eventId: string, plaintext: Record<string, unknown>) => {
+    // Mark as viewed
+    setViewedOnceIds((prev) => {
+      const next = new Set(prev);
+      next.add(eventId);
+      try { localStorage.setItem('frame-viewed-once', JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+
+    // Start auto-hide timer based on content type
+    const duration = getViewOnceDuration(plaintext);
+    const timer = setTimeout(() => {
+      setHiddenOnceIds((prev) => {
+        const next = new Set(prev);
+        next.add(eventId);
+        try { localStorage.setItem('frame-hidden-once', JSON.stringify([...next])); } catch { /* ignore */ }
+        return next;
+      });
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.event.eventId === eventId
+            ? { ...m, plaintext: null, decryptionError: 'View-once message already viewed' }
+            : m,
+        ),
+      );
+      // Fire-and-forget server deletion
+      deleteMessage(eventId).catch((err) =>
+        console.error('[ViewOnce] Failed to delete from server:', err),
+      );
+      delete viewOnceTimersRef.current[eventId]; // eslint-disable-line security/detect-object-injection
+    }, duration);
+    viewOnceTimersRef.current[eventId] = timer; // eslint-disable-line security/detect-object-injection
+  }, [getViewOnceDuration]);
 
   // Track scroll position
   const handleScroll = useCallback(() => {
@@ -1365,6 +1392,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         mimeType: file.type || 'image/jpeg',
         fileSize: file.size,
       };
+      if (viewOnceMode) {
+        plaintext.viewOnce = true;
+      }
 
       const encryptedContent = await encryptForRoom(
         roomId,
@@ -1375,6 +1405,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       await sendMessage(roomId, 'm.room.encrypted', encryptedContent);
       playSendSound();
+      if (viewOnceMode) setViewOnceMode(false);
       showToast?.('success', 'Photo sent securely', { duration: 2000 });
     } catch (err) {
       console.error('[CameraCapture] Send failed:', err);
@@ -1910,12 +1941,62 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         );
       }
 
+      // View-once: expired/consumed — show "Opened" placeholder
       if (isViewOnce && isHiddenOnce && !isOwn) {
         elements.push(
           <div key={event.eventId} style={{ ...styles.messageBubble, maxWidth: isMobile ? '85%' : 'clamp(180px, 65%, 480px)', ...styles.otherMessage, opacity: 0.5, alignSelf: 'flex-start' as const }}>
-            <div style={styles.messageBody}>
-              <span style={styles.viewOnceIcon} title="View-once message">&#128065;</span>
-              <span style={{ fontStyle: 'italic', color: '#8b949e' }}>Viewed</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#484f58', fontStyle: 'italic', fontSize: 12, padding: '8px 12px' }}>
+              <span>{'\uD83D\uDD12'}</span>
+              <span>Opened</span>
+            </div>
+          </div>
+        );
+        lastSenderId = event.senderId;
+        lastTimestamp = msgDate;
+        lastDate = msgDate;
+        continue;
+      }
+
+      // View-once: not yet revealed — show "Tap to view" placeholder (NO content in DOM)
+      if (isViewOnce && !isOwn && !viewedOnceIds.has(event.eventId) && !isHiddenOnce && decrypted.plaintext) {
+        const voContentType = getViewOnceType(decrypted.plaintext);
+        const voPlaintext = decrypted.plaintext;
+        elements.push(
+          <div key={event.eventId} ref={(el) => { messageRefs.current[event.eventId] = el; }} className="frame-msg-row" style={{ display: 'flex', alignItems: 'flex-end', gap: 8, alignSelf: 'flex-start', maxWidth: isMobile ? '85%' : 'clamp(180px, 65%, 480px)', marginTop: isNewGroup ? 8 : 2, position: 'relative' as const }}>
+            {!isOwn && (
+              <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: isNewGroup ? (isAnonymous ? '#6e40aa' : getAvatarColor(event.senderId)) : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0, visibility: isNewGroup ? ('visible' as const) : ('hidden' as const) }}>
+                {isNewGroup ? (isAnonymous ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                    <line x1="2" y1="2" x2="22" y2="22" />
+                  </svg>
+                ) : formatDisplayName(event.senderId).charAt(0).toUpperCase()) : ''}
+              </div>
+            )}
+            <div className="frame-msg-bubble" style={{ ...styles.messageBubble, ...(isMobile ? { padding: '10px 14px' } : {}), ...styles.otherMessage, borderRadius: 16, marginTop: 0 }}>
+              {!isOwn && isNewGroup && (
+                <div style={{ ...styles.senderName, color: isAnonymous ? '#bc8cff' : getAvatarColor(event.senderId) }}>
+                  {DOMPurify.sanitize(resolveDisplayName(event.senderId, event.senderDisplayName), PURIFY_CONFIG)}
+                </div>
+              )}
+              <button
+                onClick={() => revealViewOnce(event.eventId, voPlaintext)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '12px 16px', borderRadius: 12,
+                  backgroundColor: 'rgba(88, 166, 255, 0.06)',
+                  border: '1px dashed rgba(88, 166, 255, 0.3)',
+                  cursor: 'pointer', color: '#58a6ff',
+                  fontStyle: 'italic', fontSize: 13,
+                  width: '100%', textAlign: 'left' as const,
+                  background: 'none',
+                }}
+              >
+                <span>{'\uD83D\uDC41'}</span>
+                <span>{voContentType}</span>
+                <span style={{ color: '#8b949e', fontSize: 11 }}>Tap to view</span>
+              </button>
             </div>
           </div>
         );
@@ -2225,7 +2306,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     return elements;
-  }, [messages, filteredMessages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, readReceiptMap, scrollToMessage, searchQuery, unreadDividerEventId, handleMessageClick, isMobile, handleTouchStart, handleTouchEnd, handleTouchMove]);
+  }, [messages, filteredMessages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, viewedOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, readReceiptMap, scrollToMessage, searchQuery, unreadDividerEventId, handleMessageClick, isMobile, handleTouchStart, handleTouchEnd, handleTouchMove, revealViewOnce, getViewOnceType]);
 
   const renderWelcome = () => {
     if (messages.length > 0 || optimisticMessages.length > 0) return null;
