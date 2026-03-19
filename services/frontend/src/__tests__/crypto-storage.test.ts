@@ -9,11 +9,20 @@ import {
   decryptData,
   generateFingerprint,
   randomBytes,
-} from '../../crypto/cryptoUtils';
+} from '../crypto/cryptoUtils';
 
-// jsdom polyfill for Web Crypto API
+// Polyfill Web Crypto and TextEncoder for jsdom test environment
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { webcrypto } = require('crypto');
-Object.defineProperty(globalThis, 'crypto', { value: webcrypto });
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { TextEncoder: NodeTextEncoder, TextDecoder: NodeTextDecoder } = require('util');
+if (!globalThis.crypto) {
+  Object.defineProperty(globalThis, 'crypto', { value: webcrypto });
+}
+if (!globalThis.TextEncoder) {
+  Object.defineProperty(globalThis, 'TextEncoder', { value: NodeTextEncoder });
+  Object.defineProperty(globalThis, 'TextDecoder', { value: NodeTextDecoder });
+}
 
 // ── cryptoUtils.ts ────────────────────────────────────────────
 

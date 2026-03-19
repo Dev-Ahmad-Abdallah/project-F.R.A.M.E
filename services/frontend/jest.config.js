@@ -23,6 +23,10 @@ const config = {
     "<rootDir>/src/__tests__/**/*.test.tsx",
   ],
 
+  setupFiles: [
+    "<rootDir>/src/__tests__/setup/frontend.setup.ts",
+  ],
+
   collectCoverage: true,
   coverageDirectory: "coverage",
   coverageReporters: ["text", "lcov", "html"],

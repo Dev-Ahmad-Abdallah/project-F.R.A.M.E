@@ -101,7 +101,7 @@ federationRouter.get('/keys/:userId', apiLimiter, asyncHandler(async (req, res) 
 federationRouter.get('/backfill', apiLimiter, asyncHandler(async (req, res) => {
   // P1-1: Verify the requesting server is a trusted peer
   const origin = (req.headers['x-origin-server'] as string) || req.headers['origin'] || '';
-  if (!origin || !isPeerTrusted(origin as string)) {
+  if (!origin || !isPeerTrusted(String(origin))) {
     throw new ApiError(403, 'M_FORBIDDEN', 'Origin server is not a trusted peer');
   }
 
