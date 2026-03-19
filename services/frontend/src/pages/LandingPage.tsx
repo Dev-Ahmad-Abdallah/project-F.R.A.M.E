@@ -679,7 +679,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
               transition: `opacity 0.5s ease ${i * 120}ms, transform 0.5s ease ${i * 120}ms`,
             }}>
               {s.icon}
-              <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>
                 {s.countLabel || s.label}
               </span>
             </div>
@@ -980,9 +980,10 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
           </div>
           <p style={{
             margin: '0 0 20px',
-            fontSize: 13,
+            fontSize: 14,
             color: C.textSecondary,
             lineHeight: 1.6,
+            wordBreak: 'break-word',
           }}>
             Built with vodozemac &middot; Olm/Megolm Protocol &middot; TypeScript &middot; Open Source
           </p>
@@ -1049,10 +1050,11 @@ function archBox(trusted: boolean): React.CSSProperties {
     flexDirection: 'column',
     alignItems: 'center',
     gap: 6,
-    padding: '16px 20px',
+    padding: 'clamp(12px, 2vw, 16px) clamp(12px, 2.5vw, 20px)',
     backgroundColor: trusted ? 'rgba(63,185,80,0.04)' : 'rgba(139,148,158,0.04)',
     border: `1px solid ${trusted ? C.success + '40' : C.border}`,
     borderRadius: 10,
-    minWidth: 110,
+    minWidth: 80,
+    maxWidth: '100%',
   };
 }

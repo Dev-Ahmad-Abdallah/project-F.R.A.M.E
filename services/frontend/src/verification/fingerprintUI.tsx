@@ -242,7 +242,12 @@ const SafetyNumberDisplay: React.FC<{
       <p style={styles.safetyNumberLabel}>{label}</p>
       <div style={{
         ...styles.safetyNumberContainer,
-        ...(isMobile ? { fontSize: 14, maxWidth: '100%' } : {}),
+        ...(isMobile ? {
+          fontSize: 13,
+          maxWidth: '100%',
+          gap: '3px 6px',
+          justifyContent: 'center',
+        } : {}),
       }}>
         {groups.map((group, i) => (
           <span
@@ -261,10 +266,22 @@ const SafetyNumberDisplay: React.FC<{
         ))}
       </div>
       {onCopy && (
-        <div style={styles.copyButtonRow}>
+        <div style={{
+          ...styles.copyButtonRow,
+          ...(isMobile ? { width: '100%' } : {}),
+        }}>
           <button
             type="button"
-            style={styles.copyButton}
+            style={{
+              ...styles.copyButton,
+              ...(isMobile ? {
+                width: '100%',
+                justifyContent: 'center',
+                padding: '10px 12px',
+                minHeight: 44,
+                fontSize: 13,
+              } : {}),
+            }}
             onClick={onCopy}
           >
             {copied ? (
@@ -381,8 +398,17 @@ const FingerprintUI: React.FC<FingerprintUIProps> = ({
       </div>
 
       {/* QR Code */}
-      <div style={styles.qrContainer}>
-        <QRCodeSVG value={qrPayload} size={isMobile ? 160 : 200} level="M" />
+      <div style={{
+        ...styles.qrContainer,
+        ...(isMobile ? {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          alignSelf: 'center',
+          padding: 12,
+        } : {}),
+      }}>
+        <QRCodeSVG value={qrPayload} size={isMobile ? 148 : 200} level="M" />
       </div>
 
       {/* Their safety number — with colored groups and copy */}

@@ -653,24 +653,26 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
             )}
           </div>
 
-          {/* Waiting indicator */}
+          {/* Waiting indicator — centered and calm */}
           <div style={{
             display: 'flex',
+            flexDirection: 'column' as const,
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 8,
-            marginBottom: 20,
+            gap: 6,
+            marginBottom: isMobile ? 24 : 20,
             color: '#8b949e',
             fontSize: 13,
+            padding: isMobile ? '8px 0' : 0,
           }}>
             <span>Waiting for others to join</span>
-            <span style={{ display: 'inline-flex', gap: 2 }}>
+            <span style={{ display: 'inline-flex', gap: 3 }}>
               {[0, 1, 2].map((i) => (
                 <span
                   key={i}
                   style={{
-                    width: 4,
-                    height: 4,
+                    width: 5,
+                    height: 5,
                     borderRadius: '50%',
                     backgroundColor: '#8b949e',
                     display: 'inline-block',
@@ -686,12 +688,14 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
             display: 'flex',
             gap: 10,
             justifyContent: 'center',
+            ...(isMobile ? { flexDirection: 'column-reverse' as const, gap: 8 } : {}),
           }}>
             <button
               type="button"
               style={{
                 ...styles.cancelButton,
                 transition: 'all 0.15s ease',
+                ...(isMobile ? { width: '100%', minHeight: 48, justifyContent: 'center' } : {}),
               }}
               onClick={onClose}
             >
@@ -702,6 +706,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
               style={{
                 ...styles.createButton,
                 transition: 'all 0.15s ease',
+                ...(isMobile ? { width: '100%', minHeight: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' } : {}),
               }}
               onClick={handleEnterSession}
             >
@@ -809,11 +814,12 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         {/* Tab selector */}
         <div style={{
           display: 'flex',
-          gap: 4,
+          gap: isMobile ? 2 : 4,
           backgroundColor: '#0d1117',
           borderRadius: 8,
-          padding: 4,
+          padding: isMobile ? 3 : 4,
           marginBottom: 20,
+          width: '100%',
         }}>
           {tabs.map((tab) => {
             const isActive = activeTab === tab.key;
@@ -823,7 +829,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 type="button"
                 style={{
                   flex: 1,
-                  padding: isMobile ? '10px 6px' : '10px 12px',
+                  padding: isMobile ? '10px 4px' : '10px 12px',
                   fontSize: isMobile ? 11 : 12,
                   fontWeight: isActive ? 600 : 500,
                   color: isActive ? '#f0f6fc' : '#8b949e',
@@ -836,8 +842,8 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 6,
-                  minHeight: 40,
+                  gap: isMobile ? 4 : 6,
+                  minHeight: 44,
                 }}
                 onClick={() => { setActiveTab(tab.key); setError(null); }}
                 disabled={isLoading}
@@ -1052,12 +1058,17 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
             )}
 
             {/* Actions */}
-            <div style={{ ...styles.actions, marginTop: 16 }}>
+            <div style={{
+              ...styles.actions,
+              marginTop: 16,
+              ...(isMobile ? { flexDirection: 'column-reverse' as const, gap: 8 } : {}),
+            }}>
               <button
                 type="button"
                 style={{
                   ...styles.cancelButton,
                   transition: 'all 0.15s ease',
+                  ...(isMobile ? { width: '100%', minHeight: 48, justifyContent: 'center' } : {}),
                 }}
                 onClick={onClose}
                 disabled={isLoading}
@@ -1072,7 +1083,9 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                   transition: 'all 0.15s ease',
                   display: 'flex',
                   alignItems: 'center',
+                  justifyContent: 'center',
                   gap: 8,
+                  ...(isMobile ? { width: '100%', minHeight: 48 } : {}),
                 }}
                 onClick={() => void handleJoinSession()}
                 disabled={isLoading || stripDashes(joinSessionId).length !== 6}
@@ -1140,12 +1153,17 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
             </div>
 
             {/* Actions */}
-            <div style={{ ...styles.actions, marginTop: 16 }}>
+            <div style={{
+              ...styles.actions,
+              marginTop: 16,
+              ...(isMobile ? { flexDirection: 'column-reverse' as const, gap: 8 } : {}),
+            }}>
               <button
                 type="button"
                 style={{
                   ...styles.cancelButton,
                   transition: 'all 0.15s ease',
+                  ...(isMobile ? { width: '100%', minHeight: 48, justifyContent: 'center' } : {}),
                 }}
                 onClick={onClose}
                 disabled={isLoading}
@@ -1158,6 +1176,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                   ...styles.createButton,
                   ...(isLoading || !username.trim() ? styles.buttonDisabled : {}),
                   transition: 'all 0.15s ease',
+                  ...(isMobile ? { width: '100%', minHeight: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' } : {}),
                 }}
                 onClick={() => void handleCreateDM()}
                 disabled={isLoading || !username.trim()}
@@ -1222,6 +1241,11 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '4px 8px',
     lineHeight: 1,
     transition: 'color 0.15s ease',
+    minWidth: 44,
+    minHeight: 44,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   error: {
     backgroundColor: '#3d1f28',
@@ -1245,7 +1269,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   input: {
     padding: '8px 12px',
-    fontSize: 14,
+    fontSize: 16, /* 16px prevents iOS auto-zoom on focus */
     backgroundColor: '#0d1117',
     border: '1px solid #30363d',
     borderRadius: 6,
@@ -1254,6 +1278,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: 'inherit',
     boxSizing: 'border-box' as const,
     width: '100%',
+    minHeight: 48,
   },
   inputWrapper: {
     position: 'relative' as const,

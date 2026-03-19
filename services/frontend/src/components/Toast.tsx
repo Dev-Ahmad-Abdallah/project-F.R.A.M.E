@@ -14,6 +14,7 @@
 
 import React, { useState, useEffect } from 'react';
 import type { Toast as ToastData, ToastType } from '../hooks/useToast';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 interface ToastContainerProps {
   toasts: ToastData[];
@@ -70,9 +71,11 @@ const bgColors: Record<ToastType, string> = {
 function ToastItem({
   toast,
   onDismiss,
+  isMobile,
 }: {
   toast: ToastData;
   onDismiss: (id: string) => void;
+  isMobile: boolean;
 }) {
   const [isExiting, setIsExiting] = useState(false);
   const [progressWidth, setProgressWidth] = useState(100);
@@ -103,20 +106,41 @@ function ToastItem({
         borderLeftColor: borderColors[toast.type],
         backgroundColor: bgColors[toast.type],
         animation: isExiting
-          ? 'frame-toast-slide-out 0.25s ease-in forwards'
-          : 'frame-toast-slide-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
+          ? (isMobile ? 'frame-toast-slide-out-mobile 0.25s ease-in forwards' : 'frame-toast-slide-out 0.25s ease-in forwards')
+          : (isMobile ? 'frame-toast-slide-in-mobile 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' : 'frame-toast-slide-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards'),
+        ...(isMobile ? {
+          padding: '10px 44px 10px 12px',
+          borderRadius: 0,
+          borderLeft: 'none',
+          borderBottom: `3px solid ${borderColors[toast.type]}`,
+        } : {}),
       }}
     >
       {/* Icon */}
       <div style={toastStyles.iconWrap} aria-hidden="true">{icons[toast.type]}</div>
 
       {/* Message */}
-      <div style={toastStyles.message}>{toast.message}</div>
+      <div style={{
+        ...toastStyles.message,
+        ...(isMobile ? { fontSize: 12, lineHeight: 1.4 } : {}),
+      }}>{toast.message}</div>
 
       {/* Dismiss button */}
       <button
         type="button"
-        style={toastStyles.dismissButton}
+        style={{
+          ...toastStyles.dismissButton,
+          ...(isMobile ? {
+            width: 44,
+            height: 44,
+            top: '50%',
+            right: 0,
+            transform: 'translateY(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          } : {}),
+        }}
         onClick={handleDismiss}
         aria-label="Dismiss notification"
       >
@@ -147,6 +171,8 @@ function ToastItem({
 // ── Toast Container ──
 
 export default function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
+  const isMobile = useIsMobile();
+
   // Inject keyframes on first render
   useEffect(() => {
     const styleId = 'frame-toast-keyframes';
@@ -174,6 +200,26 @@ export default function ToastContainer({ toasts, onDismiss }: ToastContainerProp
             opacity: 0;
           }
         }
+        @keyframes frame-toast-slide-in-mobile {
+          from {
+            transform: translateY(-100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+        @keyframes frame-toast-slide-out-mobile {
+          from {
+            transform: translateY(0);
+            opacity: 1;
+          }
+          to {
+            transform: translateY(-100%);
+            opacity: 0;
+          }
+        }
       `;
       document.head.appendChild(style);
     }
@@ -182,9 +228,18 @@ export default function ToastContainer({ toasts, onDismiss }: ToastContainerProp
   if (toasts.length === 0) return null;
 
   return (
-    <div style={toastStyles.container} role="status" aria-live="polite" aria-label="Notifications">
+    <div style={{
+      ...toastStyles.container,
+      ...(isMobile ? {
+        top: 0,
+        right: 0,
+        left: 0,
+        maxWidth: '100%',
+        gap: 0,
+      } : {}),
+    }} role="status" aria-live="polite" aria-label="Notifications">
       {toasts.map((toast) => (
-        <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} />
+        <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} isMobile={isMobile} />
       ))}
     </div>
   );
