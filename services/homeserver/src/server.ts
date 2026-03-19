@@ -63,7 +63,18 @@ app.use(cors({
 }));
 
 // ── Body parsing ──
-app.use(express.json({ limit: '64kb' }));
+// Skip the global JSON parser for /messages routes — the messages router
+// defines its own express.json({ limit: '10mb' }) to support large encrypted
+// payloads (file metadata, voice notes, etc.).  Without this guard the 64 KB
+// global limit rejects any encrypted message body > 64 KB before the
+// route-level parser ever runs.
+app.use((req, res, next) => {
+  if (req.path.startsWith('/messages')) {
+    next();
+    return;
+  }
+  express.json({ limit: '64kb' })(req, res, next);
+});
 
 // ── Request logging ──
 app.use((req, res, next) => {
