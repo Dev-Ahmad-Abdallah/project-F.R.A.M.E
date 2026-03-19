@@ -352,15 +352,10 @@ function ScrollReveal({ children, delay = 0, style }: { children: React.ReactNod
 // ── Component ──
 
 export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageProps) {
-  const [isMobile, setIsMobile] = useState(
-    typeof window !== 'undefined' && window.innerWidth < 768,
-  );
-
-  useEffect(() => {
-    const handle = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handle);
-    return () => window.removeEventListener('resize', handle);
-  }, []);
+  // Layout and sizing handled by fluid CSS classes (frame-hero-title,
+  // frame-section-title, frame-feature-grid, etc.) — no JS breakpoint needed.
+  // Hamburger menu visibility is handled by CSS media queries
+  // (.frame-mobile-menu / .frame-desktop-nav).
 
   const scrollTo = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
@@ -482,14 +477,13 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
         overflowX: 'hidden',
       }}>
         {/* ─── Nav Bar ─── */}
-        <nav style={{
+        <nav className="frame-landing-nav" style={{
           position: 'sticky',
           top: 0,
           zIndex: 100,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: isMobile ? '12px 16px' : '12px 48px',
           backgroundColor: 'rgba(13,17,23,0.85)',
           backdropFilter: 'blur(12px)',
           borderBottom: `1px solid ${C.border}`,
@@ -503,17 +497,16 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
             F.R.A.M.E.
           </span>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-            {!isMobile ? (
-              <>
-                <button type="button" onClick={() => scrollTo('features')} style={navLink}>Features</button>
-                <button type="button" onClick={() => scrollTo('how-it-works')} style={navLink}>How It Works</button>
-                <button type="button" onClick={() => scrollTo('security')} style={navLink}>Security</button>
-              </>
-            ) : (
+            <div className="frame-desktop-nav" style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <button type="button" onClick={() => scrollTo('features')} style={navLink}>Features</button>
+              <button type="button" onClick={() => scrollTo('how-it-works')} style={navLink}>How It Works</button>
+              <button type="button" onClick={() => scrollTo('security')} style={navLink}>Security</button>
+            </div>
+            <div className="frame-mobile-menu">
               <MobileMenu scrollTo={scrollTo} />
-            )}
+            </div>
             <button type="button" onClick={onGetStarted} style={{
-              padding: isMobile ? '10px 20px' : '8px 20px',
+              padding: '8px 20px',
               fontSize: 14,
               fontWeight: 600,
               backgroundColor: C.accent,
@@ -530,14 +523,13 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
         </nav>
 
         {/* ─── Hero ─── */}
-        <section style={{
+        <section className="frame-landing-hero" style={{
           position: 'relative',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           textAlign: 'center',
-          padding: isMobile ? '80px 20px 60px' : '120px 48px 80px',
           overflow: 'hidden',
         }}>
           {/* Animated gradient background */}
@@ -566,34 +558,27 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
           </div>
 
           {/* Enhancement #8: Gradient text on headline */}
-          <h1 style={{
+          <h1 className="frame-hero-title" style={{
             margin: 0,
-            fontSize: isMobile ? 32 : 52,
-            fontWeight: 800,
             background: 'linear-gradient(135deg, #58a6ff 0%, #c9d1d9 40%, #f0f6fc 60%, #58a6ff 100%)',
             backgroundSize: '200% 200%',
             animation: 'frame-gradient-shift 6s ease infinite, frame-fade-in 0.8s ease-out',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
-            lineHeight: 1.15,
-            maxWidth: 700,
             position: 'relative',
             zIndex: 1,
           }}>
-            Your messages. Your keys.{isMobile ? ' ' : <br />}Your privacy.
+            Your messages. Your keys.<br />Your privacy.
           </h1>
 
           {/* Enhancement #1: Typewriter subtitle */}
-          <p style={{
+          <p className="frame-hero-subtitle" style={{
             margin: '20px 0 0',
-            fontSize: isMobile ? 16 : 19,
             color: C.textSecondary,
-            maxWidth: 560,
-            lineHeight: 1.6,
             position: 'relative',
             zIndex: 1,
-            minHeight: isMobile ? 52 : 30,
+            minHeight: 30,
           }}>
             {typedSubtitle}
             <span style={{
@@ -611,7 +596,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
 
           <div style={{
             display: 'flex',
-            flexDirection: isMobile ? 'column' : 'row',
+            flexDirection: 'row',
             gap: 16,
             marginTop: 36,
             position: 'relative',
@@ -619,7 +604,6 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
             animation: 'frame-fade-in 0.8s ease-out 0.3s both',
             flexWrap: 'wrap',
             justifyContent: 'center',
-            width: isMobile ? '100%' : 'auto',
           }}>
             {/* Enhancement #5: Pulsing CTA button */}
             <button type="button" onClick={onGetStarted} style={{
@@ -634,7 +618,6 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
               fontFamily: C.font,
               transition: 'transform 0.15s',
               animation: 'frame-cta-pulse 2.5s ease-in-out infinite',
-              width: isMobile ? '100%' : 'auto',
               minHeight: 48,
             }}>
               Get Started
@@ -650,7 +633,6 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
               cursor: 'pointer',
               fontFamily: C.font,
               transition: 'background-color 0.15s',
-              width: isMobile ? '100%' : 'auto',
               minHeight: 48,
             }}>
               Learn More
@@ -684,12 +666,8 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
         {/* Enhancement #3: Counter animation on trust signals */}
         <section
           ref={trustRef.ref}
+          className="frame-trust-signals"
           style={{
-            display: 'flex',
-            justifyContent: 'center',
-            flexWrap: 'wrap',
-            gap: isMobile ? 16 : 40,
-            padding: isMobile ? '24px 16px' : '32px 48px',
             borderBottom: `1px solid ${C.border}`,
             backgroundColor: C.darkerBg,
           }}
@@ -712,16 +690,13 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
         </section>
 
         {/* ─── Features ─── */}
-        <section id="features" style={{
-          padding: isMobile ? '60px 16px' : '96px 48px',
+        <section id="features" className="frame-landing-section" style={{
           maxWidth: 1120,
           margin: '0 auto',
         }}>
           <ScrollReveal>
-            <h2 style={{
+            <h2 className="frame-section-title" style={{
               textAlign: 'center',
-              fontSize: isMobile ? 26 : 36,
-              fontWeight: 700,
               color: C.white,
               margin: '0 0 12px',
             }}>
@@ -738,11 +713,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
             </p>
           </ScrollReveal>
           {/* Enhancement #2: Staggered fade-in + Enhancement #4: Hover glow */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-            gap: 20,
-          }}>
+          <div className="frame-feature-grid">
             {features.map((f, i) => (
               <ScrollReveal key={f.title} delay={i * 100}>
                 <div
@@ -768,15 +739,12 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
         </section>
 
         {/* ─── How It Works ─── */}
-        <section id="how-it-works" style={{
+        <section id="how-it-works" className="frame-landing-section" style={{
           backgroundColor: C.darkerBg,
-          padding: isMobile ? '60px 16px' : '96px 48px',
         }}>
           <ScrollReveal>
-            <h2 style={{
+            <h2 className="frame-section-title" style={{
               textAlign: 'center',
-              fontSize: isMobile ? 26 : 36,
-              fontWeight: 700,
               color: C.white,
               margin: '0 0 12px',
             }}>
@@ -794,8 +762,9 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
           </ScrollReveal>
           <div style={{
             display: 'flex',
-            flexDirection: isMobile ? 'column' : 'row',
-            gap: isMobile ? 32 : 0,
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 0,
             maxWidth: 900,
             margin: '0 auto',
             alignItems: 'stretch',
@@ -848,7 +817,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
                   </div>
                 </ScrollReveal>
                 {/* Connector line between steps (desktop only) — Enhancement #7 partial: animated dashes */}
-                {!isMobile && i < steps.length - 1 && (
+                {i < steps.length - 1 && (
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -871,16 +840,13 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
         </section>
 
         {/* ─── Security Architecture ─── */}
-        <section id="security" style={{
-          padding: isMobile ? '60px 16px' : '96px 48px',
+        <section id="security" className="frame-landing-section" style={{
           maxWidth: 800,
           margin: '0 auto',
         }}>
           <ScrollReveal>
-            <h2 style={{
+            <h2 className="frame-section-title" style={{
               textAlign: 'center',
-              fontSize: isMobile ? 26 : 36,
-              fontWeight: 700,
               color: C.white,
               margin: '0 0 12px',
             }}>
@@ -903,15 +869,16 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
               backgroundColor: C.cardBg,
               border: `1px solid ${C.border}`,
               borderRadius: 12,
-              padding: isMobile ? 20 : 40,
+              padding: 'clamp(20px, 3vw, 40px)',
               textAlign: 'center',
             }}>
               <div style={{
                 display: 'flex',
-                flexDirection: isMobile ? 'column' : 'row',
+                flexDirection: 'row',
+                flexWrap: 'wrap',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: isMobile ? 16 : 0,
+                gap: 0,
               }}>
                 {/* Client A */}
                 <div style={archBox(true)}>
@@ -926,23 +893,11 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
                 </div>
 
                 {/* Animated flow arrow */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: isMobile ? '4px 0' : '0 8px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 8px' }}>
                   <span style={{ fontSize: 10, color: C.accent, fontWeight: 600, marginBottom: 4 }}>ENCRYPTED</span>
-                  <svg
-                    width={isMobile ? '2' : '60'}
-                    height={isMobile ? '24' : '6'}
-                    viewBox={isMobile ? '0 0 2 24' : '0 0 60 6'}
-                    style={{ overflow: 'visible' }}
-                  >
-                    {isMobile ? (
-                      <line x1="1" y1="0" x2="1" y2="24" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
-                    ) : (
-                      <>
-                        <line x1="0" y1="3" x2="60" y2="3" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
-                        {/* Arrowhead */}
-                        <polygon points="55,0 60,3 55,6" fill={C.accent} opacity="0.7" />
-                      </>
-                    )}
+                  <svg width="60" height="6" viewBox="0 0 60 6" style={{ overflow: 'visible' }}>
+                    <line x1="0" y1="3" x2="60" y2="3" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
+                    <polygon points="55,0 60,3 55,6" fill={C.accent} opacity="0.7" />
                   </svg>
                 </div>
 
@@ -957,22 +912,11 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
                 </div>
 
                 {/* Animated flow arrow */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: isMobile ? '4px 0' : '0 8px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '0 8px' }}>
                   <span style={{ fontSize: 10, color: C.accent, fontWeight: 600, marginBottom: 4 }}>ENCRYPTED</span>
-                  <svg
-                    width={isMobile ? '2' : '60'}
-                    height={isMobile ? '24' : '6'}
-                    viewBox={isMobile ? '0 0 2 24' : '0 0 60 6'}
-                    style={{ overflow: 'visible' }}
-                  >
-                    {isMobile ? (
-                      <line x1="1" y1="0" x2="1" y2="24" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
-                    ) : (
-                      <>
-                        <line x1="0" y1="3" x2="60" y2="3" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
-                        <polygon points="55,0 60,3 55,6" fill={C.accent} opacity="0.7" />
-                      </>
-                    )}
+                  <svg width="60" height="6" viewBox="0 0 60 6" style={{ overflow: 'visible' }}>
+                    <line x1="0" y1="3" x2="60" y2="3" stroke={C.accent} strokeWidth="2" strokeDasharray="4 3" style={{ animation: 'frame-data-flow 1.2s linear infinite' }} />
+                    <polygon points="55,0 60,3 55,6" fill={C.accent} opacity="0.7" />
                   </svg>
                 </div>
 
@@ -1004,17 +948,14 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
         </section>
 
         {/* ─── CTA Banner ─── */}
-        <section style={{
+        <section className="frame-landing-section" style={{
           backgroundColor: C.darkerBg,
-          padding: isMobile ? '48px 16px' : '72px 48px',
           textAlign: 'center',
           borderTop: `1px solid ${C.border}`,
         }}>
           <ScrollReveal>
-            <h2 style={{
+            <h2 className="frame-section-title" style={{
               margin: 0,
-              fontSize: isMobile ? 24 : 32,
-              fontWeight: 700,
               color: C.white,
             }}>
               Ready for private messaging?
@@ -1038,7 +979,6 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
               cursor: 'pointer',
               fontFamily: C.font,
               animation: 'frame-cta-pulse 2.5s ease-in-out infinite',
-              width: isMobile ? '100%' : 'auto',
               minHeight: 48,
             }}>
               Get Started
@@ -1048,7 +988,7 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
 
         {/* ─── Footer ─── */}
         <footer style={{
-          padding: isMobile ? '32px 16px' : '40px 48px',
+          padding: 'clamp(24px, 4vw, 40px) clamp(16px, 4vw, 48px)',
           borderTop: `1px solid ${C.border}`,
           backgroundColor: C.bg,
           textAlign: 'center',

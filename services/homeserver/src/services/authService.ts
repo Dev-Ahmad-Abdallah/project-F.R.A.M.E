@@ -256,3 +256,58 @@ export async function createGuestSession(): Promise<GuestResult> {
     guest: true,
   };
 }
+
+/**
+ * Clean up expired guest accounts.
+ *
+ * Finds guest users (username starts with "guest_") that are older than 24 hours
+ * and no longer tracked in Redis (TTL expired). Deletes their devices, key bundles,
+ * room memberships, and user records so stale key material does not persist.
+ *
+ * Should be called periodically (e.g. every hour).
+ */
+export async function cleanupExpiredGuests(): Promise<number> {
+  const { redisClient } = await import('../redis/client');
+
+  // Find guest users older than 24 hours
+  const guestResult = await pool.query<{ user_id: string }>(
+    `SELECT user_id FROM users
+     WHERE username LIKE 'guest_%'
+       AND created_at < NOW() - INTERVAL '24 hours'`,
+  );
+
+  let cleanedCount = 0;
+
+  for (const row of guestResult.rows) {
+    // Only clean up if the Redis tracking key has expired
+    const tracked = await redisClient.exists(`guest:${row.user_id}`);
+    if (tracked) continue;
+
+    // Delete in dependency order: keys, devices, room memberships, then user
+    await pool.query('DELETE FROM key_bundles WHERE user_id = $1', [row.user_id]);
+    await pool.query('DELETE FROM to_device_messages WHERE recipient_user_id = $1', [row.user_id]);
+    await pool.query('DELETE FROM devices WHERE user_id = $1', [row.user_id]);
+    await pool.query('DELETE FROM room_members WHERE user_id = $1', [row.user_id]);
+    await pool.query('DELETE FROM refresh_tokens WHERE user_id = $1', [row.user_id]);
+    await pool.query('DELETE FROM users WHERE user_id = $1', [row.user_id]);
+    cleanedCount++;
+  }
+
+  if (cleanedCount > 0) {
+    console.info(`[F.R.A.M.E.] Cleaned up ${cleanedCount} expired guest account(s).`);
+  }
+
+  return cleanedCount;
+}
+
+// Run guest cleanup every hour
+const guestCleanupTimer = setInterval(() => {
+  cleanupExpiredGuests().catch((err: unknown) =>
+    console.error('[F.R.A.M.E.] Guest cleanup error:', err),
+  );
+}, 60 * 60 * 1000);
+
+/** Stop the guest cleanup interval (call on shutdown). */
+export function stopGuestCleanup(): void {
+  clearInterval(guestCleanupTimer);
+}

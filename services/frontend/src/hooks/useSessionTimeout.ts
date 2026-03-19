@@ -76,18 +76,24 @@ export function useSessionTimeout(
   const [isWarning, setIsWarning] = useState(false);
   const lastActivityRef = useRef<number>(Date.now());
   const hasFiredRef = useRef(false);
+  const isWarningRef = useRef(false);
   const onTimeoutRef = useRef(onTimeout);
   onTimeoutRef.current = onTimeout;
 
   const resetTimer = useCallback(() => {
     lastActivityRef.current = Date.now();
     hasFiredRef.current = false;
+    isWarningRef.current = false;
     setIsWarning(false);
   }, []);
 
   // Listen for user activity events
   useEffect(() => {
     const handleActivity = () => {
+      // Bug 6 fix: Once the warning period starts, do NOT reset the timer
+      // on passive activity. The user must explicitly click "Stay active"
+      // (which calls resetTimer) to extend the session.
+      if (isWarningRef.current || hasFiredRef.current) return;
       lastActivityRef.current = Date.now();
     };
 
@@ -120,17 +126,35 @@ export function useSessionTimeout(
 
       // "Never" or auto-lock disabled
       if (timeoutMs === 0 || !autoLock) {
-        setTimeRemaining(Infinity);
-        setIsWarning(false);
+        // Bug 5 fix: Only update state if the value actually changed
+        setTimeRemaining((prev) => (prev === Infinity ? prev : Infinity));
+        if (isWarningRef.current) {
+          isWarningRef.current = false;
+          setIsWarning(false);
+        }
         return;
       }
 
       const elapsed = Date.now() - lastActivityRef.current;
       const remaining = Math.max(0, timeoutMs - elapsed);
+      const nowWarning = remaining > 0 && remaining <= WARNING_THRESHOLD_MS;
 
-      setTimeRemaining(remaining);
-      setIsWarning(remaining > 0 && remaining <= WARNING_THRESHOLD_MS);
+      // Bug 5 fix: Only update state when the value has meaningfully changed
+      // (within a 1-second tolerance to avoid unnecessary re-renders)
+      setTimeRemaining((prev) => {
+        if (prev === remaining) return prev;
+        // Only re-render if the difference is >= 500ms (visible change)
+        if (Math.abs(prev - remaining) < 500 && prev !== Infinity) return prev;
+        return remaining;
+      });
 
+      if (nowWarning !== isWarningRef.current) {
+        isWarningRef.current = nowWarning;
+        setIsWarning(nowWarning);
+      }
+
+      // Bug 6 fix: When remaining reaches 0, forcefully trigger timeout.
+      // The timer cannot be reset by passive activity during the warning period.
       if (remaining === 0) {
         hasFiredRef.current = true;
         onTimeoutRef.current();

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { sendMessage, deleteMessage, syncMessages, SyncEvent, reactToMessage, markAsRead, ReactionData, setTyping, getTypingUsers } from '../api/messagesAPI';
-import { renameRoom, listRooms } from '../api/roomsAPI';
+import { renameRoom, listRooms, getRoomMembers } from '../api/roomsAPI';
 import type { RoomSummary } from '../api/roomsAPI';
 import { formatDisplayName } from '../utils/displayName';
 import { getUserStatus } from '../api/authAPI';
@@ -11,6 +11,7 @@ import {
   encryptForRoom,
   decryptEvent,
   processSyncResponse,
+  ensureSessionsForRoom,
   DecryptedEvent,
 } from '../crypto/sessionManager';
 import { FONT_BODY } from '../globalStyles';
@@ -177,7 +178,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   onLeave,
   showToast,
 }) => {
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(600);
   const [messages, setMessages] = useState<DecryptedEvent[]>([]);
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([]);
   // Room switch skeleton: show placeholder bubbles briefly when switching rooms
@@ -250,6 +251,29 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   // Contact status for DM header
   const [contactStatus, setContactStatus] = useState<UserStatus>('offline');
   const [contactStatusHovered, setContactStatusHovered] = useState(false);
+
+  // SECURITY: Proactively establish Olm sessions and share Megolm keys when
+  // entering a room. This ensures that when a user joins via invite code or
+  // other method, they can immediately decrypt messages from existing members
+  // (who will receive the key-share request and re-share their session keys).
+  // Without this, decryption only works after the next message send.
+  useEffect(() => {
+    if (!roomId || memberUserIds.length === 0) return;
+    let cancelled = false;
+
+    async function establishSessions() {
+      try {
+        await ensureSessionsForRoom(roomId, memberUserIds);
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('[F.R.A.M.E.] Proactive session establishment failed:', err);
+        }
+      }
+    }
+
+    void establishSessions();
+    return () => { cancelled = true; };
+  }, [roomId, memberUserIds]);
 
   // Fetch contact status for DM rooms and poll every 30 seconds
   useEffect(() => {
@@ -449,10 +473,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         .frame-context-menu-item:hover {
           background-color: rgba(248, 81, 73, 0.15) !important;
         }
-        div:hover > button[aria-label="Add reaction"] {
+        div:hover > button[aria-label="Add reaction"],
+        div:hover > button[aria-label="Reply"] {
           opacity: 1 !important;
         }
-        button[aria-label="Add reaction"]:hover {
+        div:hover > .frame-msg-hover-actions {
+          opacity: 1 !important;
+        }
+        button[aria-label="Add reaction"]:hover,
+        button[aria-label="Reply"]:hover {
           border-color: #58a6ff !important;
           color: #58a6ff !important;
         }
@@ -648,10 +677,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         syncBackoffRef.current = 1000;
       } catch (err) {
         if (syncGenRef.current !== gen) break;
-        setSyncError('Failed to sync messages');
+        // Show a subtle reconnecting indicator — NOT a blocking error.
+        // The loop keeps running with exponential backoff so it will
+        // recover automatically once the issue resolves.
+        setSyncError('reconnecting');
         const delay = syncBackoffRef.current;
         syncBackoffRef.current = Math.min(delay * 2, 30000);
         await new Promise((r) => setTimeout(r, delay));
+        // Continue the while-loop — NEVER stop trying
       }
     }
   }, [decryptEvents, roomId]);
@@ -864,6 +897,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       });
     } finally {
       setIsSending(false);
+      // Bug fix: re-focus textarea after send so user can keep typing
+      setTimeout(() => textareaRef.current?.focus(), 0);
     }
   };
 
@@ -951,6 +986,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
     const body = typeof msg.plaintext.body === 'string' ? msg.plaintext.body : JSON.stringify(msg.plaintext);
     try {
+      // SECURITY: Fetch the TARGET room's members for encryption key distribution.
+      // Using the current room's memberUserIds would share the Megolm session key
+      // with the wrong set of users, breaking E2EE confidentiality.
+      const targetMembers = await getRoomMembers(targetRoomId);
+      const targetMemberUserIds = targetMembers.map((m) => m.userId);
+
       const plaintext: Record<string, unknown> = {
         msgtype: 'm.text',
         body,
@@ -959,7 +1000,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         targetRoomId,
         'm.room.message',
         plaintext,
-        memberUserIds,
+        targetMemberUserIds,
       );
       await sendMessage(targetRoomId, 'm.room.encrypted', encryptedContent);
       showToast?.('success', `Message forwarded to ${targetRoomName}`);
@@ -969,7 +1010,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
     setShowForwardDialog(false);
     setForwardEventId(null);
-  }, [forwardEventId, messages, memberUserIds, showToast]);
+  }, [forwardEventId, messages, showToast]);
 
   // ── Reaction handlers ──
 
@@ -1220,7 +1261,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       if (isViewOnce && isHiddenOnce && !isOwn) {
         elements.push(
-          <div key={event.eventId} style={{ ...styles.messageBubble, ...(isMobile ? { maxWidth: '85%' } : {}), ...styles.otherMessage, opacity: 0.5, alignSelf: 'flex-start' as const }}>
+          <div key={event.eventId} style={{ ...styles.messageBubble, maxWidth: 'clamp(200px, 75%, 600px)', ...styles.otherMessage, opacity: 0.5, alignSelf: 'flex-start' as const }}>
             <div style={styles.messageBody}>
               <span style={styles.viewOnceIcon} title="View-once message">&#128065;</span>
               <span style={{ fontStyle: 'italic', color: '#8b949e' }}>Viewed</span>
@@ -1283,7 +1324,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           style={{
             display: 'flex', alignItems: 'flex-end', gap: 8,
             alignSelf: isOwn ? 'flex-end' : 'flex-start',
-            maxWidth: isMobile ? '85%' : '75%',
+            maxWidth: 'clamp(200px, 75%, 600px)',
             marginTop: isFirstInGroup ? 12 : 4,
             ...(hasPopIn ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}),
           }}
@@ -1411,7 +1452,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             })()}
           </div>
           {!isDeleted && !isExpired && !hasError && (
-            <button type="button" style={styles.addReactionButton} onClick={(e) => handleShowReactionPicker(e, event.eventId)} title="Add reaction" aria-label="Add reaction">+</button>
+            <div className="frame-msg-hover-actions" style={{ display: 'flex', flexDirection: 'column' as const, gap: 2, opacity: 0, transition: 'opacity 0.15s' }}>
+              <button type="button" style={styles.addReactionButton} onClick={() => handleReplyToMessage(event.eventId)} title="Reply" aria-label="Reply">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 00-4-4H4" /></svg>
+              </button>
+              <button type="button" style={styles.addReactionButton} onClick={(e) => handleShowReactionPicker(e, event.eventId)} title="Add reaction" aria-label="Add reaction">+</button>
+            </div>
           )}
         </div>
       );
@@ -1422,7 +1468,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     return elements;
-  }, [messages, filteredMessages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, isMobile, scrollToMessage, searchQuery, unreadDividerEventId, handleMessageClick]);
+  }, [messages, filteredMessages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, scrollToMessage, searchQuery, unreadDividerEventId, handleMessageClick]);
 
   const renderWelcome = () => {
     if (messages.length > 0 || optimisticMessages.length > 0) return null;
@@ -1457,9 +1503,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   return (
-    <div style={{ ...styles.container, ...(isMobile ? { borderRadius: 0, border: 'none' } : {}) }}>
+    <div style={styles.container}>
       {/* Room header */}
-      <div style={{ ...styles.header, ...(isMobile ? { padding: '6px 10px', gap: 4 } : {}) }}>
+      <div style={{ ...styles.header, padding: 'clamp(6px, 1vw, 10px) clamp(10px, 1.2vw, 14px)' }}>
         <div style={styles.headerLeft}>
           <div style={styles.headerNameRow}>
             {roomType === 'group' && memberUserIds.length > 0 && (
@@ -1491,7 +1537,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             {isEditingName ? (
               <input ref={renameInputRef} type="text" style={styles.renameInput} value={editNameValue} onChange={(e) => setEditNameValue(e.target.value)} onKeyDown={handleRenameKeyDown} onBlur={handleCancelRename} disabled={isRenaming} maxLength={128} aria-label="Rename room" />
             ) : (
-              <span style={{ ...styles.headerName, ...(isMobile ? { maxWidth: '50vw', fontSize: 13 } : {}), cursor: 'pointer' }} onClick={handleStartRename} title="Click to rename">
+              <span className="frame-chat-header-name" style={{ maxWidth: '50vw', cursor: 'pointer' }} onClick={handleStartRename} title="Click to rename">
                 {headerName}
               </span>
             )}
@@ -1723,12 +1769,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {syncError && (
         <div style={styles.syncErrorIndicator}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-            <circle cx="7" cy="7" r="6" stroke="#d29922" strokeWidth="1.2" fill="rgba(210,153,34,0.1)" />
-            <path d="M7 4v3.5" stroke="#d29922" strokeWidth="1.2" strokeLinecap="round" />
-            <circle cx="7" cy="10" r="0.7" fill="#d29922" />
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, animation: 'frame-spin 1.5s linear infinite' }}>
+            <circle cx="7" cy="7" r="5.5" stroke="#d29922" strokeWidth="1.2" strokeDasharray="20 12" fill="none" />
           </svg>
-          <span style={{ fontSize: 11, color: '#d29922' }}>Sync paused — retrying</span>
+          <span style={{ fontSize: 11, color: '#d29922' }}>Reconnecting...</span>
         </div>
       )}
 
@@ -1744,7 +1788,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         {renderWelcome()}
         {renderedMessages}
         {optimisticMessages.map((om) => (
-          <div key={om.id} style={{ ...styles.messageBubble, ...(isMobile ? { maxWidth: '85%' } : { maxWidth: '75%' }), ...styles.ownMessage, ...(om.status === 'sending' ? styles.optimisticSending : {}), ...(om.status === 'failed' ? styles.optimisticFailed : {}), alignSelf: 'flex-end' as const, ...(recentlySentIds.has(om.id) ? { animation: 'frame-msg-slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}) }}>
+          <div key={om.id} style={{ ...styles.messageBubble, maxWidth: 'clamp(200px, 75%, 600px)', ...styles.ownMessage, ...(om.status === 'sending' ? styles.optimisticSending : {}), ...(om.status === 'failed' ? styles.optimisticFailed : {}), alignSelf: 'flex-end' as const, ...(recentlySentIds.has(om.id) ? { animation: 'frame-msg-slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}) }}>
             <div style={styles.messageBody}>
               <span>{DOMPurify.sanitize(om.body, PURIFY_CONFIG)}</span>
             </div>
@@ -1794,7 +1838,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       )}
 
       {/* Input area — unified bar with all controls inside */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', padding: '8px 12px', borderTop: replyTo ? 'none' : '1px solid #30363d', backgroundColor: '#161b22' }}>
+      <div className="frame-chat-input-area" style={{ borderTop: replyTo ? 'none' : undefined }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', flex: 1, backgroundColor: '#0d1117', borderRadius: 24, border: isTextareaFocused ? '1px solid #58a6ff' : '1px solid #30363d', transition: 'border-color 0.2s', padding: '4px 4px 4px 8px', gap: 2, position: 'relative' as const, ...(isTextareaFocused ? { animation: 'frame-textarea-glow 2s ease-in-out infinite' } : {}) }}>
           {/* Attachment placeholder */}
           <button type="button" title="File sharing coming soon" aria-label="Attach file (coming soon)" style={{ background: 'none', border: 'none', cursor: 'default', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.35, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2 }}>
@@ -1807,7 +1851,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </button>
           {/* Textarea */}
           {/* eslint-disable-next-line security/detect-object-injection */}
-          <textarea ref={textareaRef} style={{ flex: 1, padding: '8px 6px', border: 'none', backgroundColor: 'transparent', color: '#c9d1d9', fontSize: isMobile ? 16 : 14, fontFamily: 'inherit', resize: 'none' as const, lineHeight: '20px', minHeight: 36, maxHeight: 116, overflow: 'auto', outline: 'none' }} value={inputValue} onChange={handleTextareaChange} onKeyDown={handleKeyDown} onFocus={() => setIsTextareaFocused(true)} onBlur={() => setIsTextareaFocused(false)} placeholder={viewOnceMode ? 'View-once message...' : INPUT_PLACEHOLDERS[placeholderIndex]} disabled={isSending} aria-label="Message input" rows={1} />
+          <textarea ref={textareaRef} className="frame-chat-textarea" value={inputValue} onChange={handleTextareaChange} onKeyDown={handleKeyDown} onFocus={() => setIsTextareaFocused(true)} onBlur={() => setIsTextareaFocused(false)} placeholder={viewOnceMode ? 'View-once message...' : INPUT_PLACEHOLDERS[placeholderIndex]} disabled={isSending} aria-label="Message input" rows={1} />
           {/* Character count indicator */}
           {inputValue.length > 500 && (
             <span style={{ position: 'absolute' as const, bottom: 6, right: inputValue.trim() ? 88 : 44, fontSize: 10, color: inputValue.length > 4500 ? '#f85149' : '#8b949e', fontFamily: 'inherit', pointerEvents: 'none' as const, transition: 'color 0.2s' }} aria-live="polite">{inputValue.length}/5000</span>
@@ -1895,7 +1939,7 @@ const styles: Record<string, React.CSSProperties> = {
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 14px', borderBottom: '1px solid #30363d', backgroundColor: '#161b22' },
   headerLeft: { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 },
   headerNameRow: { display: 'flex', alignItems: 'center', gap: 6 },
-  headerName: { fontSize: 15, fontWeight: 600, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  headerName: { fontSize: 'clamp(12px, 1.3vw, 15px)', fontWeight: 600, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   verifiedBadge: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: '50%', backgroundColor: 'rgba(35, 134, 54, 0.2)', color: '#3fb950', fontSize: 10, fontWeight: 700, flexShrink: 0 },
   headerSubRow: { display: 'flex', alignItems: 'center', gap: 8 },
   headerMemberCount: { fontSize: 12, color: '#8b949e' },
@@ -1911,7 +1955,7 @@ const styles: Record<string, React.CSSProperties> = {
   timeGap: { display: 'flex', justifyContent: 'center', margin: '8px 0 4px' },
   timeGapText: { fontSize: 10, color: '#8b949e', backgroundColor: '#161b22', padding: '2px 10px', borderRadius: 10 },
   emptyState: { textAlign: 'center', color: '#8b949e', marginTop: 40, fontSize: 14 },
-  messageBubble: { maxWidth: '75%', minWidth: 80, padding: '8px 12px', borderRadius: 12, fontSize: 14, lineHeight: 1.4, wordBreak: 'break-word' as const, overflowWrap: 'break-word' as const },
+  messageBubble: { maxWidth: 'clamp(200px, 75%, 600px)', minWidth: 80, padding: '8px 12px', borderRadius: 12, fontSize: 'clamp(13px, 1.4vw, 16px)', lineHeight: 1.4, wordBreak: 'break-word' as const, overflowWrap: 'break-word' as const },
   ownMessage: { backgroundColor: '#58a6ff', color: '#ffffff' },
   otherMessage: { backgroundColor: '#21262d', color: '#c9d1d9' },
   errorMessage: { opacity: 0.7, borderLeft: '3px solid #f85149' },

@@ -179,6 +179,11 @@ const DeviceList: React.FC<DeviceListProps> = ({
     }}>
       <h2 style={styles.heading}>Linked Devices</h2>
 
+      <p style={styles.infoText}>
+        Each browser or login session creates a unique encryption device.
+        You can remove old devices you no longer use.
+      </p>
+
       {error && <div style={styles.errorBanner}>{DOMPurify.sanitize(error, PURIFY_CONFIG)}</div>}
 
       {devices.length === 0 ? (
@@ -323,6 +328,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 20,
     fontWeight: 600,
     color: '#f0f6fc',
+  },
+  infoText: {
+    margin: 0,
+    fontSize: 13,
+    color: '#8b949e',
+    lineHeight: 1.5,
+    fontStyle: 'italic',
   },
   loadingText: {
     margin: 0,

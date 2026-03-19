@@ -58,6 +58,13 @@ export function stopDisappearingCleanup(): void {
 export async function sendMessage(params: SendMessageParams) {
   const { roomId, senderId, senderDeviceId, eventType, content } = params;
 
+  // SECURITY: Enforce E2EE — reject any event type that is not encrypted.
+  // This prevents rogue or modified clients from sending plaintext messages
+  // (e.g. m.room.message) that would bypass the encryption pipeline.
+  if (eventType !== 'm.room.encrypted') {
+    throw new ApiError(403, 'M_FORBIDDEN', 'Only encrypted events (m.room.encrypted) are accepted. Plaintext messages are not allowed.');
+  }
+
   // Verify sender is a member of the room
   if (!(await isRoomMember(roomId, senderId))) {
     throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');

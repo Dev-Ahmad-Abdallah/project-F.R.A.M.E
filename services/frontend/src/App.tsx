@@ -29,7 +29,7 @@ import DeviceAlert from './devices/deviceAlert';
 import type { UnknownDeviceInfo } from './devices/deviceAlert';
 import KeyChangeAlert from './verification/keyChangeAlert';
 import type { KeyChangeAction } from './verification/keyChangeAlert';
-import { getAccessToken } from './api/client';
+import { getAccessToken, setApiToastCallback, setSessionExpiredCallback, clearTokens } from './api/client';
 import { logout as apiLogout, updateStatus, loginAsGuest } from './api/authAPI';
 import { formatDisplayName } from './utils/displayName';
 import DOMPurify from 'dompurify';
@@ -73,6 +73,11 @@ function App() {
 
   const [auth, setAuth] = useState<AuthResponse | null>(null);
 
+  // Bug 4 fix: Track display name and status separately so sidebar re-renders
+  // when the user updates them in ProfileSettings.
+  const [userDisplayName, setUserDisplayName] = useState<string | null>(null);
+  const [userStatus, setUserStatus] = useState<string>('online');
+
   // Layout and view state
   const [activeView, setActiveView] = useState<ActiveView>('empty');
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -114,6 +119,24 @@ function App() {
 
   // Track previous connection state for reconnection toast
   const prevConnectionLostRef = useRef(false);
+
+  // ── Wire API client toast + session-expired callbacks ──
+  useEffect(() => {
+    setApiToastCallback(showToast);
+    setSessionExpiredCallback((message: string) => {
+      // Show login page with a friendly message — never a blank crash
+      clearTokens();
+      setAuth(null);
+      setCurrentPage('landing');
+      setActiveView('empty');
+      setSelectedRoomId(null);
+      setRooms([]);
+      setInitError(null);
+      setInitPhase('keys');
+      setRoomFetchError(null);
+      showToast('warning', message, { persistent: true, dedupeKey: 'session-expired' });
+    });
+  }, [showToast]);
 
   // Settings: dismissible device verification banner
   const [settingsVerifyBannerDismissed, setSettingsVerifyBannerDismissed] = useState(false);
@@ -178,6 +201,16 @@ function App() {
         showToast('success', 'Connection restored', {
           dedupeKey: 'connection-status',
         });
+        // Immediately sync room list on reconnection so the user sees
+        // any rooms/messages they missed while offline — no refresh needed.
+        if (auth) {
+          void listRooms().then((roomList) => {
+            setRooms(roomList);
+            setRoomFetchError(null);
+          }).catch(() => {
+            // Will be retried by the periodic refresh below
+          });
+        }
       }
     };
     window.addEventListener('offline', handleOffline);
@@ -195,7 +228,23 @@ function App() {
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('online', handleOnline);
     };
-  }, [showToast]);
+  }, [showToast, auth]);
+
+  // ── Periodic room list auto-refresh (every 30s) ──
+  // Keeps the sidebar fresh without requiring manual reload.
+  useEffect(() => {
+    if (!auth) return;
+    const interval = setInterval(() => {
+      if (!navigator.onLine) return; // Skip while offline
+      void listRooms().then((roomList) => {
+        setRooms(roomList);
+        setRoomFetchError(null);
+      }).catch(() => {
+        // Silently ignore — will retry on next tick
+      });
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [auth]);
 
   // Inject spinner keyframes (Fix 3)
   useEffect(() => {
@@ -229,7 +278,7 @@ function App() {
           85% { opacity: 1; transform: translateY(0); }
           100% { opacity: 0; transform: translateY(-6px); }
         }
-        @media (max-width: 767px) {
+        @media (max-width: 600px) {
           button:active, [role="button"]:active {
             animation: frame-tap-feedback 0.15s ease-out !important;
           }
@@ -241,14 +290,15 @@ function App() {
     }
   }, []);
 
-  // Mobile detection
+  // Mobile detection — only used for behavioral changes (overlay sidebar),
+  // NOT for layout toggling. Layout is handled by fluid CSS.
   const [isMobile, setIsMobile] = useState(
-    typeof window !== 'undefined' && window.innerWidth < 768,
+    typeof window !== 'undefined' && window.innerWidth < 600,
   );
 
   useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth < 768;
+      const mobile = window.innerWidth < 600;
       setIsMobile(mobile);
       if (!mobile) {
         setSidebarOpen(true);
@@ -339,29 +389,33 @@ function App() {
 
     async function initialize() {
       try {
-        // Guest sessions skip heavy crypto and storage setup
+        // SECURITY: ALL sessions (including guests) MUST initialize crypto.
+        // E2EE is the core security promise — no user type gets a plaintext path.
+        // Guest sessions use the same OlmMachine + key generation as regular users;
+        // they just have shorter-lived tokens and skip service worker registration.
+
+        // 1. Generate and upload device keys (handles initCrypto internally)
+        if (!cancelled) setInitPhase('keys');
+        await generateAndUploadKeys(currentAuth.userId, currentAuth.deviceId);
+
         if (!currentAuth.guest) {
-          // 1. Generate and upload device keys (handles initCrypto internally)
-          if (!cancelled) setInitPhase('keys');
-          await generateAndUploadKeys(currentAuth.userId, currentAuth.deviceId);
-
-          // 2. Register service worker for push notifications
+          // 2. Register service worker for push notifications (skip for guests)
           await registerServiceWorker();
-
-          // 3. Init encrypted IndexedDB storage with a user-derived passphrase.
-          //    We hash `userId + ":frame-storage"` with SHA-256 to produce a
-          //    deterministic, per-user passphrase (never store the raw password).
-          if (!cancelled) setInitPhase('storage');
-          const passphraseData = new TextEncoder().encode(
-            currentAuth.userId + ':frame-storage',
-          );
-          const hashBuffer = await crypto.subtle.digest('SHA-256', passphraseData);
-          const hashArray = Array.from(new Uint8Array(hashBuffer));
-          const storagePassphrase = hashArray
-            .map((b) => b.toString(16).padStart(2, '0'))
-            .join('');
-          await initStorage(storagePassphrase);
         }
+
+        // 3. Init encrypted IndexedDB storage with a user-derived passphrase.
+        //    We hash `userId + ":frame-storage"` with SHA-256 to produce a
+        //    deterministic, per-user passphrase (never store the raw password).
+        if (!cancelled) setInitPhase('storage');
+        const passphraseData = new TextEncoder().encode(
+          currentAuth.userId + ':frame-storage',
+        );
+        const hashBuffer = await crypto.subtle.digest('SHA-256', passphraseData);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const storagePassphrase = hashArray
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
+        await initStorage(storagePassphrase);
 
         // 4. Fetch room list
         if (!cancelled) {
@@ -800,7 +854,7 @@ function App() {
                 <button type="button" onClick={() => setSettingsVerifyBannerDismissed(true)} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1 }} title="Dismiss" aria-label="Dismiss verification banner">&#215;</button>
               </div>
             )}
-            <ProfileSettings userId={auth.userId} />
+            <ProfileSettings userId={auth.userId} onDisplayNameChange={setUserDisplayName} onStatusChange={setUserStatus} />
             <div style={{ borderTop: '1px solid #30363d', width: '100%', maxWidth: 440, margin: '8px 0 20px' }} />
             <SessionSettings />
             <div style={{ borderTop: '1px solid #30363d', width: '100%', maxWidth: 440, margin: '8px 0 20px' }} />
@@ -1012,8 +1066,10 @@ function App() {
 
   // ── Layout ──
 
+  // On mobile (<600px), sidebar is an overlay — main content is always visible.
+  // On desktop, sidebar is always visible alongside main content.
   const showSidebar = isMobile ? sidebarOpen : true;
-  const showMain = isMobile ? !sidebarOpen : true;
+  const showMain = true; // Always show main content
 
   return (
     <div style={styles.appWrapper}>
@@ -1078,21 +1134,20 @@ function App() {
         </div>
       )}
 
-      <div style={{
-        ...styles.appContainer,
-        ...(isMobile ? {
-          position: 'relative' as const,
-          width: '200vw',
-          transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100vw)',
-          transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        } : {}),
-      }}>
-      {/* Sidebar — always rendered on mobile for smooth slide */}
+      <div style={styles.appContainer}>
+      {/* Mobile sidebar backdrop overlay */}
+      {isMobile && (
+        <div
+          className={sidebarOpen ? 'frame-sidebar-backdrop' : 'frame-sidebar-backdrop frame-sidebar-backdrop-hidden'}
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+      {/* Sidebar — fluid width via CSS class, overlay on mobile */}
       {(showSidebar || isMobile) && (
-        <aside style={{
-          ...styles.sidebar,
-          ...(isMobile ? { ...styles.sidebarMobile, flexShrink: 0 } : {}),
-        }}>
+        <aside
+          className={`frame-sidebar${isMobile && !sidebarOpen ? ' frame-sidebar-hidden' : ''}`}
+          style={{ flexShrink: 0 }}
+        >
           {/* User info — click to open profile settings */}
           <div
             style={styles.userInfo}
@@ -1125,24 +1180,24 @@ function App() {
                 width: 13,
                 height: 13,
                 borderRadius: '50%',
-                backgroundColor: connectionLost ? '#d29922' : '#3fb950',
+                backgroundColor: connectionLost ? '#d29922' : (userStatus === 'busy' ? '#f85149' : userStatus === 'away' ? '#d29922' : userStatus === 'offline' ? '#484f58' : '#3fb950'),
                 border: '2px solid #161b22',
                 transition: 'background-color 0.3s ease',
               }} />
             </div>
             <div style={styles.userDetails}>
-              <span style={styles.userName}>{DOMPurify.sanitize(formatDisplayName(auth.userId), PURIFY_CONFIG)}</span>
+              <span style={styles.userName}>{DOMPurify.sanitize(userDisplayName || formatDisplayName(auth.userId), PURIFY_CONFIG)}</span>
               <span style={styles.userStatus} role="status" aria-live="polite">
                 <span style={{
                   display: 'inline-block',
                   width: 7,
                   height: 7,
                   borderRadius: '50%',
-                  backgroundColor: connectionLost ? '#d29922' : '#3fb950',
+                  backgroundColor: connectionLost ? '#d29922' : (userStatus === 'busy' ? '#f85149' : userStatus === 'away' ? '#d29922' : '#3fb950'),
                   marginRight: 5,
                   verticalAlign: 'middle',
                 }} aria-hidden="true" />
-                {connectionLost ? 'Reconnecting...' : 'Online'}
+                {connectionLost ? 'Reconnecting...' : (userStatus === 'online' ? 'Online' : userStatus === 'away' ? 'Away' : userStatus === 'busy' ? 'Busy' : userStatus === 'offline' ? 'Offline' : 'Online')}
               </span>
               <span style={styles.userDevice}>
                 <svg width="11" height="11" viewBox="0 0 16 16" fill="none" style={{ marginRight: 4, verticalAlign: 'middle' }}>
@@ -1259,12 +1314,9 @@ function App() {
         </aside>
       )}
 
-      {/* Main content — always rendered on mobile for smooth slide */}
-      {(showMain || isMobile) && (
-        <main id="main-content" style={{
-          ...styles.mainContent,
-          ...(isMobile ? { width: '100vw', minWidth: '100vw', flexShrink: 0 } : {}),
-        }}>
+      {/* Main content — always visible, sidebar overlays on mobile */}
+      {showMain && (
+        <main id="main-content" style={styles.mainContent}>
           {/* Mobile back button */}
           {isMobile && (
             <button
@@ -1367,23 +1419,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
 
   // ── Sidebar ──
-  sidebar: {
-    width: 280,
-    minWidth: 280,
-    maxWidth: 280,
-    display: 'flex',
-    flexDirection: 'column',
-    backgroundColor: '#161b22',
-    borderRight: '1px solid #30363d',
-    height: '100vh',
-    overflow: 'hidden',
-  },
-  sidebarMobile: {
-    width: '100vw',
-    minWidth: '100vw',
-    maxWidth: '100vw',
-    borderRight: 'none',
-  },
+  // Fluid width is handled by .frame-sidebar CSS class in globalStyles.
+  // These are kept as fallbacks / overrides only.
 
   // ── User info ──
   userInfo: {

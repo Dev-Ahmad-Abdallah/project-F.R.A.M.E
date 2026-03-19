@@ -11,6 +11,10 @@ import type { UserStatus } from '../api/authAPI';
 
 interface ProfileSettingsProps {
   userId: string;
+  /** Called when the user successfully updates their display name */
+  onDisplayNameChange?: (name: string) => void;
+  /** Called when the user successfully updates their status */
+  onStatusChange?: (status: UserStatus) => void;
 }
 
 const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
@@ -20,7 +24,7 @@ const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
   { value: 'offline', label: 'Offline', color: '#484f58' },
 ];
 
-const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId }) => {
+const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayNameChange, onStatusChange }) => {
   const [displayName, setDisplayName] = useState('');
   const [editValue, setEditValue] = useState('');
   const [isEditing, setIsEditing] = useState(false);
@@ -42,8 +46,12 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId }) => {
         if (!cancelled) {
           setDisplayName(profile.displayName || '');
           setEditValue(profile.displayName || '');
+          if (profile.displayName) {
+            onDisplayNameChange?.(profile.displayName);
+          }
           if (profile.status) {
             setCurrentStatus(profile.status);
+            onStatusChange?.(profile.status);
           }
           if (profile.statusMessage) {
             setStatusMessage(profile.statusMessage);
@@ -59,19 +67,21 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId }) => {
       }
     })();
     return () => { cancelled = true; };
-  }, [userId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, onDisplayNameChange, onStatusChange]);
 
   const handleStatusChange = useCallback(async (newStatus: UserStatus) => {
     setIsSavingStatus(true);
     try {
       await updateStatus(newStatus, statusMessage || undefined);
       setCurrentStatus(newStatus);
+      onStatusChange?.(newStatus);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update status');
     } finally {
       setIsSavingStatus(false);
     }
-  }, [statusMessage]);
+  }, [statusMessage, onStatusChange]);
 
   const handleStatusMessageSave = useCallback(async () => {
     setIsSavingStatus(true);
@@ -103,13 +113,14 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId }) => {
       setEditValue(result.displayName);
       setIsEditing(false);
       setSuccess(true);
+      onDisplayNameChange?.(result.displayName);
       setTimeout(() => setSuccess(false), 2000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update profile');
     } finally {
       setIsSaving(false);
     }
-  }, [editValue, displayName]);
+  }, [editValue, displayName, onDisplayNameChange]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {

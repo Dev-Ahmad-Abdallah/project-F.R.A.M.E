@@ -82,9 +82,37 @@ export async function countDevicesByUser(userId: string): Promise<number> {
 }
 
 export async function deleteDevice(deviceId: string, userId: string): Promise<boolean> {
-  const result = await pool.query(
-    'DELETE FROM devices WHERE device_id = $1 AND user_id = $2',
-    [deviceId, userId]
-  );
-  return result.rowCount !== null && result.rowCount > 0;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Verify ownership first
+    const check = await client.query(
+      'SELECT device_id FROM devices WHERE device_id = $1 AND user_id = $2',
+      [deviceId, userId]
+    );
+    if (check.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return false;
+    }
+
+    // Clean up all foreign-key references before deleting the device
+    await client.query('DELETE FROM delivery_state WHERE device_id = $1', [deviceId]);
+    await client.query('DELETE FROM refresh_tokens WHERE device_id = $1', [deviceId]);
+    await client.query('DELETE FROM key_bundles WHERE user_id = $1 AND device_id = $2', [userId, deviceId]);
+    await client.query('DELETE FROM to_device_messages WHERE recipient_device_id = $1', [deviceId]);
+
+    const result = await client.query(
+      'DELETE FROM devices WHERE device_id = $1 AND user_id = $2',
+      [deviceId, userId]
+    );
+
+    await client.query('COMMIT');
+    return result.rowCount !== null && result.rowCount > 0;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
