@@ -1744,7 +1744,7 @@ function App() {
               localStorage.setItem(`frame-device-verified:${auth.deviceId}`, 'true');
             } catch { /* localStorage may be unavailable */ }
             setShowDeviceGate(false);
-            setActiveView('link-device');
+            // Stay on current view — don't navigate away from chat
           }}
         />
       )}
