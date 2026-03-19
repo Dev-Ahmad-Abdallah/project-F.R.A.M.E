@@ -221,44 +221,46 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
         </div>
       )}
 
-      {/* File info row */}
-      <div style={fileInfoRowStyle}>
-        <span style={fileIconStyle} aria-hidden="true">
-          {getFileIcon(mimeType)}
-        </span>
-        <div style={fileDetailsStyle}>
-          <div style={fileNameStyle} title={fileName}>
-            {fileName}
+      {/* File info row — only shown when no image preview is available */}
+      {!(previewUrl && isImage) && (
+        <div style={fileInfoRowStyle}>
+          <span style={fileIconStyle} aria-hidden="true">
+            {getFileIcon(mimeType)}
+          </span>
+          <div style={fileDetailsStyle}>
+            <div style={fileNameStyle} title={fileName}>
+              {fileName}
+            </div>
+            <div style={fileSizeStyle}>
+              {formatFileSize(fileSize)}
+            </div>
           </div>
-          <div style={fileSizeStyle}>
-            {formatFileSize(fileSize)}
-          </div>
+          <button
+            type="button"
+            onClick={() => { void handleDownload(); }}
+            disabled={downloading}
+            style={{
+              ...downloadButtonStyle,
+              opacity: downloading ? 0.5 : 1,
+              cursor: downloading ? 'not-allowed' : 'pointer',
+            }}
+            title="Download file"
+            aria-label={`Download ${fileName}`}
+          >
+            {downloading ? (
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ animation: 'frame-spin 1s linear infinite' }}>
+                <circle cx="8" cy="8" r="6" stroke="#8b949e" strokeWidth="2" strokeDasharray="10 20" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            )}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => { void handleDownload(); }}
-          disabled={downloading}
-          style={{
-            ...downloadButtonStyle,
-            opacity: downloading ? 0.5 : 1,
-            cursor: downloading ? 'not-allowed' : 'pointer',
-          }}
-          title="Download file"
-          aria-label={`Download ${fileName}`}
-        >
-          {downloading ? (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ animation: 'frame-spin 1s linear infinite' }}>
-              <circle cx="8" cy="8" r="6" stroke="#8b949e" strokeWidth="2" strokeDasharray="10 20" />
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-          )}
-        </button>
-      </div>
+      )}
 
       {/* Progress indicator */}
       {downloadProgress && (
@@ -299,10 +301,10 @@ const previewContainerStyle: React.CSSProperties = {
 const previewImageStyle: React.CSSProperties = {
   display: 'block',
   maxWidth: '100%',
-  width: '100%',
-  maxHeight: 280,
+  width: 'auto',
+  maxHeight: 240,
   objectFit: 'contain',
-  borderRadius: 10,
+  borderRadius: 8,
 };
 
 const fileInfoRowStyle: React.CSSProperties = {
