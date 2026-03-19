@@ -5,20 +5,22 @@ const config = getConfig();
 
 // Main client for commands (SET, GET, INCR, etc.)
 export const redisClient = new Redis(config.REDIS_URL, {
-  maxRetriesPerRequest: 3,
+  maxRetriesPerRequest: 10,
+  enableReadyCheck: true,
   retryStrategy(times) {
-    const delay = Math.min(times * 200, 5000);
-    return delay;
+    if (times > 20) return null; // give up after ~40s
+    return Math.min(times * 200, 5000);
   },
   lazyConnect: true,
 });
 
 // Dedicated subscriber client for pub/sub (cannot be used for regular commands)
 export const redisSubscriber = new Redis(config.REDIS_URL, {
-  maxRetriesPerRequest: 3,
+  maxRetriesPerRequest: 10,
+  enableReadyCheck: true,
   retryStrategy(times) {
-    const delay = Math.min(times * 200, 5000);
-    return delay;
+    if (times > 20) return null;
+    return Math.min(times * 200, 5000);
   },
   lazyConnect: true,
 });

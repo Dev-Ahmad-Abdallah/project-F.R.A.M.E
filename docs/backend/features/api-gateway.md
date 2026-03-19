@@ -37,6 +37,8 @@ Client Request (HTTPS)
 │  │  /auth/*           │  │
 │  │  /keys/*           │  │
 │  │  /messages/*       │  │
+│  │  /rooms/*          │  │
+│  │  /push/*           │  │
 │  │  /devices/*        │  │
 │  │  /federation/*     │  │
 │  └────────────────────┘  │
@@ -60,12 +62,13 @@ Client Request (HTTPS)
 
 | Endpoint Group | Limit | Window | Rationale |
 |----------------|-------|--------|-----------|
-| `/auth/login` | 5 requests | 15 min | Prevent brute force |
-| `/auth/register` | 3 requests | 1 hour | Prevent spam accounts |
-| `/keys/*` | 60 requests | 1 min | Key fetches are frequent but bounded |
-| `/messages/send` | 30 requests | 1 min | Prevent message flooding |
-| `/messages/sync` | 60 requests | 1 min | Polling endpoint |
-| `/federation/*` | 100 requests | 1 min | Server-to-server traffic |
+| `/auth/login` | 20 requests | 15 min | Prevent brute force (per IP+username) |
+| `/auth/register` | 15 requests | 1 hour | Prevent spam accounts |
+| `/auth/refresh` | 30 requests | 1 min | Token refresh limiter |
+| `/keys/*` | 300 requests | 1 min | General API limiter; key fetches are frequent |
+| `/messages/send` | 120 requests | 1 min | Dedicated message limiter |
+| `/messages/sync` | 300 requests | 1 min | General API limiter; polling endpoint |
+| `/federation/*` | 300 requests | 1 min | General API limiter; server-to-server traffic |
 
 ---
 
@@ -76,6 +79,7 @@ Client Request (HTTPS)
 |----------|--------|---------|
 | `/auth/register` | POST | Register new user + upload initial keys |
 | `/auth/login` | POST | Authenticate, return JWT |
+| `/auth/refresh` | POST | Refresh access token |
 | `/health` | GET | Health check for Railway |
 
 ### Authenticated (JWT Required)
@@ -85,7 +89,32 @@ Client Request (HTTPS)
 | `/keys/:userId` | GET | Fetch user's key bundle |
 | `/keys/transparency/:userId` | GET | Fetch Merkle proof |
 | `/messages/send` | POST | Send encrypted payload |
+| `/messages/:eventId` | DELETE | Soft-delete a message (sender only) |
 | `/messages/sync` | GET | Fetch queued messages since sequence ID |
+| `/messages/ack-to-device` | POST | Acknowledge receipt of to-device messages |
+| `/messages/:eventId/react` | POST | Add or toggle a reaction on a message |
+| `/messages/:eventId/read` | POST | Mark a message as read (read receipt) |
+| `/messages/read-receipts/:roomId` | GET | Get read receipts for a room |
+| `/messages/typing` | POST | Set typing state for the current user |
+| `/messages/typing/:roomId` | GET | Get list of users currently typing |
+| `/auth/profile` | GET | Get own profile info |
+| `/auth/profile` | PUT | Update user display name |
+| `/auth/status` | PUT | Update user presence status |
+| `/auth/status/:userId` | GET | Get another user's status |
+| `/auth/logout` | POST | Invalidate all refresh tokens |
+| `/rooms/create` | POST | Create a new room (direct or group) |
+| `/rooms` | GET | List all rooms the user belongs to |
+| `/rooms/:roomId/invite` | POST | Invite a user to a room |
+| `/rooms/:roomId/join` | POST | Join a room by invite |
+| `/rooms/:roomId/join-with-password` | POST | Join a password-protected room |
+| `/rooms/:roomId/leave` | DELETE | Leave a room |
+| `/rooms/:roomId/name` | PUT | Rename a room |
+| `/rooms/:roomId/settings` | GET | Get room settings |
+| `/rooms/:roomId/settings` | PUT | Update room settings |
+| `/rooms/:roomId/members` | GET | List members of a room |
+| `/push/vapid-key` | GET | Get server's VAPID public key |
+| `/push/subscribe` | POST | Store a push subscription for a device |
+| `/push/unsubscribe` | DELETE | Remove a push subscription for a device |
 | `/devices/register` | POST | Register new device |
 | `/devices/:userId` | GET | List user's devices |
 

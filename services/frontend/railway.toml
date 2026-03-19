@@ -5,8 +5,9 @@ watchPatterns = ["services/frontend/**", "shared/**"]
 
 [deploy]
 healthcheckPath = "/"
+healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
-# nginx listens on port 80 (Railway auto-detects via EXPOSE)
-# No PORT env var needed — Railway maps external HTTPS to internal 80
+# nginx listens on $PORT (Railway injects PORT env var)
+# envsubst templates PORT into nginx.conf at container start

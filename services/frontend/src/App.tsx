@@ -37,7 +37,7 @@ import type { UnknownDeviceInfo } from './devices/deviceAlert';
 import KeyChangeAlert from './verification/keyChangeAlert';
 import type { KeyChangeAction } from './verification/keyChangeAlert';
 import { getAccessToken } from './api/client';
-import { logout as apiLogout } from './api/authAPI';
+import { logout as apiLogout, updateStatus } from './api/authAPI';
 import { formatDisplayName } from './utils/displayName';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from './utils/purifyConfig';
@@ -373,6 +373,36 @@ function App() {
       cancelled = true;
     };
   }, [auth, setInitialUnread, requestNotifPermission, showToast]);
+
+  // ── Presence heartbeat ──
+  // Refresh the current user's "online" status in Redis every 2 minutes
+  // so the 5-minute TTL doesn't expire while the app is open.
+  useEffect(() => {
+    if (!auth) return;
+    let cancelled = false;
+
+    const sendHeartbeat = async () => {
+      try {
+        await updateStatus('online');
+      } catch {
+        // Silently ignore — status is best-effort
+      }
+    };
+
+    // Send immediately on login
+    void sendHeartbeat();
+    // Then refresh every 2 minutes (well within the 5-minute Redis TTL)
+    const interval = setInterval(() => {
+      if (!cancelled) void sendHeartbeat();
+    }, 120_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      // Set offline on unmount (logout / tab close)
+      void updateStatus('offline').catch(() => { /* best-effort */ });
+    };
+  }, [auth]);
 
   // ── Handlers ──
 

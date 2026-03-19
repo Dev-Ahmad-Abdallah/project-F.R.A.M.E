@@ -336,17 +336,12 @@ jobs:
         run: npm install -g @railway/cli
 
       - name: Deploy homeserver
-        run: railway up --service frame-homeserver --detach
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-
-      - name: Deploy homeserver-b
-        run: railway up --service frame-homeserver-b --detach
+        run: railway up --service "project-F.R.A.M.E" --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Deploy frontend
-        run: railway up --service frame-frontend --detach
+        run: railway up --service frontend --detach
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 

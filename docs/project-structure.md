@@ -83,13 +83,15 @@ project-F.R.A.M.E/
 │   │   │       ├── client.ts         # ioredis connection (commands)
 │   │   │       └── pubsub.ts         # Dedicated ioredis subscriber for delivery
 │   │   ├── migrations/               # node-pg-migrate SQL files
-│   │   │   ├── 001_create-users.sql
-│   │   │   ├── 002_create-devices.sql
-│   │   │   ├── 003_create-rooms.sql
-│   │   │   ├── 004_create-events.sql
-│   │   │   ├── 005_create-key-bundles.sql
-│   │   │   ├── 006_create-key-transparency.sql
-│   │   │   └── 007_create-delivery-state.sql
+│   │   │   ├── 001_initial-schema.sql
+│   │   │   ├── 002_scalability-indexes.sql
+│   │   │   ├── 003_to-device-messages.sql
+│   │   │   ├── 004_to-device-claimed-at.sql
+│   │   │   ├── 005_room-name.sql
+│   │   │   ├── 006_device-keys-json.sql
+│   │   │   ├── 007_event-chain.sql
+│   │   │   ├── 008_push-subscriptions.sql
+│   │   │   └── 009_reactions-readreceipts-displayname.sql
 │   │   └── tests/
 │   │       ├── routes/
 │   │       ├── services/
@@ -128,10 +130,27 @@ project-F.R.A.M.E/
 │           │   ├── deviceLinking.tsx
 │           │   └── deviceAlert.tsx
 │           ├── components/
-│           │   ├── ChatWindow.tsx
 │           │   ├── AuthFlow.tsx
+│           │   ├── ChatWindow.tsx
 │           │   ├── DeviceList.tsx
+│           │   ├── NewChatDialog.tsx
+│           │   ├── ProfileSettings.tsx
+│           │   ├── RoomList.tsx
+│           │   ├── RoomSettings.tsx
+│           │   ├── SessionSettings.tsx
+│           │   ├── Skeleton.tsx
+│           │   ├── Toast.tsx
 │           │   └── VerificationBadge.tsx
+│           ├── pages/
+│           │   ├── LandingPage.tsx
+│           │   └── SignInPage.tsx
+│           ├── hooks/
+│           │   ├── useAppInit.ts
+│           │   ├── useInstallPrompt.ts
+│           │   ├── useIsMobile.ts
+│           │   ├── useNotifications.ts
+│           │   ├── useSessionTimeout.ts
+│           │   └── useToast.ts
 │           ├── service-worker.ts
 │           └── notifications.ts
 │

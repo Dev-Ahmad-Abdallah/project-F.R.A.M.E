@@ -657,40 +657,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     };
   }, [roomId, syncLoop]);
 
-  // Reply handler — triggered from context menu
-  const handleReplyToMessage = useCallback((eventId: string) => {
-    setContextMenuEventId(null);
-    setContextMenuPos(null);
-    const msg = messages.find((m) => m.event.eventId === eventId);
-    if (!msg) return;
-    const body = msg.plaintext && typeof msg.plaintext.body === 'string'
-      ? msg.plaintext.body
-      : 'Message';
-    setReplyTo({ eventId, senderId: msg.event.senderId, body });
-    setTimeout(() => textareaRef.current?.focus(), 0);
-  }, [messages]);
-
-  const handleCancelReply = useCallback(() => {
-    setReplyTo(null);
-  }, []);
-
-  // Scroll to a referenced message
-  const scrollToMessage = useCallback((eventId: string) => {
-    const el = messageRefs.current[eventId]; // eslint-disable-line security/detect-object-injection
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.style.transition = 'background-color 0.3s';
-      el.style.backgroundColor = 'rgba(88, 166, 255, 0.15)';
-      setTimeout(() => { el.style.backgroundColor = ''; }, 1200);
-    }
-  }, []);
-
   const handleSend = async (retryText?: string) => {
     const text = retryText || inputValue.trim();
     if (!text || isSending) return;
 
     const isViewOnce = viewOnceMode;
-    const currentReplyTo = replyTo;
 
     const optimisticId = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const optimistic: OptimisticMessage = {
@@ -715,7 +686,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     if (!retryText) {
       setInputValue('');
       setViewOnceMode(false);
-      setReplyTo(null);
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
@@ -729,13 +699,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       };
       if (isViewOnce) {
         plaintext.viewOnce = true;
-      }
-      if (currentReplyTo) {
-        plaintext.replyTo = {
-          eventId: currentReplyTo.eventId,
-          senderId: currentReplyTo.senderId,
-          body: currentReplyTo.body.length > 100 ? currentReplyTo.body.slice(0, 100) + '...' : currentReplyTo.body,
-        };
       }
 
       const encryptedContent = await encryptForRoom(
@@ -1007,41 +970,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     let lastTimestamp: Date | null = null;
     let lastDate: Date | null = null;
 
-    // Pre-compute runs of consecutive undecryptable messages for collapsing
-    const undecryptableRunStart = new Set<number>();
-    const undecryptableRunLength: Record<number, number> = {};
-    const skipIndices = new Set<number>();
-    {
-      let runStart = -1;
-      let runCount = 0;
-      for (let j = 0; j <= messages.length; j++) {
-        const msg = j < messages.length ? messages[j] : null; // eslint-disable-line security/detect-object-injection
-        const isUndecryptable = msg !== null && msg.decryptionError !== null && !deletedEventIds.has(msg.event.eventId) && !expiredEventIds.has(msg.event.eventId);
-        if (isUndecryptable) {
-          if (runStart === -1) { runStart = j; runCount = 1; }
-          else { runCount++; }
-        } else {
-          if (runStart !== -1 && runCount > 1) {
-            undecryptableRunStart.add(runStart);
-            // eslint-disable-next-line security/detect-object-injection
-            undecryptableRunLength[runStart] = runCount;
-            for (let k = runStart + 1; k < runStart + runCount; k++) skipIndices.add(k);
-          }
-          runStart = -1;
-          runCount = 0;
-        }
-      }
-    }
-
     for (const [i, decrypted] of messages.entries()) {
-      // Skip messages that are part of a collapsed undecryptable run (except the first)
-      if (skipIndices.has(i)) {
-        lastSenderId = decrypted.event.senderId;
-        lastTimestamp = new Date(decrypted.event.originServerTs);
-        lastDate = lastTimestamp;
-        continue;
-      }
-
       const event = decrypted.event;
       const isOwn = event.senderId === currentUserId;
       const hasError = decrypted.decryptionError !== null;
@@ -1050,8 +979,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       const isExpired = expiredEventIds.has(event.eventId);
       const isViewOnce = decrypted.plaintext && decrypted.plaintext.viewOnce === true;
       const isHiddenOnce = hiddenOnceIds.has(event.eventId);
-      // eslint-disable-next-line security/detect-object-injection
-      const collapsedCount = undecryptableRunStart.has(i) ? undecryptableRunLength[i] : 0;
 
       if (!lastDate || isDifferentDay(lastDate, msgDate)) {
         elements.push(
@@ -1090,38 +1017,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         continue;
       }
 
-      // Render collapsed undecryptable run as a single informational block
-      if (collapsedCount > 1) {
-        elements.push(
-          <div key={`prev-session-${event.eventId}`} style={styles.previousSessionBlock}>
-            <div style={styles.previousSessionBlockInner}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-                <circle cx="7" cy="7" r="6" stroke="#8b949e" strokeWidth="1.2" fill="rgba(139,148,158,0.08)" />
-                <rect x="5" y="6.5" width="4" height="3.2" rx="0.6" stroke="#8b949e" strokeWidth="0.9" fill="none" />
-                <path d="M6 6.5V5.2a1 1 0 0 1 2 0V6.5" stroke="#8b949e" strokeWidth="0.9" strokeLinecap="round" fill="none" />
-              </svg>
-              <span style={styles.previousSessionBlockText}>
-                {collapsedCount} messages from a previous session
-              </span>
-              <span
-                style={styles.previousSessionInfoIcon}
-                title="These messages were encrypted with keys from a different login session. They cannot be decrypted on this device. This is expected behavior that protects forward secrecy."
-              >
-                i
-              </span>
-            </div>
-            <span style={styles.previousSessionLearnMore}>
-              End-to-end encryption uses unique keys per session for forward secrecy
-            </span>
-          </div>
-        );
-        const lastInRun = messages[i + collapsedCount - 1];
-        lastSenderId = lastInRun.event.senderId;
-        lastTimestamp = new Date(lastInRun.event.originServerTs);
-        lastDate = lastTimestamp;
-        continue;
-      }
-
       const isFirstInGroup = isNewGroup;
       const nextMsg = messages[i + 1];
       const isLastInGroup = !nextMsg ||
@@ -1136,7 +1031,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       elements.push(
         <div
           key={event.eventId}
-          ref={(el) => { messageRefs.current[event.eventId] = el; }}
           style={{
             display: 'flex', alignItems: 'flex-end', gap: 8,
             alignSelf: isOwn ? 'flex-end' : 'flex-start',
@@ -1157,29 +1051,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
           )}
           <div
-            style={{ ...styles.messageBubble, ...(isOwn ? styles.ownMessage : styles.otherMessage), ...(hasError ? styles.previousSessionMessage : {}), ...bubbleRadius, marginTop: 0 }}
+            style={{ ...styles.messageBubble, ...(isOwn ? styles.ownMessage : styles.otherMessage), ...(hasError ? styles.errorMessage : {}), ...bubbleRadius, marginTop: 0 }}
             onContextMenu={(e) => handleMessageContextMenu(e, event.eventId, event.senderId)}
           >
-            {/* Reply quote block */}
-            {decrypted.plaintext != null && Boolean(decrypted.plaintext.replyTo) && (() => {
-              const rt = decrypted.plaintext.replyTo as { eventId: string; senderId: string; body: string };
-              const replyColor = getAvatarColor(rt.senderId);
-              const replyPreview = typeof rt.body === 'string' && rt.body.length > 80 ? rt.body.slice(0, 80) + '...' : rt.body;
-              return (
-                <div
-                  style={{ borderLeft: `3px solid ${replyColor}`, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: '0 6px 6px 0', padding: '4px 8px', marginBottom: 4, cursor: 'pointer', maxWidth: '100%', overflow: 'hidden' }}
-                  onClick={(e) => { e.stopPropagation(); scrollToMessage(rt.eventId); }}
-                  title="Click to scroll to original message"
-                >
-                  <div style={{ fontSize: 10, fontWeight: 600, color: replyColor, marginBottom: 1 }}>
-                    {DOMPurify.sanitize(formatDisplayName(rt.senderId), PURIFY_CONFIG)}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
-                    {typeof replyPreview === 'string' ? DOMPurify.sanitize(replyPreview, PURIFY_CONFIG) : 'Message'}
-                  </div>
-                </div>
-              );
-            })()}
             {!isOwn && isFirstInGroup && (
               <div style={{ ...styles.senderName, color: getAvatarColor(event.senderId) }}>
                 {DOMPurify.sanitize(formatDisplayName(event.senderId), PURIFY_CONFIG)}
@@ -1195,20 +1069,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                   {isViewOnce && <span style={styles.viewOnceIcon} title="View-once message">&#128065;</span>}
                   {renderEncryptionIcon(decrypted)}
                   {hasError ? (
-                    <span style={styles.previousSessionInline}>
+                    <span style={styles.decryptErrorInline}>
                       <svg width="13" height="13" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
-                        <circle cx="7" cy="7" r="6" stroke="#8b949e" strokeWidth="1.2" fill="rgba(139,148,158,0.10)" />
-                        <rect x="5" y="6.5" width="4" height="3.2" rx="0.6" stroke="#8b949e" strokeWidth="0.9" fill="none" />
-                        <path d="M6 6.5V5.2a1 1 0 0 1 2 0V6.5" stroke="#8b949e" strokeWidth="0.9" strokeLinecap="round" fill="none" />
+                        <circle cx="7" cy="7" r="6" stroke="#f85149" strokeWidth="1.2" fill="rgba(248,81,73,0.15)" />
+                        <path d="M7 4v3" stroke="#f85149" strokeWidth="1.2" strokeLinecap="round" />
+                        <circle cx="7" cy="9.5" r="0.6" fill="#f85149" />
                       </svg>
-                      <span style={styles.previousSessionText} title="This message was encrypted with keys from a different session. It cannot be decrypted on this device.">
-                        Message from a previous session
-                      </span>
-                      <span
-                        style={styles.previousSessionInfoIcon}
-                        title="End-to-end encrypted messages use session keys unique to each login. When you sign in on a new device or session, older messages cannot be decrypted. This protects forward secrecy."
-                      >
-                        i
+                      <span style={styles.errorText} title={decrypted.decryptionError ? `Decryption failed: ${decrypted.decryptionError}. The sender may need to re-share session keys.` : 'Message content could not be decrypted. The encryption session may have expired.'}>
+                        Unable to decrypt
                       </span>
                     </span>
                   ) : (
@@ -1259,7 +1127,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     return elements;
-  }, [messages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, isMobile, scrollToMessage]);
+  }, [messages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, isMobile]);
 
   const renderWelcome = () => {
     if (messages.length > 0 || optimisticMessages.length > 0) return null;
@@ -1339,11 +1207,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     width: 8,
                     height: 8,
                     borderRadius: '50%',
-                    backgroundColor: STATUS_COLORS[contactStatus], // eslint-disable-line security/detect-object-injection
+                    backgroundColor: STATUS_COLORS[contactStatus],
                     display: 'inline-block',
                     flexShrink: 0,
                   }}
-                  title={STATUS_LABELS[contactStatus]} // eslint-disable-line security/detect-object-injection
+                  title={STATUS_LABELS[contactStatus]}
                 />
                 {contactStatusHovered && (
                   <span style={{
@@ -1362,7 +1230,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     zIndex: 10,
                     pointerEvents: 'none' as const,
                   }}>
-                    {STATUS_LABELS[contactStatus] /* eslint-disable-line security/detect-object-injection */}
+                    {STATUS_LABELS[contactStatus]}
                   </span>
                 )}
               </span>
@@ -1476,25 +1344,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         <button type="button" style={styles.newMessagesPill} onClick={scrollToBottom}>New messages</button>
       )}
 
-      {/* Reply preview bar */}
-      {replyTo && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderTop: '1px solid #30363d', backgroundColor: '#1c2128' }}>
-          <div style={{ flex: 1, borderLeft: `3px solid ${getAvatarColor(replyTo.senderId)}`, paddingLeft: 8, overflow: 'hidden' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: getAvatarColor(replyTo.senderId), marginBottom: 1 }}>
-              {DOMPurify.sanitize(formatDisplayName(replyTo.senderId), PURIFY_CONFIG)}
-            </div>
-            <div style={{ fontSize: 12, color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
-              {DOMPurify.sanitize(replyTo.body.length > 100 ? replyTo.body.slice(0, 100) + '...' : replyTo.body, PURIFY_CONFIG)}
-            </div>
-          </div>
-          <button type="button" onClick={handleCancelReply} style={{ background: 'none', border: 'none', color: '#8b949e', fontSize: 16, cursor: 'pointer', padding: '2px 6px', borderRadius: 4, lineHeight: 1, fontFamily: 'inherit', flexShrink: 0 }} title="Cancel reply" aria-label="Cancel reply">
-            &#10005;
-          </button>
-        </div>
-      )}
-
       {/* Input area — unified bar with all controls inside */}
-      <div style={{ display: 'flex', alignItems: 'flex-end', padding: '8px 12px', borderTop: replyTo ? 'none' : '1px solid #30363d', backgroundColor: '#161b22' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', padding: '8px 12px', borderTop: '1px solid #30363d', backgroundColor: '#161b22' }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', flex: 1, backgroundColor: '#0d1117', borderRadius: 24, border: isTextareaFocused ? '1px solid #58a6ff' : '1px solid #30363d', transition: 'border-color 0.2s', padding: '4px 4px 4px 8px', gap: 2, position: 'relative' as const, ...(isTextareaFocused ? { animation: 'frame-textarea-glow 2s ease-in-out infinite' } : {}) }}>
           {/* Attachment placeholder */}
           <button type="button" title="File sharing coming soon" aria-label="Attach file (coming soon)" style={{ background: 'none', border: 'none', cursor: 'default', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.35, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2 }}>
@@ -1535,7 +1386,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {contextMenuEventId && contextMenuPos && (
         <div style={{ ...styles.contextMenu, top: contextMenuPos.y, left: contextMenuPos.x }}>
-          <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#c9d1d9' }} onClick={() => handleReplyToMessage(contextMenuEventId)}>Reply</button>
           <button type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: '#c9d1d9' }} onClick={() => void handleForwardMessage(contextMenuEventId)}>Forward</button>
           {messages.find((m) => m.event.eventId === contextMenuEventId)?.event.senderId === currentUserId && (
             <button type="button" className="frame-context-menu-item" style={styles.contextMenuItem} onClick={() => void handleDeleteMessage(contextMenuEventId)}>Delete</button>
@@ -1610,23 +1460,14 @@ const styles: Record<string, React.CSSProperties> = {
   ownMessage: { backgroundColor: '#58a6ff', color: '#ffffff' },
   otherMessage: { backgroundColor: '#21262d', color: '#c9d1d9' },
   errorMessage: { opacity: 0.7, borderLeft: '3px solid #f85149' },
-  previousSessionMessage: { opacity: 0.6, borderLeft: '2px solid #484f58' },
-  previousSessionInline: { display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'help' },
-  previousSessionText: { fontStyle: 'italic', opacity: 0.85, fontSize: 13, color: '#8b949e' },
-  previousSessionLock: { fontSize: 12, flexShrink: 0, marginTop: 0, opacity: 0.5, color: '#8b949e' },
-  previousSessionInfoIcon: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 14, height: 14, borderRadius: '50%', border: '1px solid #484f58', fontSize: 9, fontWeight: 600, fontStyle: 'italic', color: '#8b949e', cursor: 'help', flexShrink: 0, lineHeight: 1 },
-  previousSessionBlock: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '10px 16px', margin: '8px 0', backgroundColor: 'rgba(139, 148, 158, 0.06)', border: '1px solid rgba(139, 148, 158, 0.12)', borderRadius: 10 },
-  previousSessionBlockInner: { display: 'flex', alignItems: 'center', gap: 6 },
-  previousSessionBlockText: { fontSize: 13, color: '#8b949e', fontStyle: 'italic' },
-  previousSessionLearnMore: { fontSize: 10, color: '#6e7681', fontStyle: 'italic' },
   optimisticSending: { opacity: 0.7 },
   optimisticFailed: { opacity: 0.8, backgroundColor: '#4a3040', borderRight: '3px solid #f85149' },
   senderName: { fontSize: 11, fontWeight: 600, marginBottom: 2 },
   messageBody: { display: 'flex', alignItems: 'flex-start', gap: 3, overflowWrap: 'break-word' as const, wordBreak: 'break-word' as const },
   encryptionLock: { fontSize: 10, flexShrink: 0, marginTop: 2, opacity: 0.6 },
-  encryptionWarning: { fontSize: 14, color: '#8b949e', flexShrink: 0, marginTop: -1 },
+  encryptionWarning: { fontSize: 14, color: '#f85149', flexShrink: 0, marginTop: -1 },
   decryptErrorInline: { display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'help' },
-  errorText: { fontStyle: 'italic', opacity: 0.8, fontSize: 13, color: '#8b949e' },
+  errorText: { fontStyle: 'italic', opacity: 0.8, fontSize: 13, borderBottom: '1px dotted rgba(248, 81, 73, 0.4)' },
   timestampRow: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4 },
   timestamp: { fontSize: 10, marginTop: 4, opacity: 0.7, textAlign: 'right' },
   statusIcon: { fontSize: 10, opacity: 0.6 },

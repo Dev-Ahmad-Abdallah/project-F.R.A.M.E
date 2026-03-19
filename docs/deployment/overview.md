@@ -29,17 +29,18 @@ The DevOps layer ensures that the secure crypto code written by the frontend and
 ┌─────────────────────────────────────────────────────────────────┐
 │                       Railway PaaS                               │
 │                                                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌────────────────────┐     │
-│  │ Service:     │  │ Service:     │  │ Service:           │     │
-│  │ Homeserver A │  │ Homeserver B │  │ Frontend (Static)  │     │
-│  │ (Node.js)    │  │ (Node.js)    │  │ (React Build)      │     │
-│  │ Port: 3000   │  │ Port: 3000   │  │ (npx serve / nginx)│     │
-│  └──────┬───────┘  └──────┬───────┘  └────────────────────┘     │
-│         │                  │                                     │
-│  ┌──────┴───────┐  ┌──────┴───────┐                             │
-│  │ PostgreSQL A │  │ PostgreSQL B │  (Railway managed DBs)      │
-│  │ Redis A      │  │ Redis B      │                             │
-│  └──────────────┘  └──────────────┘                             │
+│  ┌──────────────────┐  ┌────────────────────┐                    │
+│  │ Service:         │  │ Service:           │                    │
+│  │ project-F.R.A.M.E│  │ frontend           │                    │
+│  │ (Node.js)        │  │ (React Build)      │                    │
+│  │ Port: $PORT      │  │ (nginx, $PORT via  │                    │
+│  │                  │  │  envsubst)         │                    │
+│  └──────┬───────────┘  └────────────────────┘                    │
+│         │                                                        │
+│  ┌──────┴───────┐                                                │
+│  │ Postgres     │  (Railway managed DBs)                         │
+│  │ Redis        │                                                │
+│  └──────────────┘                             │
 │                                                                  │
 │  Railway handles: TLS termination, DNS, auto-scaling, logging   │
 └─────────────────────────────────────────────────────────────────┘
@@ -89,9 +90,13 @@ Developer Push / PR
            ▼
 ┌──────────────────────┐
 │  Merge to main       │
-│  → Railway auto-     │
-│    deploys services  │
-│  → Health checks     │
+│  → CI runs:          │
+│    railway up        │
+│    --service         │
+│    "project-F.R.A.M.E│
+│    " / "frontend"    │
+│  → Railway API       │
+│    health mgmt       │
 │  → Rollback if fail  │
 └──────────────────────┘
 ```
@@ -104,13 +109,12 @@ Railway supports multiple services within a single project. For F.R.A.M.E.:
 
 | Service | Type | Runtime | Notes |
 |---------|------|---------|-------|
-| `frame-homeserver-a` | Web Service | Node.js (Docker) | Primary homeserver |
-| `frame-homeserver-b` | Web Service | Node.js (Docker) | Federation peer (staging) |
-| `frame-frontend` | Static Site | React build (served) | Client application |
-| `frame-postgres-a` | Database | PostgreSQL (managed) | Homeserver A data |
-| `frame-postgres-b` | Database | PostgreSQL (managed) | Homeserver B data |
-| `frame-redis-a` | Database | Redis (managed) | Homeserver A queue/cache |
-| `frame-redis-b` | Database | Redis (managed) | Homeserver B queue/cache |
+| `project-F.R.A.M.E` | Web Service | Node.js (Docker) | Homeserver — `project-frame-production.up.railway.app` |
+| `frontend` | Static Site | React build (nginx) | Client app — `frontend-production-29a3.up.railway.app` |
+| `Postgres` | Database | PostgreSQL (managed) | Homeserver data |
+| `Redis` | Database | Redis (managed) | Homeserver queue/cache |
+
+> **Note:** There is no second homeserver on Railway. Federation peer testing (homeserver-b) is local-only via Docker Compose.
 
 ### Railway Considerations
 - **TLS**: Railway provides automatic HTTPS with TLS termination — no manual cert management needed
@@ -119,6 +123,9 @@ Railway supports multiple services within a single project. For F.R.A.M.E.:
 - **Nixpacks vs Docker**: Railway supports both; Docker gives full control over build environment
 - **Networking**: Services within same project can communicate via internal URLs (`service.railway.internal`)
 - **Scaling**: Railway supports horizontal scaling (multiple instances per service) on paid plans
+- **Health Checks**: Railway manages health monitoring via its API — no Docker `HEALTHCHECK` instruction needed
+- **nginx Port Binding**: The frontend nginx config uses `envsubst` to inject `$PORT` at runtime (not hardcoded port 80)
+- **CI Deploy**: The deploy step uses `railway up --service "project-F.R.A.M.E"` and `railway up --service frontend`
 
 ---
 
@@ -133,16 +140,16 @@ Railway supports multiple services within a single project. For F.R.A.M.E.:
 6. **Container hardening** — non-root user, minimal base image, no unnecessary packages
 
 ### Operational Concerns
-- Railway has cold start on free/hobby tier — consider health check endpoints
+- Railway has cold start on free/hobby tier — Railway manages health checks via API (no Docker HEALTHCHECK)
 - Redis memory limits on Railway managed instances — monitor usage
 - PostgreSQL connection limits — relevant when multiple services connect
 - Docker image size affects deploy time — keep images lean
-- Federation requires two separate Railway services that can reach each other
+- Federation testing uses a local Docker Compose setup (no second homeserver on Railway)
 
 ### Cost Considerations
 - Railway free tier: limited hours, limited resources
 - Each additional service/database counts against resource limits
-- Two-node federation doubles the infrastructure cost
+- Federation peer (homeserver-b) runs locally only, so no extra Railway cost
 - GHAS may require GitHub Teams/Enterprise for private repos
 
 ---
