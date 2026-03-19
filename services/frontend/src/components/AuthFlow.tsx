@@ -253,6 +253,7 @@ export default function AuthFlow({ onAuthenticated }: AuthFlowProps) {
         </div>
 
         <h1 style={styles.title}>F.R.A.M.E.</h1>
+        <p style={{ margin: '2px 0 6px', fontSize: 11, color: '#6e7681', textAlign: 'center' as const, letterSpacing: 0.5, fontWeight: 500 }}>Federated Encrypted Messaging</p>
         <p style={styles.subtitle}>
           {mode === 'login' ? 'Sign in to your account' : 'Create a new account'}
         </p>

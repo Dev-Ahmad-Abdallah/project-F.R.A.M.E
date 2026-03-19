@@ -94,7 +94,7 @@ export const deviceRegisterSchema = z.object({
 
 export const createRoomSchema = z.object({
   roomType: z.enum(['direct', 'group']),
-  inviteUserIds: z.array(z.string()).min(1).max(50),
+  inviteUserIds: z.array(z.string()).max(50),
   name: z.string().max(128).optional(),
   isPrivate: z.boolean().optional(),
   password: z.string().max(128).optional(),
@@ -124,7 +124,8 @@ export const roomSettingsSchema = z.object({
   isPrivate: z.boolean().optional(),
   password: z.string().max(128).optional(),
   isAnonymous: z.boolean().optional(),
-}).strict();
+  pinnedEventIds: z.array(z.string()).max(100).optional(),
+});
 
 export const joinWithPasswordSchema = z.object({
   password: z.string().min(1).max(128),

@@ -406,10 +406,10 @@ function App() {
         guest: true,
       };
       handleAuthenticated(authResponse);
-    } catch (err) {
-      console.error('Guest login failed:', err);
+    } catch {
+      showToast('error', 'Could not start a guest session. Please try again or create an account.', { dedupeKey: 'guest-login-fail' });
     }
-  }, [handleAuthenticated]);
+  }, [handleAuthenticated, showToast]);
 
   // ── Post-login initialization ──
 
@@ -479,7 +479,7 @@ function App() {
       } catch (err) {
         console.error('Initialization error:', err);
         if (!cancelled) {
-          const msg = err instanceof Error ? err.message : 'Initialization failed';
+          const msg = 'Failed to initialize. Please refresh the page or try again later.';
           setInitError(msg);
           showToast('error', msg, {
             persistent: true,
@@ -1043,12 +1043,12 @@ function App() {
           }} />
           <div style={{ position: 'relative' as const, zIndex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center' }}>
             <div style={styles.emptyIcon}>
-              <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-                <rect x="6" y="10" width="44" height="32" rx="6" stroke="#58a6ff" strokeWidth="2" fill="rgba(88,166,255,0.06)" />
-                <path d="M6 16l22 14 22-14" stroke="#58a6ff" strokeWidth="2" fill="none" />
+              <svg width="56" height="56" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+                <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="2" fill="rgba(88,166,255,0.06)" />
+                <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
               </svg>
             </div>
-            <h2 style={styles.emptyTitle}>Welcome to F.R.A.M.E.</h2>
+            <h2 style={{ ...styles.emptyTitle, background: 'linear-gradient(135deg, #58a6ff 0%, #c9d1d9 40%, #f0f6fc 60%, #58a6ff 100%)', backgroundSize: '200% 200%', animation: 'frame-gradient-shift 6s ease infinite', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>Welcome to F.R.A.M.E.</h2>
             <p style={styles.emptySubtitle}>Get started in three simple steps</p>
 
             {/* Pulsing encryption indicator */}
@@ -1114,9 +1114,9 @@ function App() {
         }} />
         <div style={{ position: 'relative' as const, zIndex: 1, display: 'flex', flexDirection: 'column' as const, alignItems: 'center' }}>
           <div style={styles.emptyIcon}>
-            <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-              <rect x="6" y="10" width="44" height="32" rx="6" stroke="#30363d" strokeWidth="2" fill="rgba(88,166,255,0.04)" />
-              <path d="M6 16l22 14 22-14" stroke="#30363d" strokeWidth="2" fill="none" />
+            <svg width="48" height="48" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+              <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#30363d" strokeWidth="2" fill="rgba(88,166,255,0.03)" />
+              <path d="M26 32l4 4 8-8" stroke="#30363d" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
             </svg>
           </div>
           <h2 style={styles.emptyTitle}>Select a conversation</h2>
@@ -1180,18 +1180,18 @@ function App() {
           alignItems: 'center',
           justifyContent: 'center',
           gap: 12,
-          padding: '8px 16px',
-          backgroundColor: 'rgba(210,153,34,0.1)',
-          borderBottom: '1px solid rgba(210,153,34,0.25)',
+          padding: '10px 16px',
+          backgroundColor: 'rgba(88,166,255,0.08)',
+          borderBottom: '1px solid rgba(88,166,255,0.2)',
           fontSize: 13,
-          color: '#d29922',
+          color: '#c9d1d9',
           flexShrink: 0,
         }}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
-            <circle cx="7" cy="7" r="6" stroke="#d29922" strokeWidth="1.2" fill="none" />
-            <path d="M7 4v3M7 9v.5" stroke="#d29922" strokeWidth="1.2" strokeLinecap="round" />
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+            <circle cx="8" cy="8" r="7" stroke="#58a6ff" strokeWidth="1.2" fill="rgba(88,166,255,0.1)" />
+            <path d="M8 5v3.5M8 10.5v.5" stroke="#58a6ff" strokeWidth="1.2" strokeLinecap="round" />
           </svg>
-          <span>Guest mode -- messages are temporary</span>
+          <span>You are in <strong style={{ color: '#f0f6fc' }}>guest mode</strong> — some features are limited and messages are temporary.</span>
           <button
             type="button"
             onClick={() => {
@@ -1199,16 +1199,18 @@ function App() {
               setCurrentPage('auth');
             }}
             style={{
-              padding: '4px 12px',
-              fontSize: 12,
+              padding: '6px 16px',
+              fontSize: 13,
               fontWeight: 600,
-              backgroundColor: '#58a6ff',
-              color: '#fff',
+              backgroundColor: '#238636',
+              color: '#ffffff',
               border: 'none',
-              borderRadius: 4,
+              borderRadius: 6,
               cursor: 'pointer',
               fontFamily: 'inherit',
-              whiteSpace: 'nowrap',
+              whiteSpace: 'nowrap' as const,
+              transition: 'background-color 0.15s ease',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
             }}
           >
             Create Account
@@ -1230,6 +1232,14 @@ function App() {
           className={`frame-sidebar${isMobile && !sidebarOpen ? ' frame-sidebar-hidden' : ''}`}
           style={{ flexShrink: 0 }}
         >
+          {/* F.R.A.M.E. sidebar header branding */}
+          <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <svg width="16" height="16" viewBox="0 0 64 64" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
+              <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="3" fill="rgba(88,166,255,0.08)" />
+              <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            </svg>
+            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1.5, background: 'linear-gradient(135deg, #58a6ff 0%, #c9d1d9 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>F.R.A.M.E.</span>
+          </div>
           {/* User info — click to open profile settings */}
           <div
             style={styles.userInfo}
@@ -1393,6 +1403,15 @@ function App() {
               )}
             </div>
           </div>
+
+          {/* F.R.A.M.E. sidebar footer branding */}
+          <div style={{ padding: '8px 16px 10px', borderTop: '1px solid #30363d', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+            <svg width="12" height="12" viewBox="0 0 64 64" fill="none" aria-hidden="true" style={{ opacity: 0.45, flexShrink: 0 }}>
+              <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="3" fill="rgba(88,166,255,0.08)" />
+              <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            </svg>
+            <span style={{ fontSize: 10, color: '#484f58', fontWeight: 500, letterSpacing: 0.5 }}>F.R.A.M.E. v1.0.0</span>
+          </div>
         </aside>
       )}
 
@@ -1441,6 +1460,7 @@ function App() {
       {showNewChatDialog && (
         <NewChatDialog
           currentUserId={auth.userId}
+          isGuest={auth.guest === true}
           onCreated={handleNewChatCreated}
           onClose={() => setShowNewChatDialog(false)}
         />

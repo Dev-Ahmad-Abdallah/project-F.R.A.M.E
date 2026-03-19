@@ -79,6 +79,7 @@ devicesRouter.delete(
 devicesRouter.post(
   '/heartbeat',
   requireAuth,
+  apiLimiter,
   asyncHandler(async (req, res) => {
     if (!req.auth) {
       throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');

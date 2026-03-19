@@ -25,5 +25,9 @@
     "test:all": "bash scripts/test-all.sh",
     "watch": "bash scripts/watch-build.sh",
     "check": "npm run build:shared && npm run build:homeserver && cd services/frontend && npx tsc --noEmit"
+  },
+  "devDependencies": {
+    "playwright": "^1.58.2",
+    "puppeteer": "^24.40.0"
   }
 }

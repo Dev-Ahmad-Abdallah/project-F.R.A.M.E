@@ -407,6 +407,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTextareaFocused, inputValue]);
 
+  // Re-focus textarea after send completes (when isSending flips back to false).
+  // This is more reliable than setTimeout because it fires after React re-renders
+  // the textarea as enabled (disabled={isSending}).
+  useEffect(() => {
+    if (!isSending) {
+      textareaRef.current?.focus();
+    }
+  }, [isSending]);
+
   const insertEmojiAtCursor = (emoji: string) => {
     const ta = textareaRef.current;
     if (ta) {
@@ -905,8 +914,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       });
     } finally {
       setIsSending(false);
-      // Bug fix: re-focus textarea after send so user can keep typing
-      setTimeout(() => textareaRef.current?.focus(), 0);
     }
   };
 
@@ -1540,7 +1547,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           {isGroup ? 'Messages in this group are end-to-end encrypted.' : 'Messages are secured with end-to-end encryption.'}
         </div>
         <div style={styles.welcomeE2eeBadge}>
-          <span style={{ fontSize: 12 }}>&#128274;</span> E2EE
+          <span style={{ fontSize: 12 }}>&#128274;</span> F.R.A.M.E. E2EE
         </div>
       </div>
     );
@@ -1656,7 +1663,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             )}
           </div>
           <div style={styles.headerSubRow}>
-            <span style={styles.encryptionBadge} title="End-to-end encryption enabled">E2EE</span>
+            <span style={styles.encryptionBadge} title="F.R.A.M.E. end-to-end encryption enabled">F.R.A.M.E. E2EE</span>
             {/* Password-protected badge */}
             {roomType === 'group' && (
               <span style={{
@@ -1820,7 +1827,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
       )}
 
-      <div ref={messageListRef} style={styles.messageList} onScroll={handleScroll}>
+      <div ref={messageListRef} style={{ ...styles.messageList, position: 'relative' as const }} onScroll={handleScroll}>
+        {/* Subtle F.R.A.M.E. watermark */}
+        <div style={{ position: 'fixed' as const, bottom: 80, right: 24, pointerEvents: 'none' as const, opacity: 0.03, zIndex: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <svg width="20" height="20" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+            <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="4" fill="rgba(88,166,255,0.15)" />
+            <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+          </svg>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#c9d1d9', letterSpacing: 1.5 }}>F.R.A.M.E.</span>
+        </div>
         {showRoomSkeleton ? (
           <div style={{ display: 'flex', flexDirection: 'column', padding: '16px 12px', gap: 4 }}>
             <SkeletonMessageBubble align="left" widthPercent={55} />
@@ -1895,7 +1910,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </button>
           {/* Textarea */}
           {/* eslint-disable-next-line security/detect-object-injection */}
-          <textarea ref={textareaRef} className="frame-chat-textarea" value={inputValue} onChange={handleTextareaChange} onKeyDown={handleKeyDown} onFocus={() => setIsTextareaFocused(true)} onBlur={() => setIsTextareaFocused(false)} placeholder={viewOnceMode ? 'View-once message...' : INPUT_PLACEHOLDERS[placeholderIndex]} disabled={isSending} aria-label="Message input" rows={1} />
+          <textarea ref={textareaRef} className="frame-chat-textarea" value={inputValue} onChange={handleTextareaChange} onKeyDown={handleKeyDown} onFocus={() => setIsTextareaFocused(true)} onBlur={() => setIsTextareaFocused(false)} placeholder={viewOnceMode ? 'View-once message...' : INPUT_PLACEHOLDERS[placeholderIndex]} disabled={isSending} autoFocus aria-label="Message input" rows={1} />
           {/* Character count indicator */}
           {inputValue.length > 500 && (
             <span style={{ position: 'absolute' as const, bottom: 6, right: inputValue.trim() ? 88 : 44, fontSize: 10, color: inputValue.length > 4500 ? '#f85149' : '#8b949e', fontFamily: 'inherit', pointerEvents: 'none' as const, transition: 'color 0.2s' }} aria-live="polite">{inputValue.length}/5000</span>
