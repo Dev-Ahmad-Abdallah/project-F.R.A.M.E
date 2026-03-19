@@ -776,6 +776,23 @@ body {
   }
 }
 
+/* Screenshot & copy protection for message content */
+.frame-message-content, .frame-msg-bubble {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.frame-message-content img, .frame-msg-bubble img {
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+/* Privacy fade-in animation */
+@keyframes frame-privacy-fade-in {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 @media (max-width: 600px) {
   .frame-bottom-sheet {
     position: fixed;

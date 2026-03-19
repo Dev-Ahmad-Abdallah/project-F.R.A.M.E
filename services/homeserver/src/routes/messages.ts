@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import express from 'express';
 import { requireAuth } from '../middleware/auth';
 import { messageLimiter, apiLimiter, syncLimiter } from '../middleware/rateLimit';
 import { asyncHandler, ApiError } from '../middleware/errorHandler';
@@ -20,6 +21,7 @@ interface SendMessageBody {
 // POST /messages/send — Send encrypted message payload
 messagesRouter.post(
   '/send',
+  express.json({ limit: '512kb' }),
   requireAuth,
   messageLimiter,
   validateBody(sendMessageSchema),
