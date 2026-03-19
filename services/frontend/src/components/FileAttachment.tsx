@@ -100,7 +100,14 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
       try {
         let decryptedBytes: Uint8Array;
         if (isInline && fileData) {
-          const encryptedBytes = Uint8Array.from(atob(fileData), (c) => c.charCodeAt(0));
+          let decoded: string;
+          try {
+            decoded = atob(fileData);
+          } catch {
+            setError('File data is corrupted');
+            return;
+          }
+          const encryptedBytes = Uint8Array.from(decoded, (c) => c.charCodeAt(0));
           decryptedBytes = await decryptFile(encryptedBytes, fileKey, fileIv);
         } else if (fileId) {
           const encryptedBuffer = await downloadFile(fileId);
@@ -122,7 +129,13 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
   /** Decrypt inline data and return a Blob URL */
   const decryptInlineData = useCallback(async (): Promise<string> => {
     if (!fileData) throw new Error('No inline data');
-    const encryptedBytes = Uint8Array.from(atob(fileData), (c) => c.charCodeAt(0));
+    let decoded: string;
+    try {
+      decoded = atob(fileData);
+    } catch {
+      throw new Error('File data is corrupted');
+    }
+    const encryptedBytes = Uint8Array.from(decoded, (c) => c.charCodeAt(0));
     const decryptedBytes = await decryptFile(encryptedBytes, fileKey, fileIv);
     const blob = new Blob([decryptedBytes], { type: mimeType });
     return URL.createObjectURL(blob);

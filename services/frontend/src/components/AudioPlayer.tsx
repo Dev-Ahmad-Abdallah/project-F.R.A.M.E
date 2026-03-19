@@ -17,6 +17,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(durationMs / 1000);
   const [consumed, setConsumed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [waveformBars] = useState<number[]>(() => {
     // Generate pseudo-random waveform bars based on the audio data hash
     const bars: number[] = [];
@@ -62,10 +63,16 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
     };
   }, []);
 
-  const getAudioElement = useCallback((): HTMLAudioElement => {
+  const getAudioElement = useCallback((): HTMLAudioElement | null => {
     if (!audioRef.current) {
+      let byteString: string;
+      try {
+        byteString = atob(audioBase64);
+      } catch {
+        setError('Audio data is corrupted');
+        return null;
+      }
       // Decode base64 to binary and create a Blob with the full MIME type (including codecs)
-      const byteString = atob(audioBase64);
       const bytes = new Uint8Array(byteString.length);
       for (let i = 0; i < byteString.length; i++) {
         // eslint-disable-next-line security/detect-object-injection
@@ -97,6 +104,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
 
   const togglePlay = useCallback(() => {
     const audio = getAudioElement();
+    if (!audio) return;
 
     if (isPlaying) {
       audio.pause();
@@ -119,6 +127,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
     const x = e.clientX - rect.left;
     const pct = x / rect.width;
     const audio = getAudioElement();
+    if (!audio) return;
     const seekTime = pct * duration;
     audio.currentTime = seekTime;
     setCurrentTime(seekTime);
@@ -145,6 +154,21 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioBase64, durationMs, isSe
   const btnBg = isSent ? 'rgba(255,255,255,0.15)' : 'rgba(88, 166, 255, 0.12)';
   const btnColor = isSent ? '#ffffff' : '#e6edf3';
   const timeColor = isSent ? 'rgba(255,255,255,0.55)' : '#8b949e';
+
+  if (error) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '4px 0',
+        width: '100%',
+      }}>
+        <span style={{ fontSize: 12, color: '#f85149' }}>&#9888;</span>
+        <span style={{ fontStyle: 'italic', color: '#f85149', fontSize: 13 }}>{error}</span>
+      </div>
+    );
+  }
 
   if (consumed) {
     return (
