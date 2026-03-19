@@ -123,6 +123,14 @@ const GROUP_GAP_MS = 5 * 60 * 1000;
 /** Time gap threshold for showing an inline timestamp between groups (10 min) */
 const TIMESTAMP_GAP_MS = 10 * 60 * 1000;
 
+// ── Emoji grid for picker ──
+const CHAT_EMOJIS = [
+  '\u{1F600}', '\u{1F602}', '\u{1F605}', '\u{1F609}', '\u{1F60D}', '\u{1F618}',
+  '\u{1F970}', '\u{1F914}', '\u{1F923}', '\u{1F62D}', '\u{1F621}', '\u{1F631}',
+  '\u{1F44D}', '\u{1F44E}', '\u{1F44B}', '\u{1F64F}', '\u{1F525}', '\u{2764}\u{FE0F}',
+  '\u{1F389}', '\u{1F44F}', '\u{1F4AF}', '\u{1F440}', '\u{2705}', '\u{274C}',
+];
+
 /**
  * Chat UI component with Megolm group encryption.
  *
@@ -233,7 +241,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const nextBatchRef = useRef<string | undefined>(undefined);
   const syncGenRef = useRef(0);
-  const syncBackoffRef = useRef(1000); // Exponential backoff for sync errors (ms)
+  const syncBackoffRef = useRef(1000);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -257,18 +265,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [sendButtonAnimating, setSendButtonAnimating] = useState(false);
   // Emoji picker state
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   // Mobile "more" menu state (for auto-delete / leave)
   const [showMobileMoreMenu, setShowMobileMoreMenu] = useState(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const CHAT_EMOJIS = [
-    '\u{1F600}', '\u{1F602}', '\u{1F605}', '\u{1F609}', '\u{1F60D}', '\u{1F618}',
-    '\u{1F970}', '\u{1F914}', '\u{1F923}', '\u{1F62D}', '\u{1F621}', '\u{1F631}',
-    '\u{1F44D}', '\u{1F44E}', '\u{1F44B}', '\u{1F64F}', '\u{1F525}', '\u{2764}\u{FE0F}',
-    '\u{1F389}', '\u{1F44F}', '\u{1F4AF}', '\u{1F440}', '\u{2705}', '\u{274C}',
-  ];
 
   // Close emoji picker on outside click
   useEffect(() => {
@@ -283,7 +282,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [showEmojiPicker]);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const insertEmojiAtCursor = (emoji: string) => {
     const ta = textareaRef.current;
     if (ta) {
@@ -291,7 +289,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       const end = ta.selectionEnd ?? inputValue.length;
       const newVal = inputValue.slice(0, start) + emoji + inputValue.slice(end);
       setInputValue(newVal);
-      // Restore cursor position after React re-render
       setTimeout(() => {
         ta.selectionStart = ta.selectionEnd = start + emoji.length;
         ta.focus();
@@ -351,7 +348,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         .frame-context-menu-item:hover {
           background-color: rgba(248, 81, 73, 0.15) !important;
         }
-        /* Show reaction button on message row hover */
         div:hover > button[aria-label="Add reaction"] {
           opacity: 1 !important;
         }
@@ -359,12 +355,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           border-color: #58a6ff !important;
           color: #58a6ff !important;
         }
-        /* Reaction picker emoji hover */
         .frame-reaction-emoji:hover {
           background-color: rgba(88, 166, 255, 0.15) !important;
           transform: scale(1.2) !important;
         }
-        /* Reaction badge hover */
         .frame-reaction-badge:hover {
           border-color: #58a6ff !important;
         }
@@ -421,7 +415,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         setViewedOnceIds((prev) => new Set(prev).add(eventId));
         const timer = setTimeout(() => {
           setHiddenOnceIds((prev) => new Set(prev).add(eventId));
-          // Remove content from React state — not just CSS hidden
           setMessages((prev) =>
             prev.map((m) =>
               m.event.eventId === eventId
@@ -429,7 +422,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 : m,
             ),
           );
-          // Delete from server so content is purged from the database
           deleteMessage(eventId).catch((err) =>
             console.error('[ViewOnce] Failed to delete from server:', err),
           );
@@ -454,7 +446,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, []);
 
-  // Smooth-scroll to bottom when new messages arrive (only if near bottom)
   useEffect(() => {
     if (isNearBottomRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -480,32 +471,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     [],
   );
 
-  // Long-polling sync loop — uses a generation counter so that stale
-  // loops from a previous room reliably stop even if the boolean flag
-  // is overwritten by the new loop before the old fetch returns.
   const syncLoop = useCallback(async (gen: number) => {
     while (syncGenRef.current === gen) {
       try {
         setIsSyncing(true);
-        const result = await syncMessages(
-          nextBatchRef.current,
-          10000,
-          50,
-        );
+        const result = await syncMessages(nextBatchRef.current, 10000, 50);
         setIsSyncing(false);
 
         if (syncGenRef.current !== gen) break;
 
         await processSyncResponse(result);
-
-        // Always update nextBatch so the next poll uses the latest
-        // sequence cursor, even when no room events were returned
-        // (e.g. timeout expiry or to-device-only responses).
         nextBatchRef.current = result.nextBatch;
 
         if (result.events.length > 0) {
-          // Filter to only events belonging to the current room —
-          // the server returns events across all rooms the user is in.
           const roomEvents = result.events.filter((e) => e.roomId === roomId);
           const decryptedEvents = roomEvents.length > 0
             ? await decryptEvents(roomEvents)
@@ -515,7 +493,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
           if (decryptedEvents.length > 0) {
             setMessages((prev) => [...prev, ...decryptedEvents]);
-            // Mark new messages for pop-in + encryption pulse animation
             const newIds = decryptedEvents.map((e) => e.event.eventId);
             setRecentlyArrivedIds((prev) => {
               const next = new Set(prev);
@@ -529,7 +506,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 .forEach((e) => next.add(e.event.eventId));
               return next;
             });
-            // Clear animations after they play
             setTimeout(() => {
               setRecentlyArrivedIds((prev) => {
                 const next = new Set(prev);
@@ -551,12 +527,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         }
 
         setSyncError(null);
-        syncBackoffRef.current = 1000; // Reset backoff on success
+        syncBackoffRef.current = 1000;
       } catch (err) {
         setIsSyncing(false);
         if (syncGenRef.current !== gen) break;
         setSyncError('Failed to sync messages');
-        // Exponential backoff: 1s → 2s → 4s → 8s → … capped at 30s
         const delay = syncBackoffRef.current;
         syncBackoffRef.current = Math.min(delay * 2, 30000);
         await new Promise((r) => setTimeout(r, delay));
@@ -564,7 +539,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [decryptEvents, roomId]);
 
-  // Show skeleton briefly on room switch, then clear once messages arrive or after 200ms
   useEffect(() => {
     setShowRoomSkeleton(true);
     const timer = setTimeout(() => setShowRoomSkeleton(false), 200);
@@ -572,7 +546,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   }, [roomId]);
 
   useEffect(() => {
-    // If real messages have arrived, clear skeleton immediately
     if (messages.length > 0 && showRoomSkeleton) {
       setShowRoomSkeleton(false);
     }
@@ -584,27 +557,21 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     nextBatchRef.current = undefined;
     syncBackoffRef.current = 1000;
 
-    // Increment generation to invalidate any in-flight sync loop
     const gen = ++syncGenRef.current;
 
     const timer = setTimeout(() => {
       void syncLoop(gen);
     }, 0);
 
-    // When the tab regains visibility (e.g. after sleeping laptop,
-    // network loss, or user switching back), reset backoff and restart
-    // the sync loop so messages catch up immediately.
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && syncGenRef.current === gen) {
         syncBackoffRef.current = 1000;
-        // Restart the loop: bump generation and start a fresh loop.
         const freshGen = ++syncGenRef.current;
         void syncLoop(freshGen);
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Also handle online/offline transitions for network loss recovery
     const handleOnline = () => {
       if (syncGenRef.current === gen) {
         syncBackoffRef.current = 1000;
@@ -614,10 +581,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     };
     window.addEventListener('online', handleOnline);
 
-    // Capture ref for cleanup (React warns about stale refs in cleanup)
     const ref = syncGenRef;
     return () => {
-      // Bump generation again so the loop exits on next check
       ref.current++;
       clearTimeout(timer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -642,7 +607,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
     setOptimisticMessages((prev) => [...prev, optimistic]);
     setRecentlySentIds((prev) => new Set(prev).add(optimisticId));
-    // Clear animation class after animation completes
     setTimeout(() => {
       setRecentlySentIds((prev) => {
         const next = new Set(prev);
@@ -650,7 +614,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         return next;
       });
     }, 400);
-    // Trigger send button launch animation
     setSendButtonAnimating(true);
     setTimeout(() => setSendButtonAnimating(false), 350);
     if (!retryText) {
@@ -678,8 +641,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         memberUserIds,
       );
 
-      // Attach viewOnce flag to the outer (unencrypted) wrapper so the server
-      // can detect view-once messages for auto-cleanup without decrypting.
       if (isViewOnce) {
         encryptedContent.viewOnce = true;
       }
@@ -712,7 +673,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     void handleSend(om.body);
   };
 
-  // Shift+Enter inserts newline; Enter alone sends
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -720,7 +680,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
-  // Auto-grow textarea up to 5 lines max
   const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputValue(e.target.value);
     const ta = e.target;
@@ -751,11 +710,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
-  // ── Read receipt: mark messages as read when they become visible ──
-
   useEffect(() => {
     if (messages.length === 0) return;
-    // Mark the latest non-own message as read
     const latestOther = [...messages]
       .reverse()
       .find((m) => m.event.senderId !== currentUserId);
@@ -767,7 +723,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [messages, currentUserId, readEventIds]);
 
-  // Close context menu, disappearing menu, and reaction picker on click anywhere
   useEffect(() => {
     const handleClick = () => {
       setContextMenuEventId(null);
@@ -806,49 +761,33 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   };
 
   const renderMessageContent = (decrypted: DecryptedEvent): string => {
-    if (decrypted.decryptionError) {
-      return 'Unable to decrypt';
-    }
-
+    if (decrypted.decryptionError) return 'Unable to decrypt';
     const content = decrypted.plaintext;
-    if (!content) {
-      return 'Unable to decrypt';
-    }
-
+    if (!content) return 'Unable to decrypt';
     const raw =
       typeof content.body === 'string'
         ? content.body
         : typeof content.ciphertext === 'string'
           ? content.ciphertext
           : JSON.stringify(content);
-
     return DOMPurify.sanitize(raw, PURIFY_CONFIG);
   };
 
   const renderEncryptionIcon = (decrypted: DecryptedEvent): React.ReactNode => {
-    if (!decrypted.isEncrypted) {
-      return null;
-    }
-
+    if (!decrypted.isEncrypted) return null;
     if (decrypted.decryptionError) {
       return (
-        <span
-          style={styles.encryptionWarning}
-          title={`Decryption failed: ${decrypted.decryptionError}`}
-        >
+        <span style={styles.encryptionWarning} title={`Decryption failed: ${decrypted.decryptionError}`}>
           &#9888;
         </span>
       );
     }
-
     const isPulsing = recentlyEncryptedIds.has(decrypted.event.eventId);
     return (
       <span
         style={{
           ...styles.encryptionLock,
-          ...(isPulsing
-            ? { animation: 'frame-lock-pulse 0.8s ease-out', display: 'inline-block' }
-            : {}),
+          ...(isPulsing ? { animation: 'frame-lock-pulse 0.8s ease-out', display: 'inline-block' } : {}),
         }}
         title="Encrypted"
       >
@@ -860,23 +799,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const renderSendStatus = (status: MessageSendStatus): React.ReactNode => {
     switch (status) {
       case 'sending':
-        return (
-          <span style={styles.statusIcon} title="Sending">
-            &#128337;
-          </span>
-        );
+        return <span style={styles.statusIcon} title="Sending">&#128337;</span>;
       case 'sent':
-        return (
-          <span style={styles.statusIconSent} title="Sent">
-            &#10003;
-          </span>
-        );
+        return <span style={styles.statusIconSent} title="Sent">&#10003;</span>;
       case 'failed':
-        return (
-          <span style={styles.statusIconFailed} title="Failed to send">
-            &#10007;
-          </span>
-        );
+        return <span style={styles.statusIconFailed} title="Failed to send">&#10007;</span>;
       default:
         return null;
     }
@@ -885,8 +812,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const headerName = roomDisplayName
     ? DOMPurify.sanitize(roomDisplayName, PURIFY_CONFIG)
     : DOMPurify.sanitize(roomId, PURIFY_CONFIG);
-
-  // ── Build grouped message list with date separators and smart timestamps ──
 
   const renderMessages = () => {
     const elements: React.ReactNode[] = [];
@@ -899,13 +824,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       const isOwn = event.senderId === currentUserId;
       const hasError = decrypted.decryptionError !== null;
       const msgDate = new Date(event.originServerTs);
-
       const isDeleted = deletedEventIds.has(event.eventId);
       const isExpired = expiredEventIds.has(event.eventId);
       const isViewOnce = decrypted.plaintext && decrypted.plaintext.viewOnce === true;
       const isHiddenOnce = hiddenOnceIds.has(event.eventId);
 
-      // Date separator: show when calendar day changes
       if (!lastDate || isDifferentDay(lastDate, msgDate)) {
         elements.push(
           <div key={`date-${event.eventId}`} style={styles.dateSeparator}>
@@ -916,12 +839,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         );
       }
 
-      // Determine if this message starts a new group
       const timeSinceLastMs = lastTimestamp ? msgDate.getTime() - lastTimestamp.getTime() : Infinity;
       const isSameSenderAsPrev = lastSenderId === event.senderId;
       const isNewGroup = !isSameSenderAsPrev || timeSinceLastMs > GROUP_GAP_MS;
 
-      // Show a time gap divider between groups if >10 min (on the same day)
       if (lastTimestamp && timeSinceLastMs > TIMESTAMP_GAP_MS && lastDate && !isDifferentDay(lastDate, msgDate)) {
         elements.push(
           <div key={`gap-${event.eventId}`} style={styles.timeGap}>
@@ -930,7 +851,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         );
       }
 
-      // Handle view-once hidden messages
       if (isViewOnce && isHiddenOnce && !isOwn) {
         elements.push(
           <div key={event.eventId} style={{ ...styles.messageBubble, ...(isMobile ? { maxWidth: '85%' } : {}), ...styles.otherMessage, opacity: 0.5, alignSelf: 'flex-start' as const }}>
@@ -946,7 +866,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         continue;
       }
 
-      // Determine bubble shape based on grouping
       const isFirstInGroup = isNewGroup;
       const nextMsg = messages[i + 1];
       const isLastInGroup = !nextMsg ||
@@ -954,67 +873,36 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         (new Date(nextMsg.event.originServerTs).getTime() - msgDate.getTime()) > GROUP_GAP_MS;
 
       const bubbleRadius = isOwn
-        ? {
-            borderTopLeftRadius: 12,
-            borderTopRightRadius: isFirstInGroup ? 12 : 4,
-            borderBottomLeftRadius: 12,
-            borderBottomRightRadius: isLastInGroup ? 12 : 4,
-          }
-        : {
-            borderTopLeftRadius: isFirstInGroup ? 12 : 4,
-            borderTopRightRadius: 12,
-            borderBottomLeftRadius: isLastInGroup ? 12 : 4,
-            borderBottomRightRadius: 12,
-          };
+        ? { borderTopLeftRadius: 12, borderTopRightRadius: isFirstInGroup ? 12 : 4, borderBottomLeftRadius: 12, borderBottomRightRadius: isLastInGroup ? 12 : 4 }
+        : { borderTopLeftRadius: isFirstInGroup ? 12 : 4, borderTopRightRadius: 12, borderBottomLeftRadius: isLastInGroup ? 12 : 4, borderBottomRightRadius: 12 };
 
       const hasPopIn = recentlyArrivedIds.has(event.eventId);
       elements.push(
         <div
           key={event.eventId}
           style={{
-            display: 'flex',
-            alignItems: 'flex-end',
-            gap: 8,
+            display: 'flex', alignItems: 'flex-end', gap: 8,
             alignSelf: isOwn ? 'flex-end' : 'flex-start',
             maxWidth: isMobile ? '85%' : '70%',
             marginTop: isFirstInGroup ? 8 : 2,
-            ...(hasPopIn
-              ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }
-              : {}),
+            ...(hasPopIn ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}),
           }}
         >
-          {/* Avatar — only show on first message in a group from other users */}
           {!isOwn && (
             <div style={{
-              width: 28,
-              height: 28,
-              borderRadius: '50%',
+              width: 28, height: 28, borderRadius: '50%',
               backgroundColor: isFirstInGroup ? getAvatarColor(event.senderId) : 'transparent',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 12,
-              fontWeight: 600,
-              color: '#fff',
-              flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0,
               visibility: isFirstInGroup ? ('visible' as const) : ('hidden' as const),
             }}>
               {isFirstInGroup ? formatDisplayName(event.senderId).charAt(0).toUpperCase() : ''}
             </div>
           )}
           <div
-            style={{
-              ...styles.messageBubble,
-              ...(isOwn ? styles.ownMessage : styles.otherMessage),
-              ...(hasError ? styles.errorMessage : {}),
-              ...bubbleRadius,
-              marginTop: 0,
-            }}
-            onContextMenu={(e) =>
-              handleMessageContextMenu(e, event.eventId, event.senderId)
-            }
+            style={{ ...styles.messageBubble, ...(isOwn ? styles.ownMessage : styles.otherMessage), ...(hasError ? styles.errorMessage : {}), ...bubbleRadius, marginTop: 0 }}
+            onContextMenu={(e) => handleMessageContextMenu(e, event.eventId, event.senderId)}
           >
-            {/* Sender name — only on first message of a group from others */}
             {!isOwn && isFirstInGroup && (
               <div style={{ ...styles.senderName, color: getAvatarColor(event.senderId) }}>
                 {DOMPurify.sanitize(formatDisplayName(event.senderId), PURIFY_CONFIG)}
@@ -1036,12 +924,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                         <path d="M7 4v3" stroke="#f85149" strokeWidth="1.2" strokeLinecap="round" />
                         <circle cx="7" cy="9.5" r="0.6" fill="#f85149" />
                       </svg>
-                      <span
-                        style={styles.errorText}
-                        title={decrypted.decryptionError
-                          ? `Decryption failed: ${decrypted.decryptionError}. The sender may need to re-share session keys.`
-                          : 'Message content could not be decrypted. The encryption session may have expired.'}
-                      >
+                      <span style={styles.errorText} title={decrypted.decryptionError ? `Decryption failed: ${decrypted.decryptionError}. The sender may need to re-share session keys.` : 'Message content could not be decrypted. The encryption session may have expired.'}>
                         Unable to decrypt
                       </span>
                     </span>
@@ -1051,20 +934,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                 </>
               )}
             </div>
-            {/* Timestamp + read receipts — only on last message of a group */}
             {isLastInGroup && (
               <div style={styles.timestampRow}>
-                <span style={styles.timestamp}>
-                  {formatRelativeTime(event.originServerTs)}
-                </span>
-                {isOwn && (
-                  <span style={styles.readReceiptIcon} title="Sent">
-                    {'\u2713'}
-                  </span>
-                )}
+                <span style={styles.timestamp}>{formatRelativeTime(event.originServerTs)}</span>
+                {isOwn && <span style={styles.readReceiptIcon} title="Sent">{'\u2713'}</span>}
               </div>
             )}
-            {/* Reactions display */}
             {(() => {
               const reactions = localReactions[event.eventId] || event.reactions || {};
               const emojiKeys = Object.keys(reactions);
@@ -1075,18 +950,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                     <button
                       key={emoji}
                       type="button"
-                      style={{
-                        ...styles.reactionBadge,
-                        // eslint-disable-next-line
-                      ...(reactions[emoji].users.includes(currentUserId)
-                          ? styles.reactionBadgeOwn
-                          : {}),
-                      }}
+                      style={{ ...styles.reactionBadge, ...(reactions[emoji].users.includes(currentUserId) ? styles.reactionBadgeOwn : {}) }}
                       onClick={() => void handleReact(event.eventId, emoji)}
-                      // eslint-disable-next-line
                       title={reactions[emoji].users.map((u: string) => formatDisplayName(u)).join(', ')}
                     >
-                      {/* eslint-disable-next-line */}
                       {emoji} {reactions[emoji].count}
                     </button>
                   ))}
@@ -1094,17 +961,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               );
             })()}
           </div>
-          {/* Reaction add button — appears on hover */}
           {!isDeleted && !isExpired && (
-            <button
-              type="button"
-              style={styles.addReactionButton}
-              onClick={(e) => handleShowReactionPicker(e, event.eventId)}
-              title="Add reaction"
-              aria-label="Add reaction"
-            >
-              +
-            </button>
+            <button type="button" style={styles.addReactionButton} onClick={(e) => handleShowReactionPicker(e, event.eventId)} title="Add reaction" aria-label="Add reaction">+</button>
           )}
         </div>
       );
@@ -1117,37 +975,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     return elements;
   };
 
-  // ── Welcome message for empty rooms ──
-
-  const [e2eeExpanded, setE2eeExpanded] = useState(false);
-
   const renderWelcome = () => {
     if (messages.length > 0 || optimisticMessages.length > 0) return null;
-
     const isGroup = roomType === 'group';
-    const otherUserId = !isGroup ? memberUserIds.find((id) => id !== currentUserId) : undefined;
-    const avatarInitial = headerName ? headerName.charAt(0).toUpperCase() : '?';
-    const avatarColor = otherUserId ? getAvatarColor(otherUserId) : '#58a6ff';
-
     return (
       <div style={styles.welcomeContainer}>
-        {/* Avatar + name for DMs, icon for groups */}
-        {!isGroup && (
-          <div style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'center', marginBottom: 8 }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: '50%', backgroundColor: avatarColor,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 22, fontWeight: 700, color: '#ffffff', marginBottom: 8,
-            }}>
-              {avatarInitial}
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 600, color: '#e6edf3' }}>{headerName}</div>
-          </div>
-        )}
-        <div style={{
-          ...styles.welcomeIconWrap,
-          animation: 'frame-welcome-float 3s ease-in-out infinite',
-        }}>
+        <div style={{ ...styles.welcomeIconWrap, animation: 'frame-welcome-float 3s ease-in-out infinite' }}>
           {isGroup ? (
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
               <circle cx="18" cy="16" r="6" stroke="#58a6ff" strokeWidth="1.5" fill="none" />
@@ -1162,57 +995,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           )}
         </div>
         <div style={styles.welcomeTitle}>
-          {isGroup
-            ? `Welcome to ${headerName}`
-            : `This is the beginning of your encrypted conversation with ${headerName}`}
+          {isGroup ? `Welcome to ${headerName}` : `This is the beginning of your encrypted conversation with ${headerName}`}
         </div>
         <div style={styles.welcomeSubtitle}>
-          {isGroup
-            ? 'Messages in this group are end-to-end encrypted.'
-            : 'Messages are secured with end-to-end encryption.'}
+          {isGroup ? 'Messages in this group are end-to-end encrypted.' : 'Messages are secured with end-to-end encryption.'}
         </div>
         <div style={styles.welcomeE2eeBadge}>
           <span style={{ fontSize: 12 }}>&#128274;</span> E2EE
         </div>
-
-        {/* Expandable E2EE explainer */}
-        <button
-          type="button"
-          onClick={() => setE2eeExpanded((v) => !v)}
-          style={{
-            marginTop: 16, background: 'none', border: '1px solid #30363d', borderRadius: 8,
-            padding: '8px 14px', color: '#8b949e', fontSize: 12, cursor: 'pointer',
-            fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6,
-            transition: 'border-color 0.15s, color 0.15s',
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#58a6ff'; e.currentTarget.style.color = '#c9d1d9'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#30363d'; e.currentTarget.style.color = '#8b949e'; }}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transform: e2eeExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
-            <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          What makes this conversation secure?
-        </button>
-        {e2eeExpanded && (
-          <div style={{
-            marginTop: 8, padding: '12px 16px', backgroundColor: 'rgba(88,166,255,0.04)',
-            border: '1px solid #30363d', borderRadius: 8, textAlign: 'left' as const,
-            maxWidth: 340, width: '100%',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ marginTop: 2, flexShrink: 0 }}><rect x="2" y="6" width="10" height="7" rx="1.5" stroke="#3fb950" strokeWidth="1.2" fill="none" /><path d="M4.5 6V4.5a2.5 2.5 0 0 1 5 0V6" stroke="#3fb950" strokeWidth="1.2" fill="none" /></svg>
-              <span style={{ fontSize: 12, color: '#c9d1d9', lineHeight: 1.5 }}>Messages are encrypted on your device before sending and can only be decrypted by the recipient.</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ marginTop: 2, flexShrink: 0 }}><path d="M7 1L2 3.5v3.5c0 3 1.8 5 5 6 3.2-1 5-3 5-6V3.5L7 1z" stroke="#58a6ff" strokeWidth="1.2" strokeLinejoin="round" fill="none" /></svg>
-              <span style={{ fontSize: 12, color: '#c9d1d9', lineHeight: 1.5 }}>The server never has access to your encryption keys or message content.</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ marginTop: 2, flexShrink: 0 }}><circle cx="7" cy="7" r="5.5" stroke="#bc8cff" strokeWidth="1.2" fill="none" /><path d="M5 7l1.5 1.5L9.5 5" stroke="#bc8cff" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>
-              <span style={{ fontSize: 12, color: '#c9d1d9', lineHeight: 1.5 }}>Verify your contact&apos;s fingerprint to ensure you are talking to the right person.</span>
-            </div>
-          </div>
-        )}
       </div>
     );
   };
@@ -1220,193 +1010,62 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   return (
     <div style={{ ...styles.container, ...(isMobile ? { borderRadius: 0, border: 'none' } : {}) }}>
       {/* Room header */}
-      <div style={{
-        ...styles.header,
-        ...(isMobile ? { padding: '6px 10px', gap: 4 } : {}),
-      }}>
+      <div style={{ ...styles.header, ...(isMobile ? { padding: '6px 10px', gap: 4 } : {}) }}>
         <div style={styles.headerLeft}>
           <div style={styles.headerNameRow}>
-            {/* Stacked member avatars for group rooms */}
             {roomType === 'group' && memberUserIds.length > 0 && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                marginRight: 6,
-                flexShrink: 0,
-              }}>
-                {memberUserIds
-                  .filter((id) => id !== currentUserId)
-                  .slice(0, 3)
-                  .map((userId, idx) => (
-                    <div
-                      key={userId}
-                      title={formatDisplayName(userId)}
-                      style={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: '50%',
-                        backgroundColor: getAvatarColor(userId),
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: '#fff',
-                        border: '2px solid #161b22',
-                        marginLeft: idx === 0 ? 0 : -8,
-                        zIndex: 3 - idx,
-                        position: 'relative' as const,
-                      }}
-                    >
-                      {formatDisplayName(userId).charAt(0).toUpperCase()}
-                    </div>
-                  ))}
+              <div style={{ display: 'flex', alignItems: 'center', marginRight: 6, flexShrink: 0 }}>
+                {memberUserIds.filter((id) => id !== currentUserId).slice(0, 3).map((userId, idx) => (
+                  <div key={userId} title={formatDisplayName(userId)} style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: getAvatarColor(userId), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff', border: '2px solid #161b22', marginLeft: idx === 0 ? 0 : -8, zIndex: 3 - idx, position: 'relative' as const }}>
+                    {formatDisplayName(userId).charAt(0).toUpperCase()}
+                  </div>
+                ))}
                 {memberUserIds.filter((id) => id !== currentUserId).length > 3 && (
-                  <div
-                    style={{
-                      width: 24,
-                      height: 24,
-                      borderRadius: '50%',
-                      backgroundColor: '#30363d',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 9,
-                      fontWeight: 700,
-                      color: '#c9d1d9',
-                      border: '2px solid #161b22',
-                      marginLeft: -8,
-                      zIndex: 0,
-                      position: 'relative' as const,
-                    }}
-                  >
+                  <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: '#30363d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#c9d1d9', border: '2px solid #161b22', marginLeft: -8, zIndex: 0, position: 'relative' as const }}>
                     +{memberUserIds.filter((id) => id !== currentUserId).length - 3}
                   </div>
                 )}
               </div>
             )}
             {isEditingName ? (
-              <input
-                ref={renameInputRef}
-                type="text"
-                style={styles.renameInput}
-                value={editNameValue}
-                onChange={(e) => setEditNameValue(e.target.value)}
-                onKeyDown={handleRenameKeyDown}
-                onBlur={handleCancelRename}
-                disabled={isRenaming}
-                maxLength={128}
-                aria-label="Rename room"
-              />
+              <input ref={renameInputRef} type="text" style={styles.renameInput} value={editNameValue} onChange={(e) => setEditNameValue(e.target.value)} onKeyDown={handleRenameKeyDown} onBlur={handleCancelRename} disabled={isRenaming} maxLength={128} aria-label="Rename room" />
             ) : (
-              <span
-                style={{
-                  ...styles.headerName,
-                  ...(isMobile ? { maxWidth: '50vw', fontSize: 13 } : {}),
-                  cursor: 'pointer',
-                }}
-                onClick={handleStartRename}
-                title="Click to rename"
-              >
+              <span style={{ ...styles.headerName, ...(isMobile ? { maxWidth: '50vw', fontSize: 13 } : {}), cursor: 'pointer' }} onClick={handleStartRename} title="Click to rename">
                 {headerName}
               </span>
             )}
             {roomType === 'direct' && !isEditingName && (
-              <span style={styles.verifiedBadge} title="Verified contact">
-                &#10003;
-              </span>
+              <span style={styles.verifiedBadge} title="Verified contact">&#10003;</span>
             )}
           </div>
           <div style={styles.headerSubRow}>
-            <span
-              style={styles.encryptionBadge}
-              title="End-to-end encryption enabled"
-            >
-              E2EE
-            </span>
+            <span style={styles.encryptionBadge} title="End-to-end encryption enabled">E2EE</span>
             {isSyncing && <SyncIndicator />}
             {roomType === 'group' && memberCount != null && memberCount > 0 && (
-              <span style={styles.headerMemberCount}>
-                {memberCount} member{memberCount !== 1 ? 's' : ''}
-              </span>
+              <span style={styles.headerMemberCount}>{memberCount} member{memberCount !== 1 ? 's' : ''}</span>
             )}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 6, position: 'relative' as const }}>
-          {!isMobile && <button
-            type="button"
-            style={{
-              ...styles.disappearingButton,
-              ...(disappearingSettings?.enabled ? styles.disappearingButtonActive : {}),
-            }}
-            title="Disappearing messages"
-            onClick={() => setShowDisappearingMenu(!showDisappearingMenu)}
-          >
+          {!isMobile && <button type="button" style={{ ...styles.disappearingButton, ...(disappearingSettings?.enabled ? styles.disappearingButtonActive : {}) }} title="Disappearing messages" onClick={() => setShowDisappearingMenu(!showDisappearingMenu)}>
             {disappearingSettings?.enabled ? 'Auto-delete ON' : 'Auto-delete'}
           </button>}
           {showDisappearingMenu && (
             <div style={styles.disappearingMenu}>
               <div style={styles.disappearingMenuTitle}>Disappearing Messages</div>
-              {[
-                { label: 'Off', seconds: 0 },
-                { label: '30 seconds', seconds: 30 },
-                { label: '5 minutes', seconds: 300 },
-                { label: '1 hour', seconds: 3600 },
-                { label: '24 hours', seconds: 86400 },
-              ].map((opt) => (
-                <button
-                  key={opt.seconds}
-                  type="button"
-                  style={{
-                    ...styles.disappearingMenuItem,
-                    ...(disappearingSettings?.enabled && disappearingSettings.timeoutSeconds === opt.seconds
-                      ? { color: '#58a6ff' }
-                      : {}),
-                    ...(!disappearingSettings?.enabled && opt.seconds === 0 ? { color: '#58a6ff' } : {}),
-                  }}
-                  onClick={() => {
-                    void (async () => {
-                      try {
-                        const { updateRoomSettings } = await import('../api/roomsAPI');
-                        const newSettings = opt.seconds === 0
-                          ? { disappearingMessages: { enabled: false, timeoutSeconds: 0 } }
-                          : { disappearingMessages: { enabled: true, timeoutSeconds: opt.seconds } };
-                        await updateRoomSettings(roomId, newSettings);
-                        setDisappearingSettings(
-                          opt.seconds === 0 ? null : { enabled: true, timeoutSeconds: opt.seconds },
-                        );
-                      } catch (err) {
-                        console.error('Failed to update disappearing settings:', err);
-                      }
-                      setShowDisappearingMenu(false);
-                    })();
-                  }}
-                >
+              {[{ label: 'Off', seconds: 0 }, { label: '30 seconds', seconds: 30 }, { label: '5 minutes', seconds: 300 }, { label: '1 hour', seconds: 3600 }, { label: '24 hours', seconds: 86400 }].map((opt) => (
+                <button key={opt.seconds} type="button" style={{ ...styles.disappearingMenuItem, ...(disappearingSettings?.enabled && disappearingSettings.timeoutSeconds === opt.seconds ? { color: '#58a6ff' } : {}), ...(!disappearingSettings?.enabled && opt.seconds === 0 ? { color: '#58a6ff' } : {}) }} onClick={() => { void (async () => { try { const { updateRoomSettings } = await import('../api/roomsAPI'); const newSettings = opt.seconds === 0 ? { disappearingMessages: { enabled: false, timeoutSeconds: 0 } } : { disappearingMessages: { enabled: true, timeoutSeconds: opt.seconds } }; await updateRoomSettings(roomId, newSettings); setDisappearingSettings(opt.seconds === 0 ? null : { enabled: true, timeoutSeconds: opt.seconds }); } catch (err) { console.error('Failed to update disappearing settings:', err); } setShowDisappearingMenu(false); })(); }}>
                   {opt.label}
                 </button>
               ))}
             </div>
           )}
           {!isMobile && onLeave && (
-            <button
-              type="button"
-              style={styles.leaveButton}
-              title="Leave conversation"
-              onClick={onLeave}
-            >
-              Leave
-            </button>
+            <button type="button" style={styles.leaveButton} title="Leave conversation" onClick={onLeave}>Leave</button>
           )}
-          {/* Mobile: "..." more menu for auto-delete, settings, leave */}
           {isMobile && (
             <>
-              <button
-                type="button"
-                style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#8b949e', fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', flexShrink: 0, minWidth: 44, minHeight: 44 }}
-                title="More options"
-                onClick={() => setShowMobileMoreMenu(!showMobileMoreMenu)}
-                aria-label="More options"
-              >
+              <button type="button" style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#8b949e', fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', flexShrink: 0, minWidth: 44, minHeight: 44 }} title="More options" onClick={() => setShowMobileMoreMenu(!showMobileMoreMenu)} aria-label="More options">
                 &#8943;
               </button>
               {showMobileMoreMenu && (
@@ -1427,19 +1086,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             </>
           )}
           {!isMobile && (
-            <button
-              type="button"
-              style={styles.infoButton}
-              title="Room info"
-              onClick={() => onOpenSettings?.()}
-            >
-              i
-            </button>
+            <button type="button" style={styles.infoButton} title="Room info" onClick={() => onOpenSettings?.()}>i</button>
           )}
         </div>
       </div>
 
-      {/* Sync error — subtle inline indicator instead of blocking banner */}
       {syncError && (
         <div style={styles.syncErrorIndicator}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}>
@@ -1451,14 +1102,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         </div>
       )}
 
-      {/* Message list */}
-      <div
-        ref={messageListRef}
-        style={styles.messageList}
-        onScroll={handleScroll}
-      >
+      <div ref={messageListRef} style={styles.messageList} onScroll={handleScroll}>
         {showRoomSkeleton ? (
-          /* Skeleton loading state: 3 placeholder bubbles while room loads */
           <div style={{ display: 'flex', flexDirection: 'column', padding: '16px 12px', gap: 4 }}>
             <SkeletonMessageBubble align="left" widthPercent={55} />
             <SkeletonMessageBubble align="right" widthPercent={45} />
@@ -1467,177 +1112,85 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         ) : (
           <>
         {renderWelcome()}
-
         {renderMessages()}
-
-        {/* Optimistic (outgoing) messages */}
         {optimisticMessages.map((om) => (
-          <div
-            key={om.id}
-            style={{
-              ...styles.messageBubble,
-              ...(isMobile ? { maxWidth: '85%' } : {}),
-              ...styles.ownMessage,
-              ...(om.status === 'sending' ? styles.optimisticSending : {}),
-              ...(om.status === 'failed' ? styles.optimisticFailed : {}),
-              alignSelf: 'flex-end' as const,
-              ...(recentlySentIds.has(om.id)
-                ? { animation: 'frame-msg-slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' }
-                : {}),
-            }}
-          >
+          <div key={om.id} style={{ ...styles.messageBubble, ...(isMobile ? { maxWidth: '85%' } : {}), ...styles.ownMessage, ...(om.status === 'sending' ? styles.optimisticSending : {}), ...(om.status === 'failed' ? styles.optimisticFailed : {}), alignSelf: 'flex-end' as const, ...(recentlySentIds.has(om.id) ? { animation: 'frame-msg-slide-up 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}) }}>
             <div style={styles.messageBody}>
               <span>{DOMPurify.sanitize(om.body, PURIFY_CONFIG)}</span>
             </div>
             <div style={styles.timestampRow}>
-              <span style={styles.timestamp}>
-                {formatRelativeTime(new Date(om.timestamp))}
-              </span>
+              <span style={styles.timestamp}>{formatRelativeTime(new Date(om.timestamp))}</span>
               {renderSendStatus(om.status)}
               {om.status === 'failed' && (
-                <button
-                  type="button"
-                  style={styles.retryInlineButton}
-                  onClick={() => handleRetry(om)}
-                  title="Retry sending"
-                >
-                  Retry
-                </button>
+                <button type="button" style={styles.retryInlineButton} onClick={() => handleRetry(om)} title="Retry sending">Retry</button>
               )}
             </div>
           </div>
         ))}
-
-        {/* Typing indicator placeholder — hidden by default, set display:'flex' when active */}
         <div style={styles.typingIndicator} aria-label="Typing indicator">
           <div style={styles.typingDot} />
           <div style={{ ...styles.typingDot, animationDelay: '0.2s' }} />
           <div style={{ ...styles.typingDot, animationDelay: '0.4s' }} />
         </div>
-
         <div ref={messagesEndRef} />
           </>
         )}
       </div>
 
-      {/* "New messages" pill when user has scrolled up */}
       {showNewMessagesPill && (
-        <button
-          type="button"
-          style={styles.newMessagesPill}
-          onClick={scrollToBottom}
-        >
-          New messages
-        </button>
+        <button type="button" style={styles.newMessagesPill} onClick={scrollToBottom}>New messages</button>
       )}
 
-      {/* Input area — textarea with auto-grow, Shift+Enter for newlines */}
-      <div style={{ ...styles.inputArea, ...(isMobile ? { padding: '8px 10px', gap: 6 } : {}) }}>
-        {/* View-once toggle — smaller on mobile */}
-        <button
-          type="button"
-          style={{
-            ...styles.viewOnceToggle,
-            ...(viewOnceMode ? styles.viewOnceToggleActive : {}),
-            ...(isMobile ? { padding: '4px 6px', fontSize: 12, width: 28, height: 28, minWidth: 28, minHeight: 28 } : {}),
-          }}
-          onClick={() => setViewOnceMode((v) => !v)}
-          title={viewOnceMode ? 'View-once enabled — recipient can only view this once' : 'Enable view-once mode'}
-          aria-label="Toggle view-once mode"
-        >
-          &#128065;
-        </button>
-        <textarea
-          ref={textareaRef}
-          style={{
-            ...styles.textarea,
-            ...(isMobile ? { padding: '12px 14px', fontSize: 16, minHeight: 48 } : {}),
-            ...(isTextareaFocused
-              ? {
-                  borderColor: '#58a6ff',
-                  animation: 'frame-textarea-glow 2s ease-in-out infinite',
-                  outline: 'none',
-                }
-              : {}),
-          }}
-          value={inputValue}
-          onChange={handleTextareaChange}
-          onKeyDown={handleKeyDown}
-          onFocus={() => setIsTextareaFocused(true)}
-          onBlur={() => setIsTextareaFocused(false)}
-          placeholder={viewOnceMode ? 'View-once message...' : 'Type a message...'}
-          disabled={isSending}
-          aria-label="Message input"
-          rows={1}
-        />
-        <button
-          style={{
-            ...styles.sendButton,
-            ...(isMobile ? { padding: '10px 12px', minWidth: 44, minHeight: 44 } : {}),
-            ...((isSending || !inputValue.trim()) ? { opacity: 0.4, cursor: 'not-allowed' } : {}),
-            ...(sendButtonAnimating
-              ? { animation: 'frame-send-launch 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)' }
-              : {}),
-          }}
-          onClick={() => void handleSend()}
-          disabled={isSending || !inputValue.trim()}
-          aria-label="Send message"
-        >
-          {isMobile ? (
-            isSending ? (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 14" />
-              </svg>
-            ) : (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            )
-          ) : (
-            isSending ? 'Sending...' : 'Send'
+      {/* Input area — unified bar with all controls inside */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', padding: '8px 12px', borderTop: '1px solid #30363d', backgroundColor: '#161b22' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', flex: 1, backgroundColor: '#0d1117', borderRadius: 24, border: isTextareaFocused ? '1px solid #58a6ff' : '1px solid #30363d', transition: 'border-color 0.2s', padding: '4px 4px 4px 8px', gap: 2, position: 'relative' as const, ...(isTextareaFocused ? { animation: 'frame-textarea-glow 2s ease-in-out infinite' } : {}) }}>
+          {/* Attachment placeholder */}
+          <button type="button" title="File sharing coming soon" aria-label="Attach file (coming soon)" style={{ background: 'none', border: 'none', cursor: 'default', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.35, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.49" /></svg>
+          </button>
+          {/* View-once toggle with pill badge */}
+          <button type="button" onClick={() => setViewOnceMode((v) => !v)} title={viewOnceMode ? 'View-once enabled' : 'Enable view-once mode'} aria-label="Toggle view-once mode" style={{ background: viewOnceMode ? 'rgba(217,158,36,0.2)' : 'none', border: 'none', cursor: 'pointer', padding: viewOnceMode ? '3px 10px 3px 6px' : '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2, borderRadius: 12, transition: 'background-color 0.15s, padding 0.15s' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={viewOnceMode ? '#d99e24' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
+            {viewOnceMode && <span style={{ fontSize: 10, fontWeight: 700, color: '#d99e24', letterSpacing: 0.3, whiteSpace: 'nowrap' as const }}>View Once</span>}
+          </button>
+          {/* Textarea */}
+          <textarea ref={textareaRef} style={{ flex: 1, padding: '8px 6px', border: 'none', backgroundColor: 'transparent', color: '#c9d1d9', fontSize: isMobile ? 16 : 14, fontFamily: 'inherit', resize: 'none' as const, lineHeight: '20px', minHeight: 36, maxHeight: 116, overflow: 'auto', outline: 'none' }} value={inputValue} onChange={handleTextareaChange} onKeyDown={handleKeyDown} onFocus={() => setIsTextareaFocused(true)} onBlur={() => setIsTextareaFocused(false)} placeholder={viewOnceMode ? 'View-once message...' : 'Type a message...'} disabled={isSending} aria-label="Message input" rows={1} />
+          {/* Character count indicator */}
+          {inputValue.length > 500 && (
+            <span style={{ position: 'absolute' as const, bottom: 6, right: inputValue.trim() ? 88 : 44, fontSize: 10, color: inputValue.length > 4500 ? '#f85149' : '#484f58', fontFamily: 'inherit', pointerEvents: 'none' as const, transition: 'color 0.2s' }}>{inputValue.length}/5000</span>
           )}
-        </button>
+          {/* Emoji picker */}
+          <div ref={emojiPickerRef} style={{ position: 'relative' as const, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 2 }}>
+            <button type="button" onClick={() => setShowEmojiPicker((v) => !v)} title="Insert emoji" aria-label="Emoji picker" style={{ background: showEmojiPicker ? 'rgba(88,166,255,0.15)' : 'none', border: 'none', cursor: 'pointer', padding: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, transition: 'background-color 0.15s' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={showEmojiPicker ? '#58a6ff' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M8 14s1.5 2 4 2 4-2 4-2" /><line x1="9" y1="9" x2="9.01" y2="9" /><line x1="15" y1="9" x2="15.01" y2="9" /></svg>
+            </button>
+            {showEmojiPicker && (
+              <div style={{ position: 'absolute' as const, bottom: 40, right: 0, backgroundColor: '#1c2128', border: '1px solid #30363d', borderRadius: 12, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.45)', zIndex: 1000, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 2, width: 228 }}>
+                {CHAT_EMOJIS.map((em) => (
+                  <button key={em} type="button" onClick={() => insertEmojiAtCursor(em)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', padding: 4, borderRadius: 6, lineHeight: 1.2, transition: 'background-color 0.1s' }} onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(88,166,255,0.15)'; }} onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'; }}>{em}</button>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* Send button — only when text exists */}
+          {inputValue.trim() && (
+            <button style={{ padding: isMobile ? '8px 10px' : '6px 14px', borderRadius: 18, border: 'none', backgroundColor: '#58a6ff', color: '#fff', fontSize: 13, fontWeight: 600, cursor: isSending ? 'not-allowed' : 'pointer', fontFamily: 'inherit', transition: 'background-color 0.15s, opacity 0.15s', alignSelf: 'flex-end', flexShrink: 0, marginBottom: 2, opacity: isSending ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 4, ...(sendButtonAnimating ? { animation: 'frame-send-launch 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)' } : {}) }} onClick={() => void handleSend()} disabled={isSending} aria-label="Send message">
+              {isMobile ? (isSending ? (<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 14" /></svg>) : (<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>)) : (isSending ? 'Sending...' : 'Send')}
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Context menu for deleting own messages */}
       {contextMenuEventId && contextMenuPos && (
-        <div
-          style={{
-            ...styles.contextMenu,
-            top: contextMenuPos.y,
-            left: contextMenuPos.x,
-          }}
-        >
-          <button
-            type="button"
-            className="frame-context-menu-item"
-            style={styles.contextMenuItem}
-            onClick={() => void handleDeleteMessage(contextMenuEventId)}
-          >
-            Delete
-          </button>
+        <div style={{ ...styles.contextMenu, top: contextMenuPos.y, left: contextMenuPos.x }}>
+          <button type="button" className="frame-context-menu-item" style={styles.contextMenuItem} onClick={() => void handleDeleteMessage(contextMenuEventId)}>Delete</button>
         </div>
       )}
 
-      {/* Reaction picker overlay */}
       {reactionPickerEventId && reactionPickerPos && (
-        <div
-          style={{
-            ...styles.reactionPicker,
-            top: reactionPickerPos.y,
-            left: reactionPickerPos.x,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div style={{ ...styles.reactionPicker, top: reactionPickerPos.y, left: reactionPickerPos.x }} onClick={(e) => e.stopPropagation()}>
           {QUICK_REACTIONS.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              style={styles.reactionPickerEmoji}
-              onClick={() => void handleReact(reactionPickerEventId, emoji)}
-            >
-              {emoji}
-            </button>
+            <button key={emoji} type="button" style={styles.reactionPickerEmoji} onClick={() => void handleReact(reactionPickerEventId, emoji)}>{emoji}</button>
           ))}
         </div>
       )}
@@ -1648,591 +1201,70 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 // ── Inline styles ──
 
 const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column',
-    height: '100%',
-    fontFamily: FONT_BODY,
-    border: '1px solid #30363d',
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: '#0d1117',
-    position: 'relative',
-  },
-  header: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    padding: '10px 14px',
-    borderBottom: '1px solid #30363d',
-    backgroundColor: '#161b22',
-  },
-  headerLeft: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 3,
-    minWidth: 0,
-  },
-  headerNameRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-  },
-  headerName: {
-    fontSize: 15,
-    fontWeight: 600,
-    color: '#e6edf3',
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  },
-  verifiedBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 16,
-    height: 16,
-    borderRadius: '50%',
-    backgroundColor: 'rgba(35, 134, 54, 0.2)',
-    color: '#3fb950',
-    fontSize: 10,
-    fontWeight: 700,
-    flexShrink: 0,
-  },
-  headerSubRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerMemberCount: {
-    fontSize: 12,
-    color: '#8b949e',
-  },
-  infoButton: {
-    width: 28,
-    height: 28,
-    borderRadius: '50%',
-    border: '1px solid #30363d',
-    backgroundColor: 'transparent',
-    color: '#8b949e',
-    fontSize: 14,
-    fontWeight: 600,
-    fontStyle: 'italic',
-    fontFamily: 'inherit',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    transition: 'border-color 0.15s, color 0.15s',
-  },
-  renameInput: {
-    fontSize: 15,
-    fontWeight: 600,
-    color: '#e6edf3',
-    backgroundColor: '#0d1117',
-    border: '1px solid #58a6ff',
-    borderRadius: 4,
-    padding: '2px 6px',
-    fontFamily: 'inherit',
-    outline: 'none',
-    width: '100%',
-    maxWidth: 240,
-  },
-  encryptionBadge: {
-    fontSize: 10,
-    fontWeight: 600,
-    padding: '1px 5px',
-    borderRadius: 4,
-    backgroundColor: 'rgba(35, 134, 54, 0.15)',
-    color: '#3fb950',
-  },
-  roomLabel: {
-    fontSize: 13,
-    color: '#c9d1d9',
-  },
-  syncErrorIndicator: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 6,
-    padding: '4px 14px',
-    backgroundColor: 'rgba(210, 153, 34, 0.08)',
-    borderBottom: '1px solid rgba(210, 153, 34, 0.15)',
-  },
-  messageList: {
-    flex: 1,
-    overflowY: 'auto',
-    padding: 12,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 2,
-    scrollBehavior: 'smooth' as const,
-    WebkitOverflowScrolling: 'touch' as const,
-  },
-
-  // ── Date separators ──
-  dateSeparator: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    margin: '16px 0 8px',
-  },
-  dateSeparatorLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#21262d',
-  },
-  dateSeparatorText: {
-    fontSize: 11,
-    fontWeight: 600,
-    color: '#484f58',
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.05em',
-    flexShrink: 0,
-  },
-
-  // ── Time gap between groups ──
-  timeGap: {
-    display: 'flex',
-    justifyContent: 'center',
-    margin: '8px 0 4px',
-  },
-  timeGapText: {
-    fontSize: 10,
-    color: '#484f58',
-    backgroundColor: '#161b22',
-    padding: '2px 10px',
-    borderRadius: 10,
-  },
-
-  emptyState: {
-    textAlign: 'center',
-    color: '#8b949e',
-    marginTop: 40,
-    fontSize: 14,
-  },
-  messageBubble: {
-    maxWidth: '70%',
-    padding: '8px 12px',
-    borderRadius: 12,
-    fontSize: 14,
-    lineHeight: 1.4,
-    wordBreak: 'break-word',
-  },
-  ownMessage: {
-    backgroundColor: '#58a6ff',
-    color: '#ffffff',
-  },
-  otherMessage: {
-    backgroundColor: '#21262d',
-    color: '#c9d1d9',
-  },
-  errorMessage: {
-    opacity: 0.7,
-    borderLeft: '3px solid #f85149',
-  },
-  optimisticSending: {
-    opacity: 0.7,
-  },
-  optimisticFailed: {
-    opacity: 0.8,
-    backgroundColor: '#4a3040',
-    borderRight: '3px solid #f85149',
-  },
-  senderName: {
-    fontSize: 11,
-    fontWeight: 600,
-    marginBottom: 2,
-  },
-  messageBody: {
-    display: 'flex',
-    alignItems: 'flex-start',
-    gap: 4,
-  },
-  encryptionLock: {
-    fontSize: 12,
-    flexShrink: 0,
-    marginTop: 1,
-  },
-  encryptionWarning: {
-    fontSize: 14,
-    color: '#f85149',
-    flexShrink: 0,
-    marginTop: -1,
-  },
-  decryptErrorInline: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 5,
-    cursor: 'help',
-  },
-  errorText: {
-    fontStyle: 'italic',
-    opacity: 0.8,
-    fontSize: 13,
-    borderBottom: '1px dotted rgba(248, 81, 73, 0.4)',
-  },
-  timestampRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 4,
-    marginTop: 4,
-  },
-  timestamp: {
-    fontSize: 10,
-    marginTop: 4,
-    opacity: 0.7,
-    textAlign: 'right',
-  },
-  statusIcon: {
-    fontSize: 10,
-    opacity: 0.6,
-  },
-  statusIconSent: {
-    fontSize: 11,
-    color: '#ffffff',
-    opacity: 0.8,
-  },
-  statusIconFailed: {
-    fontSize: 12,
-    color: '#f85149',
-  },
-  retryInlineButton: {
-    padding: '1px 6px',
-    fontSize: 10,
-    fontWeight: 600,
-    backgroundColor: 'rgba(248, 81, 73, 0.2)',
-    color: '#f85149',
-    border: '1px solid rgba(248, 81, 73, 0.4)',
-    borderRadius: 3,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-    marginLeft: 2,
-  },
-  inputArea: {
-    display: 'flex',
-    gap: 8,
-    padding: 12,
-    borderTop: '1px solid #30363d',
-    backgroundColor: '#161b22',
-    alignItems: 'flex-end',
-  },
-  textarea: {
-    flex: 1,
-    padding: '8px 12px',
-    borderRadius: 20,
-    border: '1px solid #30363d',
-    backgroundColor: '#0d1117',
-    color: '#c9d1d9',
-    fontSize: 14,
-    fontFamily: 'inherit',
-    transition: 'border-color 0.15s',
-    resize: 'none' as const,
-    lineHeight: '20px',
-    minHeight: 36,
-    maxHeight: 116,
-    overflow: 'auto',
-  },
-  sendButton: {
-    padding: '8px 16px',
-    borderRadius: 20,
-    border: 'none',
-    backgroundColor: '#58a6ff',
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-    transition: 'background-color 0.15s',
-    alignSelf: 'flex-end',
-  },
-  deletedText: {
-    fontStyle: 'italic',
-    color: '#8b949e',
-    opacity: 0.7,
-  },
-  contextMenu: {
-    position: 'fixed' as const,
-    zIndex: 9999,
-    backgroundColor: '#1c2128',
-    border: '1px solid rgba(99, 110, 123, 0.35)',
-    borderRadius: 10,
-    boxShadow: '0 12px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)',
-    padding: 6,
-    minWidth: 140,
-    backdropFilter: 'blur(12px)',
-    animation: 'frame-context-menu-in 0.15s ease-out',
-  },
-  contextMenuItem: {
-    display: 'block',
-    width: '100%',
-    padding: '8px 14px',
-    fontSize: 13,
-    color: '#f85149',
-    backgroundColor: 'transparent',
-    border: 'none',
-    borderRadius: 6,
-    cursor: 'pointer',
-    textAlign: 'left' as const,
-    fontFamily: 'inherit',
-    transition: 'background-color 0.12s',
-  },
-  expiredText: {
-    fontStyle: 'italic',
-    color: '#8b949e',
-    opacity: 0.6,
-  },
-  leaveButton: {
-    padding: '4px 10px',
-    fontSize: 11,
-    fontWeight: 600,
-    backgroundColor: 'rgba(248, 81, 73, 0.1)',
-    color: '#f85149',
-    border: '1px solid rgba(248, 81, 73, 0.3)',
-    borderRadius: 6,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-  },
-  disappearingButton: {
-    padding: '4px 8px',
-    fontSize: 10,
-    fontWeight: 600,
-    backgroundColor: 'transparent',
-    color: '#8b949e',
-    border: '1px solid #30363d',
-    borderRadius: 6,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-    whiteSpace: 'nowrap' as const,
-  },
-  disappearingButtonActive: {
-    backgroundColor: 'rgba(210, 153, 34, 0.15)',
-    color: '#d29922',
-    borderColor: '#d29922',
-  },
-  disappearingMenu: {
-    position: 'absolute' as const,
-    top: '100%',
-    right: 0,
-    marginTop: 4,
-    backgroundColor: '#21262d',
-    border: '1px solid #30363d',
-    borderRadius: 8,
-    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-    padding: 6,
-    zIndex: 100,
-    minWidth: 160,
-  },
-  disappearingMenuTitle: {
-    fontSize: 11,
-    fontWeight: 600,
-    color: '#8b949e',
-    padding: '4px 8px 6px',
-    borderBottom: '1px solid #30363d',
-    marginBottom: 4,
-  },
-  disappearingMenuItem: {
-    display: 'block',
-    width: '100%',
-    padding: '6px 8px',
-    fontSize: 12,
-    color: '#c9d1d9',
-    backgroundColor: 'transparent',
-    border: 'none',
-    borderRadius: 4,
-    cursor: 'pointer',
-    textAlign: 'left' as const,
-    fontFamily: 'inherit',
-  },
-
-  // ── View-once ──
-  viewOnceToggle: {
-    padding: '6px 8px',
-    fontSize: 16,
-    backgroundColor: 'transparent',
-    color: '#8b949e',
-    border: '1px solid #30363d',
-    borderRadius: 20,
-    cursor: 'pointer',
-    lineHeight: 1,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    transition: 'border-color 0.15s, color 0.15s, background-color 0.15s',
-    alignSelf: 'flex-end',
-  },
-  viewOnceToggleActive: {
-    backgroundColor: 'rgba(210, 153, 34, 0.15)',
-    color: '#d29922',
-    borderColor: '#d29922',
-  },
-  viewOnceIcon: {
-    fontSize: 12,
-    flexShrink: 0,
-    marginTop: 1,
-    opacity: 0.7,
-  },
-
-  // ── "New messages" pill ──
-  newMessagesPill: {
-    position: 'absolute' as const,
-    bottom: 80,
-    left: '50%',
-    transform: 'translateX(-50%)',
-    padding: '6px 16px',
-    fontSize: 12,
-    fontWeight: 600,
-    color: '#ffffff',
-    backgroundColor: '#58a6ff',
-    border: 'none',
-    borderRadius: 20,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-    zIndex: 10,
-    transition: 'opacity 0.2s',
-  },
-
-  // ── Typing indicator (hidden by default — set display:'flex' when active) ──
-  typingIndicator: {
-    display: 'none',
-    alignItems: 'center',
-    gap: 4,
-    padding: '4px 8px',
-    marginTop: 4,
-    alignSelf: 'flex-start',
-    minHeight: 20,
-  },
-  typingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: '50%',
-    backgroundColor: '#484f58',
-    animation: 'frame-typing-bounce 1.4s infinite ease-in-out',
-  },
-
-  // ── Welcome / empty room ──
-  welcomeContainer: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '40px 24px',
-    textAlign: 'center',
-    flex: 1,
-  },
-  welcomeIconWrap: {
-    marginBottom: 12,
-    opacity: 0.7,
-  },
-  welcomeTitle: {
-    fontSize: 15,
-    fontWeight: 600,
-    color: '#e6edf3',
-    marginBottom: 8,
-    maxWidth: 320,
-    lineHeight: 1.4,
-  },
-  welcomeSubtitle: {
-    fontSize: 13,
-    color: '#8b949e',
-    marginBottom: 12,
-  },
-  welcomeE2eeBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 4,
-    padding: '4px 10px',
-    borderRadius: 12,
-    backgroundColor: 'rgba(35, 134, 54, 0.1)',
-    color: '#3fb950',
-    fontSize: 11,
-    fontWeight: 600,
-  },
-
-  // ── Reactions ──
-  reactionsRow: {
-    display: 'flex',
-    flexWrap: 'wrap' as const,
-    gap: 4,
-    marginTop: 4,
-  },
-  reactionBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: 3,
-    padding: '2px 6px',
-    fontSize: 12,
-    borderRadius: 10,
-    border: '1px solid #30363d',
-    backgroundColor: 'rgba(33, 38, 45, 0.8)',
-    color: '#c9d1d9',
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-    transition: 'border-color 0.15s, background-color 0.15s',
-    lineHeight: 1.3,
-  },
-  reactionBadgeOwn: {
-    borderColor: '#58a6ff',
-    backgroundColor: 'rgba(88, 166, 255, 0.15)',
-  },
-  addReactionButton: {
-    width: 24,
-    height: 24,
-    borderRadius: '50%',
-    border: '1px solid #30363d',
-    backgroundColor: 'transparent',
-    color: '#8b949e',
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-    alignSelf: 'center',
-    opacity: 0,
-    transition: 'opacity 0.15s, border-color 0.15s',
-    fontFamily: 'inherit',
-  },
-  reactionPicker: {
-    position: 'fixed' as const,
-    zIndex: 9999,
-    display: 'flex',
-    gap: 2,
-    padding: '4px 6px',
-    backgroundColor: '#1c2128',
-    border: '1px solid rgba(99, 110, 123, 0.35)',
-    borderRadius: 20,
-    boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-    backdropFilter: 'blur(12px)',
-    animation: 'frame-context-menu-in 0.15s ease-out',
-  },
-  reactionPickerEmoji: {
-    width: 32,
-    height: 32,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: 18,
-    backgroundColor: 'transparent',
-    border: 'none',
-    borderRadius: '50%',
-    cursor: 'pointer',
-    transition: 'background-color 0.12s, transform 0.12s',
-    fontFamily: 'inherit',
-  },
-
-  // ── Read receipts ──
-  readReceiptIcon: {
-    fontSize: 11,
-    color: '#3fb950',
-    opacity: 0.8,
-    marginLeft: 2,
-  },
+  container: { display: 'flex', flexDirection: 'column', height: '100%', fontFamily: FONT_BODY, border: '1px solid #30363d', borderRadius: 8, overflow: 'hidden', backgroundColor: '#0d1117', position: 'relative' },
+  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 14px', borderBottom: '1px solid #30363d', backgroundColor: '#161b22' },
+  headerLeft: { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 },
+  headerNameRow: { display: 'flex', alignItems: 'center', gap: 6 },
+  headerName: { fontSize: 15, fontWeight: 600, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  verifiedBadge: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: '50%', backgroundColor: 'rgba(35, 134, 54, 0.2)', color: '#3fb950', fontSize: 10, fontWeight: 700, flexShrink: 0 },
+  headerSubRow: { display: 'flex', alignItems: 'center', gap: 8 },
+  headerMemberCount: { fontSize: 12, color: '#8b949e' },
+  infoButton: { width: 28, height: 28, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#8b949e', fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'border-color 0.15s, color 0.15s' },
+  renameInput: { fontSize: 15, fontWeight: 600, color: '#e6edf3', backgroundColor: '#0d1117', border: '1px solid #58a6ff', borderRadius: 4, padding: '2px 6px', fontFamily: 'inherit', outline: 'none', width: '100%', maxWidth: 240 },
+  encryptionBadge: { fontSize: 10, fontWeight: 600, padding: '1px 5px', borderRadius: 4, backgroundColor: 'rgba(35, 134, 54, 0.15)', color: '#3fb950' },
+  roomLabel: { fontSize: 13, color: '#c9d1d9' },
+  syncErrorIndicator: { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 14px', backgroundColor: 'rgba(210, 153, 34, 0.08)', borderBottom: '1px solid rgba(210, 153, 34, 0.15)' },
+  messageList: { flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 2, scrollBehavior: 'smooth' as const, WebkitOverflowScrolling: 'touch' as const },
+  dateSeparator: { display: 'flex', alignItems: 'center', gap: 12, margin: '16px 0 8px' },
+  dateSeparatorLine: { flex: 1, height: 1, backgroundColor: '#21262d' },
+  dateSeparatorText: { fontSize: 11, fontWeight: 600, color: '#484f58', textTransform: 'uppercase' as const, letterSpacing: '0.05em', flexShrink: 0 },
+  timeGap: { display: 'flex', justifyContent: 'center', margin: '8px 0 4px' },
+  timeGapText: { fontSize: 10, color: '#484f58', backgroundColor: '#161b22', padding: '2px 10px', borderRadius: 10 },
+  emptyState: { textAlign: 'center', color: '#8b949e', marginTop: 40, fontSize: 14 },
+  messageBubble: { maxWidth: '70%', padding: '8px 12px', borderRadius: 12, fontSize: 14, lineHeight: 1.4, wordBreak: 'break-word' },
+  ownMessage: { backgroundColor: '#58a6ff', color: '#ffffff' },
+  otherMessage: { backgroundColor: '#21262d', color: '#c9d1d9' },
+  errorMessage: { opacity: 0.7, borderLeft: '3px solid #f85149' },
+  optimisticSending: { opacity: 0.7 },
+  optimisticFailed: { opacity: 0.8, backgroundColor: '#4a3040', borderRight: '3px solid #f85149' },
+  senderName: { fontSize: 11, fontWeight: 600, marginBottom: 2 },
+  messageBody: { display: 'flex', alignItems: 'flex-start', gap: 4 },
+  encryptionLock: { fontSize: 12, flexShrink: 0, marginTop: 1 },
+  encryptionWarning: { fontSize: 14, color: '#f85149', flexShrink: 0, marginTop: -1 },
+  decryptErrorInline: { display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'help' },
+  errorText: { fontStyle: 'italic', opacity: 0.8, fontSize: 13, borderBottom: '1px dotted rgba(248, 81, 73, 0.4)' },
+  timestampRow: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 4 },
+  timestamp: { fontSize: 10, marginTop: 4, opacity: 0.7, textAlign: 'right' },
+  statusIcon: { fontSize: 10, opacity: 0.6 },
+  statusIconSent: { fontSize: 11, color: '#ffffff', opacity: 0.8 },
+  statusIconFailed: { fontSize: 12, color: '#f85149' },
+  retryInlineButton: { padding: '1px 6px', fontSize: 10, fontWeight: 600, backgroundColor: 'rgba(248, 81, 73, 0.2)', color: '#f85149', border: '1px solid rgba(248, 81, 73, 0.4)', borderRadius: 3, cursor: 'pointer', fontFamily: 'inherit', marginLeft: 2 },
+  deletedText: { fontStyle: 'italic', color: '#8b949e', opacity: 0.7 },
+  contextMenu: { position: 'fixed' as const, zIndex: 9999, backgroundColor: '#1c2128', border: '1px solid rgba(99, 110, 123, 0.35)', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)', padding: 6, minWidth: 140, backdropFilter: 'blur(12px)', animation: 'frame-context-menu-in 0.15s ease-out' },
+  contextMenuItem: { display: 'block', width: '100%', padding: '8px 14px', fontSize: 13, color: '#f85149', backgroundColor: 'transparent', border: 'none', borderRadius: 6, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit', transition: 'background-color 0.12s' },
+  expiredText: { fontStyle: 'italic', color: '#8b949e', opacity: 0.6 },
+  leaveButton: { padding: '4px 10px', fontSize: 11, fontWeight: 600, backgroundColor: 'rgba(248, 81, 73, 0.1)', color: '#f85149', border: '1px solid rgba(248, 81, 73, 0.3)', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' },
+  disappearingButton: { padding: '4px 8px', fontSize: 10, fontWeight: 600, backgroundColor: 'transparent', color: '#8b949e', border: '1px solid #30363d', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' as const },
+  disappearingButtonActive: { backgroundColor: 'rgba(210, 153, 34, 0.15)', color: '#d29922', borderColor: '#d29922' },
+  disappearingMenu: { position: 'absolute' as const, top: '100%', right: 0, marginTop: 4, backgroundColor: '#21262d', border: '1px solid #30363d', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', padding: 6, zIndex: 100, minWidth: 160 },
+  disappearingMenuTitle: { fontSize: 11, fontWeight: 600, color: '#8b949e', padding: '4px 8px 6px', borderBottom: '1px solid #30363d', marginBottom: 4 },
+  disappearingMenuItem: { display: 'block', width: '100%', padding: '6px 8px', fontSize: 12, color: '#c9d1d9', backgroundColor: 'transparent', border: 'none', borderRadius: 4, cursor: 'pointer', textAlign: 'left' as const, fontFamily: 'inherit' },
+  viewOnceIcon: { fontSize: 12, flexShrink: 0, marginTop: 1, opacity: 0.7 },
+  newMessagesPill: { position: 'absolute' as const, bottom: 80, left: '50%', transform: 'translateX(-50%)', padding: '6px 16px', fontSize: 12, fontWeight: 600, color: '#ffffff', backgroundColor: '#58a6ff', border: 'none', borderRadius: 20, cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', zIndex: 10, transition: 'opacity 0.2s' },
+  typingIndicator: { display: 'none', alignItems: 'center', gap: 4, padding: '4px 8px', marginTop: 4, alignSelf: 'flex-start', minHeight: 20 },
+  typingDot: { width: 6, height: 6, borderRadius: '50%', backgroundColor: '#484f58', animation: 'frame-typing-bounce 1.4s infinite ease-in-out' },
+  welcomeContainer: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 24px', textAlign: 'center', flex: 1 },
+  welcomeIconWrap: { marginBottom: 12, opacity: 0.7 },
+  welcomeTitle: { fontSize: 15, fontWeight: 600, color: '#e6edf3', marginBottom: 8, maxWidth: 320, lineHeight: 1.4 },
+  welcomeSubtitle: { fontSize: 13, color: '#8b949e', marginBottom: 12 },
+  welcomeE2eeBadge: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 12, backgroundColor: 'rgba(35, 134, 54, 0.1)', color: '#3fb950', fontSize: 11, fontWeight: 600 },
+  reactionsRow: { display: 'flex', flexWrap: 'wrap' as const, gap: 4, marginTop: 4 },
+  reactionBadge: { display: 'inline-flex', alignItems: 'center', gap: 3, padding: '2px 6px', fontSize: 12, borderRadius: 10, border: '1px solid #30363d', backgroundColor: 'rgba(33, 38, 45, 0.8)', color: '#c9d1d9', cursor: 'pointer', fontFamily: 'inherit', transition: 'border-color 0.15s, background-color 0.15s', lineHeight: 1.3 },
+  reactionBadgeOwn: { borderColor: '#58a6ff', backgroundColor: 'rgba(88, 166, 255, 0.15)' },
+  addReactionButton: { width: 24, height: 24, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#8b949e', fontSize: 14, fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, alignSelf: 'center', opacity: 0, transition: 'opacity 0.15s, border-color 0.15s', fontFamily: 'inherit' },
+  reactionPicker: { position: 'fixed' as const, zIndex: 9999, display: 'flex', gap: 2, padding: '4px 6px', backgroundColor: '#1c2128', border: '1px solid rgba(99, 110, 123, 0.35)', borderRadius: 20, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)', animation: 'frame-context-menu-in 0.15s ease-out' },
+  reactionPickerEmoji: { width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, backgroundColor: 'transparent', border: 'none', borderRadius: '50%', cursor: 'pointer', transition: 'background-color 0.12s, transform 0.12s', fontFamily: 'inherit' },
+  readReceiptIcon: { fontSize: 11, color: '#3fb950', opacity: 0.8, marginLeft: 2 },
 };
 
 export default ChatWindow;
