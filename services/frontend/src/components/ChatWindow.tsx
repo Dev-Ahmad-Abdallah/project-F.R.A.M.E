@@ -187,6 +187,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   // Sync activity indicator: true while actively fetching
   const [isSyncing, setIsSyncing] = useState(false);
   const [inputValue, setInputValue] = useState('');
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [contextMenuEventId, setContextMenuEventId] = useState<string | null>(null);
@@ -938,6 +939,25 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   };
 
+  const handleVoiceSend = useCallback(async (audioBase64: string, durationMs: number) => {
+    setIsRecordingVoice(false);
+    if (!roomId) return;
+    try {
+      const voiceContent: Record<string, unknown> = {
+        msgtype: 'm.audio',
+        body: 'Voice message',
+        audioData: audioBase64,
+        duration: durationMs,
+      };
+      const encrypted = await encryptForRoom(roomId, 'm.room.message', voiceContent, memberUserIds);
+      await sendMessage(roomId, 'm.room.encrypted', encrypted);
+      playSendSound();
+    } catch (err) {
+      console.error('[VoiceSend] Failed:', err);
+      playErrorSound();
+    }
+  }, [roomId, memberUserIds]);
+
   const handleRetry = (om: OptimisticMessage) => {
     setOptimisticMessages((prev) => prev.filter((m) => m.id !== om.id));
     void handleSend(om.body);
@@ -1171,6 +1191,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           : JSON.stringify(content);
     return DOMPurify.sanitize(raw, PURIFY_CONFIG);
   };
+
+  function isAudioMessage(content: Record<string, unknown>): boolean {
+    return content?.msgtype === 'm.audio' && typeof content?.audioData === 'string';
+  }
 
   const renderEncryptionIcon = (decrypted: DecryptedEvent): React.ReactNode => {
     if (!decrypted.isEncrypted) return null;
@@ -1476,7 +1500,13 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                       </span>
                     </span>
                   ) : (
-                    <span>{(() => {
+                    decrypted.plaintext && typeof decrypted.plaintext === 'object' && isAudioMessage(decrypted.plaintext as Record<string, unknown>)
+                    ? <AudioPlayer
+                        audioBase64={(decrypted.plaintext as Record<string, unknown>).audioData as string}
+                        durationMs={((decrypted.plaintext as Record<string, unknown>).duration as number) || 0}
+                        isSent={isOwn}
+                      />
+                    : <span>{(() => {
                       const text = renderMessageContent(decrypted);
                       if (!searchQuery.trim()) return text;
                       const q = searchQuery.toLowerCase();

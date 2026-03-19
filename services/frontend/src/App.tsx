@@ -49,6 +49,8 @@ import ProfileSettings from './components/ProfileSettings';
 import { useSessionTimeout, getAutoLock } from './hooks/useSessionTimeout';
 import { useInstallPrompt } from './hooks/useInstallPrompt';
 import { playNotificationSound } from './sounds';
+import { useScreenProtection } from './hooks/useScreenProtection';
+import PrivacyShield from './components/PrivacyShield';
 
 // Lazy-load components not needed on initial render — reduces main bundle size
 const LandingPage = React.lazy(() => import('./pages/LandingPage'));
@@ -147,6 +149,9 @@ function App() {
 
   // PWA install prompt
   const { showBanner: showInstallBanner, promptInstall, dismissBanner: dismissInstall, isIOS } = useInstallPrompt();
+
+  // Screen capture / screenshot protection
+  const { isHidden, isBlurred, privacyMode, setPrivacyMode, captureDetected, dismissCaptureWarning } = useScreenProtection();
 
   // Track previous connection state for reconnection toast
   const prevConnectionLostRef = useRef(false);
@@ -1328,6 +1333,14 @@ function App() {
 
   return (
     <div style={styles.appWrapper}>
+      <PrivacyShield
+        isHidden={isHidden}
+        isBlurred={isBlurred}
+        privacyMode={privacyMode}
+        userId={auth?.userId || ''}
+        captureDetected={captureDetected}
+        onDismissCaptureWarning={dismissCaptureWarning}
+      />
       {/* Skip to content link for keyboard/screen-reader users */}
       <a
         href="#main-content"
@@ -1584,6 +1597,29 @@ function App() {
                 <path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.34 3.34l1.42 1.42M13.24 13.24l1.42 1.42M3.34 14.66l1.42-1.42M13.24 4.76l1.42-1.42" stroke="#8b949e" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
               {isMobile && <span>Settings</span>}
+            </button>
+            <button
+              type="button"
+              onClick={() => setPrivacyMode(!privacyMode)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 6,
+                borderRadius: 6,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: privacyMode ? '#3fb950' : '#8b949e',
+                transition: 'color 0.15s',
+              }}
+              title={privacyMode ? 'Privacy Screen: ON' : 'Privacy Screen: OFF'}
+              aria-label="Toggle privacy screen"
+            >
+              <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+                <path d="M8 1L2 4v4.5c0 3.5 2.5 6.2 6 7.5 3.5-1.3 6-4 6-7.5V4L8 1z" stroke="currentColor" strokeWidth="1.2" fill={privacyMode ? 'rgba(63,185,80,0.15)' : 'none'} />
+                {privacyMode && <path d="M6 8.5l1.5 1.5L10.5 6" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />}
+              </svg>
             </button>
             <button
               type="button"
