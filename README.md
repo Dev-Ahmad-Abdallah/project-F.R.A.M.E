@@ -31,18 +31,43 @@ F.R.A.M.E. also implements a Merkle Tree-based key transparency system, allowing
 
 ---
 
+## The Ratcheting Protocol
+
+The **R** in F.R.A.M.E. stands for **Ratcheting** -- the cryptographic mechanism that gives the platform its forward secrecy guarantees.
+
+F.R.A.M.E. uses two ratcheting protocols working together:
+
+**Olm (Double Ratchet)** for 1:1 key exchange -- Each pair of devices establishes an Olm session using a Diffie-Hellman key exchange followed by a symmetric ratchet. Every message advances the ratchet state, deriving a new encryption key. Once a key is used it's discarded, so compromising a future key cannot decrypt past messages (forward secrecy), and compromising a past key cannot decrypt future messages (post-compromise security). This runs entirely in the browser via vodozemac compiled to WebAssembly.
+
+**Megolm (Group Ratchet)** for room encryption -- Group chats use a Megolm session where one sender generates a session key and shares it with all room members via Olm-encrypted to-device messages. The Megolm ratchet only moves forward -- each message advances the hash chain, so a recipient who joins mid-conversation can decrypt subsequent messages but never earlier ones. Session keys are rotated when members leave.
+
+Both protocols are implemented by [vodozemac](https://github.com/nickthecook/vodozemac), the same audited Rust cryptographic library used by Element (Matrix). The WASM boundary ensures private keys never touch JavaScript -- they exist only in the WASM memory space.
+
+---
+
 ## Key Features
 
-- **End-to-End Encryption** -- Double Ratchet (Olm) for 1:1 chats, Megolm for group sessions, powered by audited vodozemac WASM
-- **Federation** -- Multiple homeservers relay encrypted events to each other with signed federation protocol and peer authentication
-- **Key Transparency** -- Merkle Tree append-only log with cryptographic proofs clients can independently verify
-- **Multi-Device Support** -- Per-device key bundles, encrypted fan-out to all devices, device heartbeat tracking
-- **Zero-Trust Server** -- Homeservers never decrypt content; all crypto runs client-side via Web Crypto API and vodozemac
-- **Real-Time Sync** -- Long-polling message sync with Redis pub/sub notifications for instant delivery
-- **Room Management** -- Direct messages, group chats, room invites, password-protected rooms, disappearing messages
-- **Secure Storage** -- IndexedDB with at-rest encryption for local key material and session state
-- **Push Notifications** -- VAPID-based Web Push with opaque payloads (no message content in notifications)
-- **Security Hardened** -- Helmet CSP headers, rate limiting per endpoint type, Zod request validation, Ed25519 signature verification on key uploads
+### Encryption & Privacy
+- **Double Ratchet (Olm)** -- Per-device session keys with forward secrecy and post-compromise security
+- **Group Ratchet (Megolm)** -- Efficient group encryption with hash-chain key derivation
+- **Zero-Trust Server** -- Homeservers transport encrypted blobs; all crypto runs client-side in WASM
+- **View-Once Messages** -- Self-destructing messages for text, images, audio, and files (tap-to-reveal, auto-expire, server-side delete)
+- **Secure File Sharing** -- Files encrypted client-side (AES-256-GCM) before upload; server stores only ciphertext
+- **Voice Messages** -- Record, encrypt, and send audio through the same E2EE pipeline
+- **Camera Capture** -- Take photos directly in chat, encrypted before leaving the device
+
+### Federation & Architecture
+- **Multi-Server Federation** -- Homeservers relay signed events with Ed25519 signature verification
+- **Key Transparency** -- Merkle Tree append-only log with cryptographic proofs clients verify independently
+- **Multi-Device Support** -- Per-device key bundles, encrypted fan-out, QR-based device linking
+- **Real-Time Sync** -- Long-polling with Redis pub/sub for instant message delivery
+
+### Security Hardening
+- **Input Validation** -- Zod schemas on every endpoint, DOMPurify on all rendered content
+- **Rate Limiting** -- Redis-backed per-user limits across 8 endpoint categories
+- **Security Headers** -- CSP, HSTS, X-Frame-Options, Permissions-Policy, and more via nginx
+- **CI/CD Security** -- ESLint security plugin, gitleaks secret scanning, Trivy container scanning, npm audit
+- **Screen Protection** -- Forensic watermarks, screenshot interception, DevTools blocking, print prevention
 
 ---
 
