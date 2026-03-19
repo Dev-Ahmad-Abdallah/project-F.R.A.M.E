@@ -18,6 +18,7 @@ import { FONT_BODY } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { SkeletonMessageBubble, SyncIndicator } from './Skeleton';
 import { playMessageSound, playSendSound, playErrorSound } from '../sounds';
+import { getSendReadReceipts, getSendTypingIndicators } from '../utils/privacyPreferences';
 import VoiceRecorder from './VoiceRecorder';
 import CameraCapture from './CameraCapture';
 import AudioPlayer from './AudioPlayer';
@@ -439,6 +440,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   // ── Feature: Search within chat ──
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchMatchIndex, setSearchMatchIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // ── Feature: Pinned messages ──
@@ -578,6 +580,20 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => {
     const interval = setInterval(() => setTick((t) => t + 1), 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  // ── Keyboard shortcut: Ctrl+F / Cmd+F opens search ──
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setShowSearch(true);
+        setSearchMatchIndex(0);
+        setTimeout(() => searchInputRef.current?.focus(), 0);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
   // Track newly sent message IDs for slide-up animation
@@ -1504,21 +1520,24 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     const maxHeight = lineHeight * 5 + 16;
     ta.style.height = `${Math.min(ta.scrollHeight, maxHeight)}px`;
 
-    // Send typing indicator (throttled to every 3 seconds)
-    const now = Date.now();
-    if (e.target.value.trim() && now - lastTypingSentRef.current > 3000) {
-      lastTypingSentRef.current = now;
-      setTyping(roomId, true).catch(() => undefined);
-    }
+    // Send typing indicator (throttled to every 3 seconds).
+    // Respects user privacy preference — if disabled, no typing state is sent.
+    if (getSendTypingIndicators()) {
+      const now = Date.now();
+      if (e.target.value.trim() && now - lastTypingSentRef.current > 3000) {
+        lastTypingSentRef.current = now;
+        setTyping(roomId, true).catch(() => undefined);
+      }
 
-    // Clear typing after 3 seconds of no input
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    if (e.target.value.trim()) {
-      typingTimeoutRef.current = setTimeout(() => {
+      // Clear typing after 3 seconds of no input
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      if (e.target.value.trim()) {
+        typingTimeoutRef.current = setTimeout(() => {
+          setTyping(roomId, false).catch(() => undefined);
+        }, 3000);
+      } else {
         setTyping(roomId, false).catch(() => undefined);
-      }, 3000);
-    } else {
-      setTyping(roomId, false).catch(() => undefined);
+      }
     }
   };
 
@@ -1543,7 +1562,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     return () => {
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       if (typingIntervalRef.current) clearInterval(typingIntervalRef.current);
-      setTyping(roomId, false).catch(() => undefined);
+      if (getSendTypingIndicators()) {
+        setTyping(roomId, false).catch(() => undefined);
+      }
     };
   }, [roomId]);
 
@@ -1656,6 +1677,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, []);
 
+  // Send read receipts for new messages from other users.
+  // Respects user privacy preference — if disabled, no read receipt is sent.
+  // Note: read receipts are intentionally unencrypted because the server needs
+  // to track delivery state (which event was read) to relay receipts to peers.
   useEffect(() => {
     if (messages.length === 0) return;
     const latestOther = [...messages]
@@ -1663,9 +1688,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       .find((m) => m.event.senderId !== currentUserId);
     if (latestOther && !readEventIds.has(latestOther.event.eventId)) {
       setReadEventIds((prev) => new Set(prev).add(latestOther.event.eventId));
-      markAsRead(latestOther.event.eventId).catch((err) =>
-        console.error('Failed to send read receipt:', err),
-      );
+      if (getSendReadReceipts()) {
+        markAsRead(latestOther.event.eventId).catch((err) =>
+          console.error('Failed to send read receipt:', err),
+        );
+      }
     }
   }, [messages, currentUserId, readEventIds]);
 
@@ -1855,6 +1882,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     });
   }, [messages, searchQuery]);
 
+  // Scroll to current search match when navigating
+  useEffect(() => {
+    if (!searchQuery.trim() || filteredMessages.length === 0) return;
+    const clampedIndex = Math.min(searchMatchIndex, filteredMessages.length - 1);
+    const targetEvent = filteredMessages[clampedIndex]; // eslint-disable-line security/detect-object-injection
+    if (targetEvent) {
+      const el = messageRefs.current[targetEvent.event.eventId]; // eslint-disable-line security/detect-object-injection
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [searchMatchIndex, searchQuery, filteredMessages]);
+
   const renderedMessages = useMemo(() => {
     const msgsToRender = searchQuery.trim() ? filteredMessages : messages;
     const elements: React.ReactNode[] = [];
@@ -1962,7 +2002,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         const voContentType = getViewOnceType(decrypted.plaintext);
         const voPlaintext = decrypted.plaintext;
         elements.push(
-          <div key={event.eventId} ref={(el) => { messageRefs.current[event.eventId] = el; }} className="frame-msg-row" style={{ display: 'flex', alignItems: 'flex-end', gap: 8, alignSelf: 'flex-start', maxWidth: isMobile ? '85%' : 'clamp(180px, 65%, 480px)', marginTop: isNewGroup ? 8 : 2, position: 'relative' as const }}>
+          <div key={event.eventId} ref={(el) => { messageRefs.current[event.eventId] = el; }} className="frame-msg-row" style={{ display: 'flex', alignItems: 'flex-end', gap: 8, alignSelf: 'flex-start', maxWidth: isMobile ? '85%' : 'clamp(180px, 65%, 480px)', marginTop: isNewGroup ? 8 : 2, position: 'relative' as const, ...(searchQuery.trim() && filteredMessages.length > 0 && searchMatchIndex < filteredMessages.length && filteredMessages[searchMatchIndex]?.event.eventId === event.eventId ? { outline: '2px solid rgba(210, 153, 34, 0.7)', outlineOffset: 2, borderRadius: 12 } : {}) }}>
             {!isOwn && (
               <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: isNewGroup ? (isAnonymous ? '#6e40aa' : getAvatarColor(event.senderId)) : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0, visibility: isNewGroup ? ('visible' as const) : ('hidden' as const) }}>
                 {isNewGroup ? (isAnonymous ? (
@@ -2061,6 +2101,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             marginTop: isFirstInGroup ? 8 : 2,
             position: 'relative' as const,
             ...(hasPopIn ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}),
+            ...(searchQuery.trim() && filteredMessages.length > 0 && searchMatchIndex < filteredMessages.length && filteredMessages[searchMatchIndex]?.event.eventId === event.eventId ? { outline: '2px solid rgba(210, 153, 34, 0.7)', outlineOffset: 2, borderRadius: 12 } : {}), // eslint-disable-line security/detect-object-injection
           }}
           onTouchStart={isMobile ? () => handleTouchStart(event.eventId, event.senderId) : undefined}
           onTouchEnd={isMobile ? handleTouchEnd : undefined}
@@ -2200,15 +2241,36 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                       const text = renderMessageContent(decrypted);
                       if (!searchQuery.trim()) return linkifyText(text, isOwn);
                       const q = searchQuery.toLowerCase();
-                      const idx = text.toLowerCase().indexOf(q);
-                      if (idx === -1) return linkifyText(text, isOwn);
-                      return (
-                        <>
-                          {text.slice(0, idx)}
-                          <mark style={{ backgroundColor: 'rgba(210, 153, 34, 0.5)', color: 'inherit', borderRadius: 2, padding: '0 1px' }}>{text.slice(idx, idx + searchQuery.length)}</mark>
-                          {text.slice(idx + searchQuery.length)}
-                        </>
-                      );
+                      const lower = text.toLowerCase();
+                      if (!lower.includes(q)) return linkifyText(text, isOwn);
+                      // Determine if this message is the current search match
+                      const isCurrentMatch = filteredMessages.length > 0 &&
+                        searchMatchIndex < filteredMessages.length &&
+                        filteredMessages[searchMatchIndex]?.event.eventId === event.eventId; // eslint-disable-line security/detect-object-injection
+                      // Highlight ALL occurrences of the search term
+                      const parts: React.ReactNode[] = [];
+                      let cursor = 0;
+                      let matchPos = lower.indexOf(q, cursor);
+                      let partKey = 0;
+                      while (matchPos !== -1) {
+                        if (matchPos > cursor) {
+                          parts.push(<span key={`st-${partKey++}`}>{text.slice(cursor, matchPos)}</span>);
+                        }
+                        parts.push(
+                          <mark key={`sm-${partKey++}`} style={{
+                            backgroundColor: isCurrentMatch ? 'rgba(210, 153, 34, 0.8)' : 'rgba(210, 153, 34, 0.35)',
+                            color: 'inherit',
+                            borderRadius: 2,
+                            padding: '0 1px',
+                          }}>{text.slice(matchPos, matchPos + searchQuery.length)}</mark>
+                        );
+                        cursor = matchPos + searchQuery.length;
+                        matchPos = lower.indexOf(q, cursor);
+                      }
+                      if (cursor < text.length) {
+                        parts.push(<span key={`st-${partKey}`}>{text.slice(cursor)}</span>);
+                      }
+                      return parts;
                     })()}</span>
                   )}
                 </>
@@ -2306,7 +2368,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
 
     return elements;
-  }, [messages, filteredMessages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, viewedOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, readReceiptMap, scrollToMessage, searchQuery, unreadDividerEventId, handleMessageClick, isMobile, handleTouchStart, handleTouchEnd, handleTouchMove, revealViewOnce, getViewOnceType]);
+  }, [messages, filteredMessages, currentUserId, deletedEventIds, expiredEventIds, hiddenOnceIds, viewedOnceIds, recentlyArrivedIds, recentlyEncryptedIds, localReactions, readReceiptMap, scrollToMessage, searchQuery, searchMatchIndex, unreadDividerEventId, handleMessageClick, isMobile, handleTouchStart, handleTouchEnd, handleTouchMove, revealViewOnce, getViewOnceType]);
 
   const renderWelcome = () => {
     if (messages.length > 0 || optimisticMessages.length > 0) return null;
@@ -2585,16 +2647,41 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             style={{ ...styles.searchInput, ...(isMobile ? { fontSize: 16, padding: '8px 8px' } : {}) }}
             placeholder="Search messages..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Escape') { setShowSearch(false); setSearchQuery(''); } }}
+            onChange={(e) => { setSearchQuery(e.target.value); setSearchMatchIndex(0); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') { setShowSearch(false); setSearchQuery(''); setSearchMatchIndex(0); }
+              if (e.key === 'Enter' && filteredMessages.length > 0) {
+                e.preventDefault();
+                if (e.shiftKey) {
+                  setSearchMatchIndex((prev) => (prev - 1 + filteredMessages.length) % filteredMessages.length);
+                } else {
+                  setSearchMatchIndex((prev) => (prev + 1) % filteredMessages.length);
+                }
+              }
+            }}
             aria-label="Search messages"
           />
-          {searchQuery && (
-            <span style={{ fontSize: 11, color: '#8b949e', flexShrink: 0 }}>
-              {filteredMessages.length} result{filteredMessages.length !== 1 ? 's' : ''}
+          {searchQuery && filteredMessages.length > 0 && (
+            <span style={{ fontSize: 11, color: '#8b949e', flexShrink: 0, whiteSpace: 'nowrap' }}>
+              {Math.min(searchMatchIndex + 1, filteredMessages.length)} of {filteredMessages.length}
             </span>
           )}
-          <button type="button" style={{ ...styles.searchCloseButton, ...(isMobile ? { minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' } : {}) }} onClick={() => { setShowSearch(false); setSearchQuery(''); }} aria-label="Close search">
+          {searchQuery && filteredMessages.length === 0 && (
+            <span style={{ fontSize: 11, color: '#f85149', flexShrink: 0, whiteSpace: 'nowrap' }}>
+              No results
+            </span>
+          )}
+          {searchQuery && filteredMessages.length > 1 && (
+            <>
+              <button type="button" style={{ background: 'none', border: '1px solid #30363d', borderRadius: 4, color: '#8b949e', cursor: 'pointer', padding: '2px 6px', fontSize: 14, lineHeight: 1, fontFamily: 'inherit', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setSearchMatchIndex((prev) => (prev - 1 + filteredMessages.length) % filteredMessages.length)} title="Previous match (Shift+Enter)" aria-label="Previous match">
+                &#8593;
+              </button>
+              <button type="button" style={{ background: 'none', border: '1px solid #30363d', borderRadius: 4, color: '#8b949e', cursor: 'pointer', padding: '2px 6px', fontSize: 14, lineHeight: 1, fontFamily: 'inherit', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setSearchMatchIndex((prev) => (prev + 1) % filteredMessages.length)} title="Next match (Enter)" aria-label="Next match">
+                &#8595;
+              </button>
+            </>
+          )}
+          <button type="button" style={{ ...styles.searchCloseButton, ...(isMobile ? { minWidth: 44, minHeight: 44, display: 'flex', alignItems: 'center', justifyContent: 'center' } : {}) }} onClick={() => { setShowSearch(false); setSearchQuery(''); setSearchMatchIndex(0); }} aria-label="Close search">
             &#10005;
           </button>
         </div>

@@ -150,6 +150,11 @@ messagesRouter.post(
 );
 
 // POST /messages/:eventId/read — Mark a message as read (read receipt)
+//
+// PRIVACY NOTE: Read receipts are intentionally unencrypted. The server needs
+// to know WHICH event was read (event_id) and by WHOM (user_id) in order to
+// update delivery_state and relay receipts to other room members. Clients can
+// opt out of sending read receipts entirely via a privacy preference toggle.
 messagesRouter.post(
   '/:eventId/read',
   requireAuth,
@@ -198,6 +203,12 @@ messagesRouter.get(
 );
 
 // POST /messages/typing — Set typing state for the current user
+//
+// PRIVACY NOTE: Typing indicators reveal "user X is typing in room Y" metadata
+// to the server. They are ephemeral (stored in Redis with a 30-second TTL) and
+// never persisted to the database, but the server can observe this metadata in
+// transit. Clients can opt out of sending typing indicators entirely via a
+// privacy preference toggle.
 messagesRouter.post(
   '/typing',
   requireAuth,

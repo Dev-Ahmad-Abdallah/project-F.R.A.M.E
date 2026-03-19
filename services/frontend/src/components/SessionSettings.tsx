@@ -19,6 +19,12 @@ import {
 import { setSessionTimeout } from '../api/client';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { isSoundEnabled, setSoundEnabled } from '../sounds';
+import {
+  getSendReadReceipts,
+  setSendReadReceipts,
+  getSendTypingIndicators,
+  setSendTypingIndicators,
+} from '../utils/privacyPreferences';
 
 // ── Keyframes (injected once) ──
 
@@ -68,6 +74,8 @@ const SessionSettings: React.FC = () => {
   const [timeoutMs, setTimeoutMs] = useState<number>(getSavedTimeout);
   const [autoLock, setAutoLockState] = useState<boolean>(getAutoLock);
   const [soundsOn, setSoundsOn] = useState<boolean>(isSoundEnabled);
+  const [readReceipts, setReadReceiptsState] = useState<boolean>(getSendReadReceipts);
+  const [typingIndicators, setTypingIndicatorsState] = useState<boolean>(getSendTypingIndicators);
   const [showDropdown, setShowDropdown] = useState(false);
   const [remainingMs, setRemainingMs] = useState<number>(timeoutMs);
   const sessionStartRef = useRef<number>(Date.now());
@@ -126,6 +134,22 @@ const SessionSettings: React.FC = () => {
     setSoundsOn((prev) => {
       const next = !prev;
       setSoundEnabled(next);
+      return next;
+    });
+  }, []);
+
+  const handleReadReceiptsToggle = useCallback(() => {
+    setReadReceiptsState((prev) => {
+      const next = !prev;
+      setSendReadReceipts(next);
+      return next;
+    });
+  }, []);
+
+  const handleTypingIndicatorsToggle = useCallback(() => {
+    setTypingIndicatorsState((prev) => {
+      const next = !prev;
+      setSendTypingIndicators(next);
       return next;
     });
   }, []);
@@ -340,6 +364,85 @@ const SessionSettings: React.FC = () => {
         {soundsOn
           ? 'Play sounds for incoming messages, sent messages, and notifications.'
           : 'All notification sounds are muted.'}
+      </p>
+
+      {/* ── Privacy section ── */}
+      <h3 style={{ ...styles.heading, marginTop: 8 }}>Privacy</h3>
+
+      {/* Send Read Receipts toggle */}
+      <div style={{
+        ...styles.row,
+        ...(isMobile ? { minHeight: 48, padding: '4px 0' } : {}),
+      }}>
+        <label htmlFor="send-read-receipts" style={styles.label}>
+          Send Read Receipts
+        </label>
+        <button
+          id="send-read-receipts"
+          type="button"
+          role="switch"
+          aria-checked={readReceipts}
+          onClick={handleReadReceiptsToggle}
+          style={{
+            ...styles.toggle,
+            backgroundColor: readReceipts ? '#238636' : '#30363d',
+            ...(isMobile ? { width: 52, height: 30, borderRadius: 15 } : {}),
+          }}
+        >
+          <span
+            style={{
+              ...styles.toggleKnob,
+              ...(isMobile ? { width: 24, height: 24, top: 3 } : {}),
+              transform: readReceipts
+                ? `translateX(${isMobile ? 22 : 18}px)`
+                : `translateX(${isMobile ? 3 : 2}px)`,
+            }}
+          />
+        </button>
+      </div>
+
+      <p style={styles.hint}>
+        {readReceipts
+          ? 'Other users can see when you have read their messages.'
+          : 'Read receipts are disabled. Other users will not know when you read their messages.'}
+      </p>
+
+      {/* Send Typing Indicators toggle */}
+      <div style={{
+        ...styles.row,
+        ...(isMobile ? { minHeight: 48, padding: '4px 0' } : {}),
+      }}>
+        <label htmlFor="send-typing-indicators" style={styles.label}>
+          Send Typing Indicators
+        </label>
+        <button
+          id="send-typing-indicators"
+          type="button"
+          role="switch"
+          aria-checked={typingIndicators}
+          onClick={handleTypingIndicatorsToggle}
+          style={{
+            ...styles.toggle,
+            backgroundColor: typingIndicators ? '#238636' : '#30363d',
+            ...(isMobile ? { width: 52, height: 30, borderRadius: 15 } : {}),
+          }}
+        >
+          <span
+            style={{
+              ...styles.toggleKnob,
+              ...(isMobile ? { width: 24, height: 24, top: 3 } : {}),
+              transform: typingIndicators
+                ? `translateX(${isMobile ? 22 : 18}px)`
+                : `translateX(${isMobile ? 3 : 2}px)`,
+            }}
+          />
+        </button>
+      </div>
+
+      <p style={styles.hint}>
+        {typingIndicators
+          ? 'Other users can see when you are typing a message.'
+          : 'Typing indicators are disabled. Other users will not see when you are typing.'}
       </p>
     </div>
   );

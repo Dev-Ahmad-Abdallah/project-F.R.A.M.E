@@ -96,19 +96,7 @@ app.get('/', (_req, res) => {
   res.json({
     name: 'F.R.A.M.E. Homeserver',
     version: '1.0.0',
-    domain: config.HOMESERVER_DOMAIN,
-    endpoints: {
-      health: '/health',
-      auth: '/auth',
-      keys: '/keys',
-      messages: '/messages',
-      devices: '/devices',
-      rooms: '/rooms',
-      federation: '/federation',
-      push: '/push',
-      files: '/files',
-      discovery: '/.well-known/frame/server',
-    },
+    status: 'online',
   });
 });
 
@@ -210,6 +198,11 @@ app.get('/.well-known/frame/server', (_req, res) => {
       publicKey: getPublicKeyBase64(),
     },
   });
+});
+
+// ── Custom 404 handler (returns JSON, not Express default HTML) ──
+app.use((_req, res) => {
+  res.status(404).json({ error: { code: 'M_NOT_FOUND', message: 'Endpoint not found' } });
 });
 
 // ── Centralized error handler ──

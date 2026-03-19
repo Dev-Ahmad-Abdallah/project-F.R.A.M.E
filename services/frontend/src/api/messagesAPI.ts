@@ -122,6 +122,10 @@ export async function reactToMessage(
 
 /**
  * Mark a message as read (send read receipt).
+ *
+ * PRIVACY: Read receipts are sent unencrypted — the server needs to know the
+ * event_id to update delivery_state. Callers should check the user's privacy
+ * preference (getSendReadReceipts()) before invoking this function.
  */
 export async function markAsRead(eventId: string): Promise<void> {
   return apiRequest<void>(
@@ -150,6 +154,10 @@ export async function getReadReceipts(
 
 /**
  * Set typing indicator for the current user in a room.
+ *
+ * PRIVACY: Typing indicators reveal "user X is typing in room Y" metadata to
+ * the server. They are ephemeral but not encrypted. Callers should check the
+ * user's privacy preference (getSendTypingIndicators()) before invoking this.
  */
 export async function setTyping(
   roomId: string,

@@ -255,7 +255,142 @@ export async function processOutgoingRequests(): Promise<void> {
   }
 }
 
-// Backup key export/import for device recovery is a planned future feature.
+// ── Key Backup Export / Import ──
+
+/**
+ * Export all Megolm room keys, encrypted with a user-supplied passphrase.
+ *
+ * The export uses the OlmMachine's built-in `exportRoomKeys` to serialise
+ * every inbound group session, then wraps the result in AES-256-GCM
+ * encryption derived from the passphrase via PBKDF2 (100 000 iterations).
+ *
+ * @param passphrase  User-chosen passphrase to protect the export
+ * @returns JSON string containing `{ version, iv, salt, data }` ready
+ *          for download as a `.frame-keys` file.
+ */
+export async function exportRoomKeys(passphrase: string): Promise<string> {
+  const m = getOlmMachine();
+
+  // Export every inbound Megolm session (predicate always returns true)
+  const exported: string = await m.exportRoomKeys(() => true);
+
+  // Derive an AES-256-GCM key from the passphrase
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(passphrase),
+    'PBKDF2',
+    false,
+    ['deriveKey'],
+  );
+  const aesKey = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 100_000, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt'],
+  );
+
+  // Encrypt the exported JSON
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    aesKey,
+    new TextEncoder().encode(exported),
+  );
+
+  return JSON.stringify({
+    version: 1,
+    iv: Array.from(iv),
+    salt: Array.from(salt),
+    data: Array.from(new Uint8Array(ciphertext)),
+  });
+}
+
+/**
+ * Result returned after importing room keys.
+ */
+export interface KeyImportResult {
+  importedCount: number;
+  totalCount: number;
+}
+
+/**
+ * Import Megolm room keys from an encrypted backup file.
+ *
+ * Decrypts the file contents using the passphrase, then feeds the
+ * plaintext key JSON into the OlmMachine's `importExportedRoomKeys`.
+ *
+ * @param encryptedJson  The JSON string produced by `exportRoomKeys`
+ * @param passphrase     The passphrase used during export
+ * @returns Number of keys imported and total keys in the file
+ * @throws Error if passphrase is wrong or data is corrupted
+ */
+export async function importRoomKeys(
+  encryptedJson: string,
+  passphrase: string,
+): Promise<KeyImportResult> {
+  const m = getOlmMachine();
+
+  const payload = JSON.parse(encryptedJson) as {
+    version: number;
+    iv: number[];
+    salt: number[];
+    data: number[];
+  };
+
+  if (payload.version !== 1) {
+    throw new Error(`Unsupported key backup version: ${payload.version}`);
+  }
+
+  // Derive the same AES key from passphrase + stored salt
+  const salt = new Uint8Array(payload.salt);
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(passphrase),
+    'PBKDF2',
+    false,
+    ['deriveKey'],
+  );
+  const aesKey = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 100_000, hash: 'SHA-256' },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt'],
+  );
+
+  // Decrypt the payload
+  const iv = new Uint8Array(payload.iv);
+  const ciphertext = new Uint8Array(payload.data);
+  let plaintext: ArrayBuffer;
+  try {
+    plaintext = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      aesKey,
+      ciphertext,
+    );
+  } catch {
+    throw new Error(
+      'Decryption failed. The passphrase may be incorrect or the backup file is corrupted.',
+    );
+  }
+
+  const exportedKeysJson = new TextDecoder().decode(plaintext);
+
+  // Import into the OlmMachine
+  const result = await m.importExportedRoomKeys(
+    exportedKeysJson,
+    (_progress: bigint, _total: bigint) => {
+      // Progress callback — could wire to UI in the future
+    },
+  );
+
+  return {
+    importedCount: result.importedCount,
+    totalCount: result.totalCount,
+  };
+}
 
 // ── Prekey replenishment ──
 
