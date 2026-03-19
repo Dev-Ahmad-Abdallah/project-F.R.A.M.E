@@ -14,10 +14,10 @@ permissions:
   security-events: write
   checks: write
 
-# Cancel superseded runs on the same branch
+# Queue runs on the same branch — don't cancel in-progress (tests take 10+ min)
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   NODE_VERSION: "20"
