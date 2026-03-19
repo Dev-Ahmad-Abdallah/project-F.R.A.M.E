@@ -22,7 +22,7 @@ import VoiceRecorder from './VoiceRecorder';
 import AudioPlayer from './AudioPlayer';
 import FileAttachment from './FileAttachment';
 import { encryptFile } from '../crypto/fileEncryption';
-import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE, MAX_INLINE_FILE_SIZE, FRIENDLY_FILE_TYPES, FILE_ACCEPT_STRING } from '../api/filesAPI';
+import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE, FRIENDLY_FILE_TYPES, FILE_ACCEPT_STRING, uploadFile } from '../api/filesAPI';
 import { formatFileSize } from '../crypto/fileEncryption';
 
 // ── Reaction Picker ──
@@ -996,12 +996,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       showToast?.('error', 'File too large. Maximum 10 MB.', { duration: 4000 });
       return;
     }
-    // For inline sending, enforce 5MB limit
-    if (file.size > MAX_INLINE_FILE_SIZE) {
-      showToast?.('error', 'File too large for inline sending (max 5 MB). Server upload coming soon.', { duration: 5000 });
-      return;
-    }
-
     // Create preview URL for images
     const isImage = file.type.startsWith('image/');
     const previewUrl = isImage ? URL.createObjectURL(file) : null;
@@ -1030,7 +1024,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     stageFile(file);
   }, [stageFile]);
 
-  /** Send the pending file — encrypt inline as base64 */
+  /** Send the pending file — encrypt client-side, upload to server, send metadata via E2EE */
   const handleSendFile = useCallback(async () => {
     if (!pendingFile || !roomId || isUploadingFile) return;
     const file = pendingFile.file;
@@ -1039,28 +1033,31 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     setUploadStatus('Encrypting...');
 
     try {
-      // Read file into bytes
+      // Step 1: Read file into bytes
       const arrayBuffer = await file.arrayBuffer();
       const plainBytes = new Uint8Array(arrayBuffer);
 
-      // Encrypt client-side with AES-256-GCM
+      // Step 2: Encrypt client-side with AES-256-GCM (server never sees plaintext)
       const { encryptedBytes, key: fileKey, iv: fileIv } = await encryptFile(plainBytes);
 
-      setUploadStatus('Sending...');
-
-      // Encode encrypted bytes as base64 for inline transport
-      const fileDataBase64 = btoa(
-        encryptedBytes.reduce((acc, byte) => acc + String.fromCharCode(byte), ''),
+      // Step 3: Upload encrypted blob to server
+      setUploadStatus(`Uploading (${formatFileSize(file.size)})...`);
+      const uploadResult = await uploadFile(
+        encryptedBytes,
+        roomId,
+        file.name,
+        file.type || 'application/octet-stream',
       );
 
+      // Step 4: Send file metadata via E2EE message (no file content in message — just the ID + key)
+      setUploadStatus('Securing...');
       const isImage = file.type.startsWith('image/');
 
-      // Build E2EE message with inline file data
       const plaintext: Record<string, unknown> = {
         msgtype: isImage ? 'm.image' : 'm.file',
         body: file.name,
         filename: file.name,
-        fileData: fileDataBase64,
+        fileId: uploadResult.fileId,
         fileKey,
         fileIv,
         mimeType: file.type || 'application/octet-stream',
@@ -1080,10 +1077,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       if (pendingFile.previewUrl) URL.revokeObjectURL(pendingFile.previewUrl);
       setPendingFile(null);
       playSendSound();
+      showToast?.('success', 'File sent securely', { duration: 2000 });
     } catch (err) {
       console.error('[FileAttach] Send failed:', err);
       playErrorSound();
-      showToast?.('error', 'Failed to send file. Please try again.', { duration: 4000, dedupeKey: 'file-fail' });
+      const msg = err instanceof Error ? err.message : 'Failed to send file';
+      showToast?.('error', `File send failed: ${msg}`, { duration: 5000, dedupeKey: 'file-fail' });
     } finally {
       setIsUploadingFile(false);
       setUploadStatus(null);
