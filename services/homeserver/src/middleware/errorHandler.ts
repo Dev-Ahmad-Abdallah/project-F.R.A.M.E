@@ -20,25 +20,14 @@ export function errorHandler(
   const statusCode = err.statusCode || 500;
   const code = err.code || 'M_UNKNOWN';
 
-  // Never expose internal error details in production
+  // In production, hide internal details but preserve user-facing error messages
+  // for client errors (4xx). Only 500+ errors get fully genericized.
   let message: string;
-  if (process.env.NODE_ENV === 'production') {
-    if (statusCode >= 500) {
-      message = 'Internal server error';
-    } else if (statusCode === 400) {
-      message = 'Bad request';
-    } else if (statusCode === 401) {
-      message = 'Unauthorized';
-    } else if (statusCode === 403) {
-      message = 'Forbidden';
-    } else if (statusCode === 404) {
-      message = 'Not found';
-    } else if (statusCode === 429) {
-      message = 'Too many requests';
-    } else {
-      message = 'Request error';
-    }
+  if (process.env.NODE_ENV === 'production' && statusCode >= 500) {
+    message = 'Internal server error';
   } else {
+    // 4xx errors use the original message — these are intentional user-facing
+    // messages like "This room requires a password" or "Invalid invite code"
     message = err.message;
   }
 
