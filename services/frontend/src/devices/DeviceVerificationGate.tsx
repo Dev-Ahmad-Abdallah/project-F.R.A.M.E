@@ -11,33 +11,43 @@
 
 import React, { useEffect } from 'react';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
+import { listDevices, verifyDeviceOnServer } from '../api/devicesAPI';
 
-// ── Local storage helpers ──
+// ── Server-side device verification helpers ──
 
-const DEVICE_VERIFIED_PREFIX = 'frame-device-verified:';
-
-export function isDeviceVerified(deviceId: string): boolean {
+/**
+ * Check if a device is verified by querying the server.
+ * Returns true only if the server confirms the device is verified.
+ * Falls back to false on any error (safe default).
+ */
+export async function isDeviceVerified(deviceId: string, userId: string): Promise<boolean> {
   try {
-    return localStorage.getItem(DEVICE_VERIFIED_PREFIX + deviceId) === 'true';
+    const resp = await listDevices(userId);
+    const device = resp.devices?.find((d) => d.deviceId === deviceId);
+    return device?.verified === true;
   } catch {
     return false;
   }
 }
 
-export function setDeviceVerified(deviceId: string): void {
+/**
+ * Mark a device as verified on the server.
+ */
+export async function setDeviceVerified(deviceId: string): Promise<void> {
   try {
-    localStorage.setItem(DEVICE_VERIFIED_PREFIX + deviceId, 'true');
+    await verifyDeviceOnServer(deviceId);
   } catch {
-    // localStorage not available
+    // Server call failed — verification not persisted
+    console.error('[F.R.A.M.E.] Failed to set device as verified on server');
   }
 }
 
 /**
  * Check whether the current device needs verification gating.
- * Returns true if the device has NOT been verified.
+ * Returns true if the device has NOT been verified (async, queries server).
  */
-export function deviceNeedsVerification(deviceId: string): boolean {
-  return !isDeviceVerified(deviceId);
+export async function deviceNeedsVerification(deviceId: string, userId: string): Promise<boolean> {
+  return !(await isDeviceVerified(deviceId, userId));
 }
 
 // ── Keyframes ──

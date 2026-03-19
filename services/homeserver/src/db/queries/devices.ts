@@ -9,6 +9,7 @@ export interface DeviceRow {
   last_seen: Date | null;
   created_at: Date;
   device_keys_json: Record<string, unknown> | null;
+  verified: boolean;
 }
 
 export async function createDevice(
@@ -71,6 +72,14 @@ export async function updateDeviceKeysJson(deviceId: string, deviceKeysJson: Rec
     'UPDATE devices SET device_keys_json = $2 WHERE device_id = $1',
     [deviceId, JSON.stringify(deviceKeysJson)]
   );
+}
+
+export async function setDeviceVerified(deviceId: string, userId: string): Promise<boolean> {
+  const result = await pool.query(
+    'UPDATE devices SET verified = TRUE WHERE device_id = $1 AND user_id = $2',
+    [deviceId, userId]
+  );
+  return result.rowCount !== null && result.rowCount > 0;
 }
 
 export async function countDevicesByUser(userId: string): Promise<number> {

@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { asyncHandler, ApiError } from '../middleware/errorHandler';
-import { loginLimiter, registerLimiter, apiLimiter, refreshLimiter } from '../middleware/rateLimit';
+import { loginLimiter, registerLimiter, apiLimiter, refreshLimiter, guestLimiter } from '../middleware/rateLimit';
 import { validateBody } from '../middleware/validation';
 import { registerSchema, loginSchema, refreshSchema, profileUpdateSchema, statusUpdateSchema } from '../middleware/validation';
 import { requireAuth } from '../middleware/auth';
 import { register, login, refreshAccessToken, revokeAllTokens, createGuestSession } from '../services/authService';
 import { updateDisplayName, findUserById } from '../db/queries/users';
+import { usersShareRoom } from '../db/queries/rooms';
 import { redisClient } from '../redis/client';
 import type { RegisterParams, LoginParams } from '../services/authService';
 
@@ -34,9 +35,10 @@ authRouter.post(
 );
 
 // POST /auth/guest — Create a temporary guest session (no credentials required)
+// H-6 FIX: Strict rate limit — 5 guest sessions per IP per hour
 authRouter.post(
   '/guest',
-  apiLimiter,
+  guestLimiter,
   asyncHandler(async (_req, res) => {
     const result = await createGuestSession();
     res.status(201).json(result);
@@ -152,6 +154,14 @@ authRouter.get(
       throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
     }
     const { userId } = req.params;
+
+    // H-5 FIX: Only reveal status to users who share at least one room
+    // This prevents user existence enumeration via the status endpoint
+    const shared = await usersShareRoom(req.auth.sub, userId);
+    if (!shared) {
+      throw new ApiError(403, 'M_FORBIDDEN', 'You do not share a room with this user');
+    }
+
     const statusData = await redisClient.get(`status:${userId}`);
     const parsed = statusData ? JSON.parse(statusData) as { status: string; statusMessage?: string } : null;
 

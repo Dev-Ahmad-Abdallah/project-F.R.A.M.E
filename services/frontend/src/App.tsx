@@ -156,7 +156,7 @@ function App() {
   const { showBanner: showInstallBanner, promptInstall, dismissBanner: dismissInstall, isIOS } = useInstallPrompt();
 
   // Screen capture / screenshot protection
-  const { isHidden, isBlurred, privacyMode, setPrivacyMode, captureDetected, dismissCaptureWarning } = useScreenProtection();
+  const { isHidden, isBlurred, captureDetected, dismissCaptureWarning } = useScreenProtection();
 
   // Track previous connection state for reconnection toast
   const prevConnectionLostRef = useRef(false);
@@ -216,15 +216,39 @@ function App() {
 
   const { timeRemaining, isWarning, resetTimer } = useSessionTimeout(handleSessionTimeout);
 
-  const handleUnlock = useCallback(() => {
+  const [unlockLoading, setUnlockLoading] = useState(false);
+
+  const handleUnlock = useCallback(async () => {
     if (!auth) return;
-    if (lockPassphrase === auth.userId) {
-      setIsLocked(false);
-      setLockPassphrase('');
-      setLockError(null);
-      resetTimer();
-    } else {
-      setLockError('Invalid credentials — enter your full user ID');
+    if (!lockPassphrase) {
+      setLockError('Please enter your password');
+      return;
+    }
+    setUnlockLoading(true);
+    setLockError(null);
+    try {
+      // Verify the password against the server login endpoint.
+      // We extract the username from the userId (e.g. "@alice:example.com" → "alice").
+      const match = auth.userId.match(/^@([^:]+):/);
+      const username = match ? match[1] : auth.userId;
+      const baseUrl = process.env.REACT_APP_HOMESERVER_URL ?? 'http://localhost:3000';
+      const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password: lockPassphrase }),
+      });
+      if (res.ok) {
+        setIsLocked(false);
+        setLockPassphrase('');
+        setLockError(null);
+        resetTimer();
+      } else {
+        setLockError('Invalid password — please try again');
+      }
+    } catch {
+      setLockError('Unable to verify credentials — check your connection');
+    } finally {
+      setUnlockLoading(false);
     }
   }, [auth, lockPassphrase, resetTimer]);
 
@@ -531,11 +555,13 @@ function App() {
         }
 
         // 3. Init encrypted IndexedDB storage with a user-derived passphrase.
-        //    We hash `userId + ":frame-storage"` with SHA-256 to produce a
-        //    deterministic, per-user passphrase (never store the raw password).
+        //    We hash `userId + ":" + accessToken + ":frame-storage"` with SHA-256
+        //    to produce a per-session passphrase that can't be derived from
+        //    the public userId alone.
         if (!cancelled) setInitPhase('storage');
+        const currentAccessToken = getAccessToken() ?? '';
         const passphraseData = new TextEncoder().encode(
-          currentAuth.userId + ':frame-storage',
+          currentAuth.userId + ':' + currentAccessToken + ':frame-storage',
         );
         const hashBuffer = await crypto.subtle.digest('SHA-256', passphraseData);
         const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -573,16 +599,16 @@ function App() {
         if (!cancelled) {
           setInitPhase('done');
 
-          // Check device verification status on each app load.
+          // Check device verification status from the server on each app load.
           // If this is the user's only device, auto-verify it (no gate needed).
           // If there are other devices, the gate blocks until verification.
-          if (deviceNeedsVerification(currentAuth.deviceId)) {
+          if (await deviceNeedsVerification(currentAuth.deviceId, currentAuth.userId)) {
             try {
               const deviceListResp = await listUserDevices(currentAuth.userId);
               const deviceCount = deviceListResp.devices?.length ?? 0;
               if (deviceCount <= 1) {
-                // First/only device — auto-verify, no gate
-                setDeviceVerified(currentAuth.deviceId);
+                // First/only device — auto-verify on server, no gate
+                await setDeviceVerified(currentAuth.deviceId);
               } else {
                 // Multiple devices — must verify
                 setShowDeviceGate(true);
@@ -1035,9 +1061,9 @@ function App() {
             <circle cx="24" cy="33" r="2" fill="#58a6ff" />
           </svg>
           <h2 style={styles.lockTitle}>Session Locked</h2>
-          <p style={styles.lockSubtitle}>Enter your user ID to unlock</p>
+          <p style={styles.lockSubtitle}>Enter your account password to unlock</p>
           {lockError && <div style={styles.lockErrorBanner}>{DOMPurify.sanitize(lockError, PURIFY_CONFIG)}</div>}
-          <label htmlFor="lock-passphrase" className="sr-only" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>User ID to unlock</label>
+          <label htmlFor="lock-passphrase" className="sr-only" style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>Password to unlock</label>
           <input
             id="lock-passphrase"
             type="password"
@@ -1045,13 +1071,14 @@ function App() {
             style={styles.lockInput}
             value={lockPassphrase}
             onChange={(e) => setLockPassphrase(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleUnlock(); }}
-            placeholder="User ID (e.g. @alice:example.com)"
-            aria-label="User ID to unlock"
+            onKeyDown={(e) => { if (e.key === 'Enter') void handleUnlock(); }}
+            placeholder="Password"
+            aria-label="Password to unlock"
             autoFocus
+            disabled={unlockLoading}
           />
           <div className="frame-lock-actions" style={styles.lockActions}>
-            <button type="button" style={styles.lockUnlockButton} onClick={handleUnlock}>Unlock</button>
+            <button type="button" style={styles.lockUnlockButton} onClick={() => void handleUnlock()} disabled={unlockLoading}>{unlockLoading ? 'Verifying...' : 'Unlock'}</button>
             <button type="button" style={styles.lockLogoutButton} onClick={handleLogout}>Log out</button>
           </div>
         </div>
@@ -1220,8 +1247,8 @@ function App() {
                     if (matched) {
                       await verifyDevice(auth.userId, matched.deviceId);
                     }
-                    // Mark current device as verified in localStorage
-                    setDeviceVerified(auth.deviceId);
+                    // Mark current device as verified on the server
+                    await setDeviceVerified(auth.deviceId);
                     setShowDeviceGate(false);
                   } catch (err) {
                     console.error('Failed to verify linked device:', err);
@@ -1373,8 +1400,6 @@ function App() {
       <PrivacyShield
         isHidden={isHidden}
         isBlurred={isBlurred}
-        privacyMode={privacyMode}
-        userId={auth?.userId || ''}
         captureDetected={captureDetected}
         onDismissCaptureWarning={dismissCaptureWarning}
       />
@@ -1637,29 +1662,6 @@ function App() {
                 <path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.34 3.34l1.42 1.42M13.24 13.24l1.42 1.42M3.34 14.66l1.42-1.42M13.24 4.76l1.42-1.42" stroke="#8b949e" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
               {isMobile && <span>Settings</span>}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPrivacyMode(!privacyMode)}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 6,
-                borderRadius: 6,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: privacyMode ? '#3fb950' : '#8b949e',
-                transition: 'color 0.15s',
-              }}
-              title={privacyMode ? 'Privacy Screen: ON' : 'Privacy Screen: OFF'}
-              aria-label="Toggle privacy screen"
-            >
-              <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-                <path d="M8 1L2 4v4.5c0 3.5 2.5 6.2 6 7.5 3.5-1.3 6-4 6-7.5V4L8 1z" stroke="currentColor" strokeWidth="1.2" fill={privacyMode ? 'rgba(63,185,80,0.15)' : 'none'} />
-                {privacyMode && <path d="M6 8.5l1.5 1.5L10.5 6" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />}
-              </svg>
             </button>
             <button
               type="button"
