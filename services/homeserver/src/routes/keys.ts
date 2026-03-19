@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
-import { apiLimiter } from '../middleware/rateLimit';
+import { apiLimiter, keyUploadLimiter, keyQueryLimiter } from '../middleware/rateLimit';
 import { asyncHandler, ApiError } from '../middleware/errorHandler';
 import { validateBody, keyUploadSchema, keysQuerySchema, keysClaimSchema } from '../middleware/validation';
 import crypto from 'crypto';
@@ -46,7 +46,7 @@ interface KeysClaimBody {
 keysRouter.post(
   '/upload',
   requireAuth,
-  apiLimiter,
+  keyUploadLimiter,
   validateBody(keyUploadSchema),
   asyncHandler(async (req, res) => {
     if (!req.auth) {
@@ -143,7 +143,7 @@ keysRouter.post(
 keysRouter.post(
   '/query',
   requireAuth,
-  apiLimiter,
+  keyQueryLimiter,
   validateBody(keysQuerySchema),
   asyncHandler(async (req, res) => {
     const body = req.body as KeysQueryBody;
@@ -157,7 +157,7 @@ keysRouter.post(
 keysRouter.post(
   '/claim',
   requireAuth,
-  apiLimiter,
+  keyQueryLimiter,
   validateBody(keysClaimSchema),
   asyncHandler(async (req, res) => {
     const body = req.body as KeysClaimBody;

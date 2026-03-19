@@ -70,10 +70,22 @@ interface DeviceLinkingProps {
   devicePublicKey: string;
   /** The current device's unique identifier. */
   deviceId?: string;
+  /** The current user's ID (e.g. "@alice:frame.local"). */
+  userId?: string;
   /** Called when the user approves a scanned device. */
   onApprove: (scannedFingerprint: string) => void;
   /** Called when the user rejects a scanned device. */
   onReject: () => void;
+}
+
+/**
+ * Derive a short human-readable verification code from a fingerprint.
+ * Format: XXXX-YYYY-ZZZZ (12 hex chars, grouped).
+ */
+function deriveShortCode(fingerprint: string): string {
+  const clean = fingerprint.replace(/\s+/g, '').slice(0, 12).toUpperCase();
+  if (clean.length < 12) return clean;
+  return `${clean.slice(0, 4)}-${clean.slice(4, 8)}-${clean.slice(8, 12)}`;
 }
 
 // ── QR Corner Brackets Component ──
@@ -149,6 +161,7 @@ const ScanningGrid: React.FC = () => {
 const DeviceLinking: React.FC<DeviceLinkingProps> = ({
   devicePublicKey,
   deviceId,
+  userId,
   onApprove,
   onReject,
 }) => {
@@ -174,14 +187,22 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
     void generateFingerprint(devicePublicKey).then((fp) => {
       if (!cancelled) {
         setFingerprint(fp);
-        const payload = JSON.stringify({ fingerprint: fp, deviceId, timestamp: Date.now() });
-        setQrPayload(payload);
+        // Build a deep link URL so scanning with any phone camera opens the app
+        // and navigates directly to the verification flow.
+        const baseUrl = window.location.origin;
+        const params = new URLSearchParams();
+        if (userId) params.set('userId', userId);
+        if (deviceId) params.set('deviceId', deviceId);
+        params.set('fingerprint', fp);
+        params.set('t', String(Date.now()));
+        const deepLink = `${baseUrl}/verify?${params.toString()}`;
+        setQrPayload(deepLink);
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [devicePublicKey, deviceId]);
+  }, [devicePublicKey, deviceId, userId]);
 
   // Stop camera helper
   const stopCamera = useCallback(() => {
@@ -213,15 +234,30 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
     // Show success animation
     setScanSuccess(true);
 
-    // Try to parse the JSON payload to extract fingerprint for display
+    // Extract fingerprint from deep link URL, legacy JSON, or raw string
     let displayValue = rawValue;
     try {
-      const parsed = JSON.parse(rawValue) as { fingerprint?: string };
-      if (parsed.fingerprint) {
-        displayValue = rawValue; // Keep the full JSON so handleApprove can validate timestamp
+      const url = new URL(rawValue);
+      const fp = url.searchParams.get('fingerprint');
+      const ts = url.searchParams.get('t');
+      if (fp) {
+        // Re-encode as JSON with timestamp for handleApprove validation
+        displayValue = JSON.stringify({
+          fingerprint: fp,
+          deviceId: url.searchParams.get('deviceId') ?? undefined,
+          timestamp: ts ? Number(ts) : Date.now(),
+        });
       }
     } catch {
-      // Raw string — use as-is
+      // Not a URL — try legacy JSON
+      try {
+        const parsed = JSON.parse(rawValue) as { fingerprint?: string };
+        if (parsed.fingerprint) {
+          displayValue = rawValue;
+        }
+      } catch {
+        // Raw string — use as-is
+      }
     }
 
     setScannedFingerprint(displayValue);
@@ -308,6 +344,28 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
     if (!input) return;
 
     setVerificationError(null);
+
+    // 1. Try deep link URL format
+    try {
+      const url = new URL(input);
+      const fp = url.searchParams.get('fingerprint');
+      const ts = url.searchParams.get('t');
+      if (fp) {
+        if (ts) {
+          const age = Date.now() - Number(ts);
+          if (age > QR_PAYLOAD_MAX_AGE_MS) {
+            setVerificationError('QR code has expired (older than 5 minutes). Please scan a fresh code.');
+            return;
+          }
+        }
+        onApprove(fp);
+        return;
+      }
+    } catch {
+      // Not a URL — continue
+    }
+
+    // 2. Try JSON format (legacy or from QR scan)
     try {
       const parsed = JSON.parse(input) as { fingerprint?: string; timestamp?: number };
       if (parsed.fingerprint && typeof parsed.timestamp === 'number') {
@@ -320,10 +378,12 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
         return;
       }
     } catch {
-      // Not JSON — treat as a raw fingerprint string
+      // Not JSON — continue
     }
 
-    onApprove(input);
+    // 3. Short code format (XXXX-YYYY-ZZZZ) — strip dashes and lowercase
+    const shortCodeClean = input.replace(/-/g, '').toLowerCase();
+    onApprove(shortCodeClean);
   }, [scannedFingerprint, onApprove]);
 
   return (
@@ -367,6 +427,31 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
             {formattedFingerprint || 'Generating fingerprint...'}
           </code>
         </div>
+
+        {/* Short verification code for manual entry */}
+        {fingerprint && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            padding: '8px 12px',
+            backgroundColor: '#0d1117',
+            border: '1px solid #30363d',
+            borderRadius: 6,
+          }}>
+            <span style={{ fontSize: 12, color: '#8b949e' }}>Manual code:</span>
+            <code style={{
+              fontSize: 16,
+              fontWeight: 600,
+              color: '#58a6ff',
+              fontFamily: FONT_MONO,
+              letterSpacing: 1,
+            }}>
+              {deriveShortCode(fingerprint)}
+            </code>
+          </div>
+        )}
       </div>
 
       {/* Scanner Section */}
@@ -455,19 +540,22 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
         {/* Hidden canvas for frame capture (used by BarcodeDetector fallback if needed) */}
         <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-        {/* Manual fingerprint entry fallback */}
+        {/* Manual fingerprint / short code entry fallback */}
         <div style={styles.manualEntry}>
           <label style={styles.label} htmlFor="scanned-fingerprint">
-            Or enter fingerprint manually:
+            Or enter verification code manually:
           </label>
           <input
             id="scanned-fingerprint"
             type="text"
             style={styles.input}
-            placeholder="Paste the other device's fingerprint"
+            placeholder="XXXX-YYYY-ZZZZ or full fingerprint"
             value={scannedFingerprint}
             onChange={(e) => setScannedFingerprint(e.target.value)}
           />
+          <span style={{ fontSize: 11, color: '#6e7681', marginTop: 2 }}>
+            Enter the short code (e.g. XXXX-YYYY-ZZZZ) or full fingerprint from the other device.
+          </span>
         </div>
       </div>
 

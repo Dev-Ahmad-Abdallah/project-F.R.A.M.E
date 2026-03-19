@@ -61,6 +61,31 @@ const DeviceLinking = React.lazy(() => import('./devices/deviceLinking'));
 type CurrentPage = 'landing' | 'auth' | 'app';
 type ActiveView = 'chat' | 'settings' | 'verify' | 'link-device' | 'empty';
 
+/** Deep link verification parameters extracted from /verify?... URL */
+interface DeepLinkVerifyParams {
+  userId: string;
+  deviceId: string;
+  fingerprint: string;
+}
+
+/**
+ * Parse deep link verify parameters from the current URL.
+ * Returns null if not a /verify deep link.
+ */
+function parseVerifyDeepLink(): DeepLinkVerifyParams | null {
+  try {
+    const url = new URL(window.location.href);
+    if (url.pathname !== '/verify') return null;
+    const userId = url.searchParams.get('userId');
+    const fingerprint = url.searchParams.get('fingerprint');
+    const deviceId = url.searchParams.get('deviceId') ?? '';
+    if (!userId || !fingerprint) return null;
+    return { userId, deviceId, fingerprint };
+  } catch {
+    return null;
+  }
+}
+
 // ── Component ──
 
 function App() {
@@ -72,6 +97,11 @@ function App() {
   });
 
   const [auth, setAuth] = useState<AuthResponse | null>(null);
+
+  // Deep link verification: when user scans QR and opens /verify?... URL
+  const [pendingVerifyLink, setPendingVerifyLink] = useState<DeepLinkVerifyParams | null>(
+    () => parseVerifyDeepLink(),
+  );
 
   // Bug 4 fix: Track display name and status separately so sidebar re-renders
   // when the user updates them in ProfileSettings.
@@ -360,6 +390,8 @@ function App() {
   const handleAuthenticated = useCallback((authResponse: AuthResponse) => {
     setAuth(authResponse);
     setCurrentPage('app');
+    // If there's a pending verify deep link, jump straight to link-device view
+    // after login completes (the post-login init effect will handle the rest).
   }, []);
 
   const handleGuestLogin = useCallback(async () => {
@@ -462,6 +494,41 @@ function App() {
       cancelled = true;
     };
   }, [auth, setInitialUnread, requestNotifPermission, showToast]);
+
+  // ── Deep link verification handler ──
+  // When the app loads from a /verify?... URL and the user is authenticated,
+  // auto-navigate to the link-device view with pre-filled data.
+  useEffect(() => {
+    if (!auth || !pendingVerifyLink) return;
+    // Wait until init is done so crypto keys are available
+    if (initPhase !== 'done') return;
+
+    // Auto-approve the device verification from the deep link
+    void (async () => {
+      try {
+        const knownDevices = await getKnownDevices(auth.userId);
+        const matched = knownDevices.find(
+          (d) => d.fingerprint === pendingVerifyLink.fingerprint,
+        );
+        if (matched) {
+          await verifyDevice(auth.userId, matched.deviceId);
+          showToast('success', `Device verified successfully`, { dedupeKey: 'deep-link-verify' });
+        } else {
+          // No exact match — show the link-device view for manual confirmation
+          setActiveView('link-device');
+          showToast('info', 'Scan received — please confirm the device fingerprint', { dedupeKey: 'deep-link-verify' });
+        }
+      } catch (err) {
+        console.error('Deep link verification failed:', err);
+        setActiveView('link-device');
+      }
+      // Clear the deep link params from the URL to avoid re-triggering
+      setPendingVerifyLink(null);
+      try {
+        window.history.replaceState({}, '', '/');
+      } catch { /* ignore */ }
+    })();
+  }, [auth, pendingVerifyLink, initPhase, showToast]);
 
   // ── Presence heartbeat ──
   // Refresh the current user's "online" status in Redis every 2 minutes
@@ -646,6 +713,19 @@ function App() {
 
   // Fade transition style for page switches
   const fadeTransitionStyle: React.CSSProperties = { animation: 'frame-fade-in 0.15s ease-out' };
+
+  // ── Deep link redirect: if user is not logged in but has a /verify deep link,
+  // send them to auth so they can log in first; the pending params are preserved. ──
+  if (currentPage === 'landing' && pendingVerifyLink) {
+    return (
+      <div key="page-auth-deeplink" style={fadeTransitionStyle}>
+        <SignInPage
+          onAuthenticated={handleAuthenticated}
+          onBack={() => { setPendingVerifyLink(null); try { window.history.replaceState({}, '', '/'); } catch { /* ignore */ } setCurrentPage('landing'); }}
+        />
+      </div>
+    );
+  }
 
   // ── Page: Landing ──
   if (currentPage === 'landing') {

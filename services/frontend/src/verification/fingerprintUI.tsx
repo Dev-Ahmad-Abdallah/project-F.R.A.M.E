@@ -352,12 +352,14 @@ const FingerprintUI: React.FC<FingerprintUIProps> = ({
     );
   }
 
-  // The QR code contains both fingerprints for cross-verification
-  const qrPayload = JSON.stringify({
-    userId,
-    deviceId,
-    fingerprint: theirFingerprint,
-  });
+  // Build a deep link URL so scanning with any phone camera opens the app
+  // and navigates directly to the verification flow.
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const qrParams = new URLSearchParams();
+  qrParams.set('userId', userId);
+  qrParams.set('deviceId', deviceId);
+  qrParams.set('fingerprint', theirFingerprint);
+  const qrPayload = `${baseUrl}/verify?${qrParams.toString()}`;
 
   return (
     <div style={{

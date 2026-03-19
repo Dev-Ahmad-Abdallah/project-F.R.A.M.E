@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
-import { messageLimiter, apiLimiter } from '../middleware/rateLimit';
+import { messageLimiter, apiLimiter, syncLimiter } from '../middleware/rateLimit';
 import { asyncHandler, ApiError } from '../middleware/errorHandler';
 import { validateBody, validateQuery, sendMessageSchema, syncQuerySchema, reactSchema, typingSchema } from '../middleware/validation';
 import { sendMessage, deleteMessage, syncMessages, acknowledgeToDeviceMessages } from '../services/messageService';
@@ -82,7 +82,7 @@ messagesRouter.post(
 messagesRouter.get(
   '/sync',
   requireAuth,
-  apiLimiter,
+  syncLimiter,
   validateQuery(syncQuerySchema),
   asyncHandler(async (req, res) => {
     if (!req.auth) {
