@@ -12,7 +12,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
-import { renameRoom, inviteToRoom, leaveRoom, getRoomCode, regenerateCode } from '../api/roomsAPI';
+import { renameRoom, inviteToRoom, leaveRoom, getRoomCode, regenerateCode, updateRoomSettings, getRoomSettingsAPI } from '../api/roomsAPI';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { RoomSummary, RoomMember } from '../api/roomsAPI';
 
@@ -112,8 +112,9 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
 
-  // Disappearing messages placeholder
+  // Disappearing messages state (synced with server)
   const [disappearingEnabled, setDisappearingEnabled] = useState(false);
+  const [updatingDisappearing, setUpdatingDisappearing] = useState(false);
 
   // Success flash state
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -134,7 +135,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
 
   useEffect(() => { injectKeyframes(); }, []);
 
-  // Fetch invite code on mount
+  // Fetch invite code and room settings on mount
   useEffect(() => {
     let cancelled = false;
     setLoadingCode(true);
@@ -148,6 +149,17 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
       .finally(() => {
         if (!cancelled) setLoadingCode(false);
       });
+    // Fetch current disappearing messages setting
+    getRoomSettingsAPI(room.roomId)
+      .then((data) => {
+        if (!cancelled) {
+          const dm = data.settings?.disappearingMessages as { enabled: boolean; timeoutSeconds: number } | undefined;
+          if (dm?.enabled) {
+            setDisappearingEnabled(true);
+          }
+        }
+      })
+      .catch(() => { /* ignore — default to off */ });
     return () => { cancelled = true; };
   }, [room.roomId]);
 
@@ -551,8 +563,27 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                   style={{
                     ...styles.toggleButton,
                     backgroundColor: disappearingEnabled ? '#238636' : '#30363d',
+                    opacity: updatingDisappearing ? 0.6 : 1,
+                    cursor: updatingDisappearing ? 'not-allowed' : 'pointer',
                   }}
-                  onClick={() => setDisappearingEnabled((prev) => !prev)}
+                  disabled={updatingDisappearing}
+                  onClick={() => {
+                    const newEnabled = !disappearingEnabled;
+                    setDisappearingEnabled(newEnabled);
+                    setUpdatingDisappearing(true);
+                    const newSettings = newEnabled
+                      ? { disappearingMessages: { enabled: true, timeoutSeconds: 86400 } }
+                      : { disappearingMessages: { enabled: false, timeoutSeconds: 0 } };
+                    updateRoomSettings(room.roomId, newSettings)
+                      .then(() => {
+                        showSuccess(newEnabled ? 'Disappearing messages enabled (24h)' : 'Disappearing messages disabled');
+                      })
+                      .catch((err) => {
+                        console.error('Failed to update disappearing messages:', err);
+                        setDisappearingEnabled(!newEnabled); // rollback
+                      })
+                      .finally(() => setUpdatingDisappearing(false));
+                  }}
                   aria-label="Toggle disappearing messages"
                 >
                   <div

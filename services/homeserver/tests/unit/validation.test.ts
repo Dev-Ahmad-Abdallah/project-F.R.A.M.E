@@ -318,12 +318,12 @@ describe('createRoomSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('rejects empty inviteUserIds', () => {
+  it('accepts empty inviteUserIds (e.g. session-based rooms)', () => {
     const result = createRoomSchema.safeParse({
-      roomType: 'direct',
+      roomType: 'group',
       inviteUserIds: [],
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
   });
 
   it('rejects more than 50 inviteUserIds', () => {

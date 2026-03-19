@@ -170,6 +170,7 @@ keysRouter.post(
 keysRouter.get(
   '/count',
   requireAuth,
+  keyQueryLimiter,
   asyncHandler(async (req, res) => {
     if (!req.auth) {
       throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');

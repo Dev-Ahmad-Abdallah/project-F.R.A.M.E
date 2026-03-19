@@ -359,6 +359,7 @@ const FingerprintUI: React.FC<FingerprintUIProps> = ({
   qrParams.set('userId', userId);
   qrParams.set('deviceId', deviceId);
   qrParams.set('fingerprint', theirFingerprint);
+  qrParams.set('t', String(Date.now()));
   const qrPayload = `${baseUrl}/verify?${qrParams.toString()}`;
 
   return (

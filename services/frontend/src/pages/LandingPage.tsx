@@ -643,21 +643,27 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
               type="button"
               onClick={onTryAsGuest}
               style={{
-                marginTop: 12,
-                background: 'none',
-                border: 'none',
-                color: C.textSecondary,
+                marginTop: 14,
+                padding: '10px 28px',
                 fontSize: 14,
+                fontWeight: 500,
+                backgroundColor: 'rgba(88,166,255,0.06)',
+                border: `1px solid ${C.border}`,
+                borderRadius: 8,
+                color: C.textSecondary,
                 cursor: 'pointer',
                 fontFamily: C.font,
-                textDecoration: 'underline',
-                textUnderlineOffset: 3,
+                textDecoration: 'none',
                 position: 'relative',
                 zIndex: 1,
                 animation: 'frame-fade-in 0.8s ease-out 0.5s both',
+                transition: 'border-color 0.2s, color 0.2s, background-color 0.2s',
+                minHeight: 44,
               }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.text; e.currentTarget.style.backgroundColor = 'rgba(88,166,255,0.1)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.textSecondary; e.currentTarget.style.backgroundColor = 'rgba(88,166,255,0.06)'; }}
             >
-              Try as Guest -- no account needed
+              Try as Guest &mdash; no account needed
             </button>
           )}
         </section>
@@ -988,15 +994,24 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
 
         {/* ─── Footer ─── */}
         <footer style={{
-          padding: 'clamp(24px, 4vw, 40px) clamp(16px, 4vw, 48px)',
+          padding: 'clamp(32px, 5vw, 56px) clamp(16px, 4vw, 48px)',
           borderTop: `1px solid ${C.border}`,
-          backgroundColor: C.bg,
+          backgroundColor: C.darkerBg,
           textAlign: 'center',
         }}>
+          {/* Footer brand mark */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 16 }}>
+            <svg width="20" height="20" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+              <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke={C.accent} strokeWidth="2.5" fill="rgba(88,166,255,0.06)" />
+              <path d="M26 32l4 4 8-8" stroke={C.success} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            </svg>
+            <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: 2, color: C.white }}>F.R.A.M.E.</span>
+          </div>
           <p style={{
-            margin: '0 0 16px',
+            margin: '0 0 20px',
             fontSize: 13,
             color: C.textSecondary,
+            lineHeight: 1.6,
           }}>
             Built with vodozemac &middot; Olm/Megolm Protocol &middot; TypeScript &middot; Open Source
           </p>
@@ -1005,19 +1020,28 @@ export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageP
             justifyContent: 'center',
             gap: 24,
             flexWrap: 'wrap',
-            marginBottom: 20,
+            marginBottom: 24,
           }}>
             <button type="button" onClick={onGetStarted} style={footerLink}>Sign In</button>
             <button type="button" onClick={onGetStarted} style={footerLink}>Register</button>
             <a href="https://github.com" target="_blank" rel="noopener noreferrer" style={{ ...footerLink, textDecoration: 'none' }}>GitHub</a>
             <a href="#" style={{ ...footerLink, textDecoration: 'none' }}>Documentation</a>
           </div>
+          <div style={{ width: 48, height: 1, backgroundColor: C.border, margin: '0 auto 20px' }} />
           <p style={{
             margin: 0,
-            fontSize: 12,
-            color: '#8b949e',
+            fontSize: 11,
+            color: '#6e7681',
+            letterSpacing: 0.3,
           }}>
             &copy; {new Date().getFullYear()} F.R.A.M.E. &mdash; Federated, Resilient, Authenticated Messaging with Encryption
+          </p>
+          <p style={{
+            margin: '6px 0 0',
+            fontSize: 10,
+            color: '#484f58',
+          }}>
+            v1.0.0
           </p>
         </footer>
       </div>

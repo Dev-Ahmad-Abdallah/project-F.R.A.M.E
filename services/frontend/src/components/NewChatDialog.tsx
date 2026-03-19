@@ -17,14 +17,64 @@ import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { createRoom, joinByCode, getRoomCode } from '../api/roomsAPI';
 import type { RoomSummary } from '../api/roomsAPI';
+import { FrameApiError } from '../api/client';
 import { fetchAndVerifyKey } from '../verification/keyTransparency';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
+
+// ── Friendly error mapping ──
+
+/** Map raw API error codes to user-friendly messages */
+function friendlyErrorMessage(err: unknown, isGuest: boolean): string {
+  if (err instanceof FrameApiError) {
+    switch (err.code) {
+      case 'M_BAD_JSON':
+        return isGuest
+          ? 'Guest sessions have limited features. Create an account for the full experience.'
+          : 'Could not create the session. Please try again.';
+      case 'M_FORBIDDEN':
+        if (isGuest) {
+          return 'Guest sessions have limited features. Create an account for the full experience.';
+        }
+        // Preserve password-related messages so the UI can show the password field
+        if (err.message.toLowerCase().includes('password')) {
+          return err.message;
+        }
+        return "You don't have permission to do this.";
+      case 'M_RATE_LIMITED':
+        return 'Too many requests. Please wait a moment.';
+      case 'M_NOT_FOUND':
+        return 'Room not found. Check the code and try again.';
+      case 'M_SESSION_EXPIRED':
+        return 'Your session has expired. Please sign in again.';
+      default:
+        return isGuest
+          ? 'Guest sessions have limited features. Create an account for the full experience.'
+          : 'Something went wrong. Please try again.';
+    }
+  }
+  if (err instanceof Error) {
+    // For non-API errors (network failures, etc.), still show a friendly message
+    if (isGuest) {
+      return 'Guest sessions have limited features. Create an account for the full experience.';
+    }
+    // Check for common patterns but never show raw technical messages
+    if (err.message.toLowerCase().includes('network') || err.message.toLowerCase().includes('fetch')) {
+      return 'Connection issue. Please check your network and try again.';
+    }
+    if (err.message.toLowerCase().includes('password')) {
+      return err.message; // Password hints are already user-facing
+    }
+    return 'Something went wrong. Please try again.';
+  }
+  return 'Something went wrong. Please try again.';
+}
 
 // ── Types ──
 
 interface NewChatDialogProps {
   currentUserId: string;
+  isGuest?: boolean;
   onCreated: (room: RoomSummary) => void;
   onClose: () => void;
 }
@@ -107,6 +157,7 @@ function injectNewChatKeyframes(): void {
 
 const NewChatDialog: React.FC<NewChatDialogProps> = ({
   currentUserId,
+  isGuest = false,
   onCreated,
   onClose,
 }) => {
@@ -242,15 +293,11 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       setSessionId(code);
       setSessionCreated(true);
     } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Failed to create session.');
-      }
+      setError(friendlyErrorMessage(err, isGuest));
     } finally {
       setCreatingSession(false);
     }
-  }, [sessionPassword, showPasswordField]);
+  }, [sessionPassword, showPasswordField, isGuest]);
 
   const handleCopySessionId = useCallback(() => {
     const formatted = formatSessionId(sessionId);
@@ -274,7 +321,8 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
 
   const handleJoinSessionIdChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     // Allow typing, auto-insert dash after 3 chars
-    let raw = e.target.value.replace(/[^A-Z0-9-]/gi, '').toUpperCase();
+    // Only allow hex characters (A-F, 0-9) since invite codes are hex-based
+    let raw = e.target.value.replace(/[^A-Fa-f0-9-]/g, '').toUpperCase();
     // Remove all dashes first to normalize
     const stripped = raw.replace(/-/g, '');
     // Only keep up to 6 chars
@@ -295,8 +343,8 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       setError('Please enter a Session ID.');
       return;
     }
-    if (code.length !== 6 || !/^[A-Z0-9]{6}$/.test(code)) {
-      setError('Invalid Session ID. Expected format: XXX-XXX (e.g., A3F-K9P).');
+    if (code.length !== 6 || !/^[A-F0-9]{6}$/.test(code)) {
+      setError('Invalid Session ID. Use hex characters only (0-9, A-F), e.g., A3F-B9E.');
       return;
     }
 
@@ -318,18 +366,15 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         onCreated(newRoom);
       }, 1000);
     } catch (err) {
-      if (err instanceof Error) {
-        if (err.message.toLowerCase().includes('password')) {
-          setShowJoinPassword(true);
-        }
-        setError(err.message);
-      } else {
-        setError('Failed to connect to session.');
+      // If the error mentions a password, reveal the password field
+      if (err instanceof Error && err.message.toLowerCase().includes('password')) {
+        setShowJoinPassword(true);
       }
+      setError(friendlyErrorMessage(err, isGuest));
     } finally {
       setJoining(false);
     }
-  }, [joinSessionId, joinPassword, currentUserId, onCreated]);
+  }, [joinSessionId, joinPassword, currentUserId, onCreated, isGuest]);
 
   // ── Direct Message ──
 
@@ -381,15 +426,11 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         onCreated(newRoom);
       }, 1000);
     } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError('Failed to create conversation.');
-      }
+      setError(friendlyErrorMessage(err, isGuest));
     } finally {
       setDmLoading(false);
     }
-  }, [username, currentUserId, onCreated]);
+  }, [username, currentUserId, onCreated, isGuest]);
 
   // ── Success state ──
 
@@ -981,12 +1022,12 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 }}
                 value={joinSessionId}
                 onChange={handleJoinSessionIdChange}
-                placeholder="XXX-XXX"
+                placeholder="A3F-B9E"
                 maxLength={7} // 6 chars + 1 dash
                 disabled={isLoading}
               />
               <span style={styles.fieldHint}>
-                Enter the Session ID shared with you (e.g., A3F-K9P)
+                Enter the Session ID shared with you (e.g., A3F-B9E)
               </span>
             </div>
 
