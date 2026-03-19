@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useGlitchEffect } from './useGlitchEffect';
 
 // ── localStorage key ──
 
@@ -79,6 +80,9 @@ export function useSessionTimeout(
   const isWarningRef = useRef(false);
   const onTimeoutRef = useRef(onTimeout);
   onTimeoutRef.current = onTimeout;
+
+  // Trigger CRT glitch effect when session timeout warning activates
+  useGlitchEffect(isWarning);
 
   const resetTimer = useCallback(() => {
     lastActivityRef.current = Date.now();

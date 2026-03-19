@@ -11,6 +11,7 @@
  */
 
 import type { RefreshResponse, ApiError } from '@frame/shared';
+import { fireGlitch } from '../hooks/useGlitchEffect';
 
 // ── Toast callback (set by App to show non-blocking notifications) ──
 
@@ -354,6 +355,9 @@ export async function apiRequest<T>(
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       const retryAfterSec = parseRetryAfter(lastRes);
       rateLimitWaitUntil = Date.now() + retryAfterSec * 1000;
+
+      // Trigger CRT glitch effect on rate limit
+      fireGlitch();
 
       // Show a subtle toast — NOT a crash
       toastCallback?.('warning', `Slow down \u2014 retrying in ${retryAfterSec}s`, {

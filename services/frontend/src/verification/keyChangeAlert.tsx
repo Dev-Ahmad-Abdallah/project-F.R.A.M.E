@@ -22,6 +22,7 @@ import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { generateFingerprint } from '../crypto/cryptoUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useGlitchEffect } from '../hooks/useGlitchEffect';
 
 // ── Keyframes (injected once) ──
 
@@ -302,6 +303,10 @@ const KeyChangeAlert: React.FC<KeyChangeAlertProps> = ({
   const [loading, setLoading] = useState(true);
   const modalRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+
+  // Trigger CRT glitch effect on mount (key change detected)
+  const triggerGlitch = useGlitchEffect();
+  useEffect(() => { triggerGlitch(); }, [triggerGlitch]);
 
   useEffect(() => { injectKeyframes(); }, []);
 

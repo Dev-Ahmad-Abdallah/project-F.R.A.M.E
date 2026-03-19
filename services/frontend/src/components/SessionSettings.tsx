@@ -69,7 +69,11 @@ function formatCountdown(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-const SessionSettings: React.FC = () => {
+interface SessionSettingsProps {
+  onActivateVault?: () => void;
+}
+
+const SessionSettings: React.FC<SessionSettingsProps> = ({ onActivateVault }) => {
   const isMobile = useIsMobile();
   const [timeoutMs, setTimeoutMs] = useState<number>(getSavedTimeout);
   const [autoLock, setAutoLockState] = useState<boolean>(getAutoLock);
@@ -80,6 +84,14 @@ const SessionSettings: React.FC = () => {
   const [remainingMs, setRemainingMs] = useState<number>(timeoutMs);
   const sessionStartRef = useRef<number>(Date.now());
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Vault mode state
+  const [vaultEnabled, setVaultEnabled] = useState<boolean>(() =>
+    localStorage.getItem('frame-vault-pin') !== null,
+  );
+  const [showPinInput, setShowPinInput] = useState(false);
+  const [pinValue, setPinValue] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
 
   useEffect(() => { injectKeyframes(); }, []);
 
@@ -334,7 +346,7 @@ const SessionSettings: React.FC = () => {
         ...(isMobile ? { minHeight: 48, padding: '4px 0' } : {}),
       }}>
         <label htmlFor="notification-sounds" style={styles.label}>
-          Notification Sounds
+          {soundsOn ? '\uD83D\uDD0A Sound Effects' : '\uD83D\uDD07 Silent Ops'}
         </label>
         <button
           id="notification-sounds"
@@ -362,8 +374,8 @@ const SessionSettings: React.FC = () => {
 
       <p style={styles.hint}>
         {soundsOn
-          ? 'Play sounds for incoming messages, sent messages, and notifications.'
-          : 'All notification sounds are muted.'}
+          ? 'Tactical audio feedback for sends, receives, destructs, and joins.'
+          : 'Silent Ops — all sound effects are suppressed.'}
       </p>
 
       {/* ── Privacy section ── */}
@@ -444,6 +456,200 @@ const SessionSettings: React.FC = () => {
           ? 'Other users can see when you are typing a message.'
           : 'Typing indicators are disabled. Other users will not see when you are typing.'}
       </p>
+
+      {/* ── Vault Mode section ── */}
+      <h3 style={{ ...styles.heading, marginTop: 8 }}>Vault Mode</h3>
+
+      {/* Vault Mode toggle */}
+      <div style={{
+        ...styles.row,
+        ...(isMobile ? { minHeight: 48, padding: '4px 0' } : {}),
+      }}>
+        <label htmlFor="vault-mode" style={styles.label}>
+          <span style={{ marginRight: 6 }}>{'\uD83D\uDD12'}</span>
+          Vault Mode
+        </label>
+        <button
+          id="vault-mode"
+          type="button"
+          role="switch"
+          aria-checked={vaultEnabled}
+          onClick={() => {
+            if (vaultEnabled) {
+              // Disable vault mode
+              localStorage.removeItem('frame-vault-pin');
+              localStorage.removeItem('frame-vault-active');
+              setVaultEnabled(false);
+              setShowPinInput(false);
+              setPinValue('');
+            } else {
+              // Show PIN input to enable
+              setShowPinInput(true);
+              setPinError(null);
+              setPinValue('');
+            }
+          }}
+          style={{
+            ...styles.toggle,
+            backgroundColor: vaultEnabled ? '#238636' : '#30363d',
+            ...(isMobile ? { width: 52, height: 30, borderRadius: 15 } : {}),
+          }}
+        >
+          <span
+            style={{
+              ...styles.toggleKnob,
+              ...(isMobile ? { width: 24, height: 24, top: 3 } : {}),
+              transform: vaultEnabled
+                ? `translateX(${isMobile ? 22 : 18}px)`
+                : `translateX(${isMobile ? 3 : 2}px)`,
+            }}
+          />
+        </button>
+      </div>
+
+      <p style={styles.hint}>
+        {vaultEnabled
+          ? 'Vault Mode is enabled. The app disguises itself as a calculator. Enter your PIN + "=" to unlock.'
+          : 'Disguise the app as a calculator. Triple-tap the logo or toggle from settings to activate.'}
+      </p>
+
+      {/* PIN setup input */}
+      {showPinInput && !vaultEnabled && (
+        <div style={{
+          padding: '12px 14px',
+          backgroundColor: '#0d1117',
+          border: '1px solid #30363d',
+          borderRadius: 8,
+          marginBottom: 12,
+        }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: '#8b949e', display: 'block', marginBottom: 8 }}>
+            Set a 4-digit PIN to unlock the app from the calculator
+          </label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={8}
+              value={pinValue}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9]/g, '');
+                setPinValue(val);
+                setPinError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (pinValue.length < 4) {
+                    setPinError('PIN must be at least 4 digits');
+                  } else {
+                    localStorage.setItem('frame-vault-pin', pinValue);
+                    setVaultEnabled(true);
+                    setShowPinInput(false);
+                    setPinValue('');
+                    setPinError(null);
+                  }
+                }
+              }}
+              placeholder="Enter PIN (min 4 digits)"
+              autoFocus
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                fontSize: 14,
+                borderRadius: 6,
+                border: '1px solid #30363d',
+                backgroundColor: '#161b22',
+                color: '#c9d1d9',
+                fontFamily: '"SF Mono", "Fira Code", monospace',
+                letterSpacing: '0.2em',
+                outline: 'none',
+                textAlign: 'center' as const,
+                ...(isMobile ? { minHeight: 44, fontSize: 16 } : {}),
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (pinValue.length < 4) {
+                  setPinError('PIN must be at least 4 digits');
+                  return;
+                }
+                localStorage.setItem('frame-vault-pin', pinValue);
+                setVaultEnabled(true);
+                setShowPinInput(false);
+                setPinValue('');
+                setPinError(null);
+              }}
+              style={{
+                padding: '8px 16px',
+                fontSize: 12,
+                fontWeight: 600,
+                backgroundColor: '#238636',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                ...(isMobile ? { minHeight: 44, fontSize: 14 } : {}),
+              }}
+            >
+              Set
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowPinInput(false); setPinValue(''); setPinError(null); }}
+              style={{
+                padding: '8px 12px',
+                fontSize: 12,
+                fontWeight: 500,
+                backgroundColor: 'transparent',
+                color: '#8b949e',
+                border: '1px solid #30363d',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                ...(isMobile ? { minHeight: 44, fontSize: 14 } : {}),
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+          {pinError && (
+            <div style={{ marginTop: 6, fontSize: 11, color: '#f85149' }}>{pinError}</div>
+          )}
+        </div>
+      )}
+
+      {/* Quick-activate button when vault is enabled */}
+      {vaultEnabled && onActivateVault && (
+        <button
+          type="button"
+          onClick={onActivateVault}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            width: '100%',
+            padding: '10px 16px',
+            fontSize: 13,
+            fontWeight: 600,
+            backgroundColor: 'rgba(88, 166, 255, 0.08)',
+            color: '#58a6ff',
+            border: '1px solid rgba(88, 166, 255, 0.2)',
+            borderRadius: 8,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            marginBottom: 8,
+            ...(isMobile ? { minHeight: 48, fontSize: 14 } : {}),
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <rect x="3" y="8" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.3" fill="none" />
+            <path d="M5.5 8V5.5a2.5 2.5 0 015 0V8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+          </svg>
+          Activate Vault Mode Now
+        </button>
+      )}
     </div>
   );
 };

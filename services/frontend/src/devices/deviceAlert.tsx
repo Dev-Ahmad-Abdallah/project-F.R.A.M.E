@@ -13,6 +13,7 @@ import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useGlitchEffect } from '../hooks/useGlitchEffect';
 
 // ── Keyframes (injected once) ──
 
@@ -82,6 +83,10 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
   const isMobile = useIsMobile();
   const modalRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
+
+  // Trigger CRT glitch effect on mount (new device detected)
+  const triggerGlitch = useGlitchEffect();
+  useEffect(() => { triggerGlitch(); }, [triggerGlitch]);
 
   useEffect(() => { injectKeyframes(); }, []);
 

@@ -287,10 +287,25 @@ export async function isRoomMember(roomId: string, userId: string): Promise<bool
 }
 
 /**
- * Generate a 6-character uppercase hex invite code.
+ * Generate a 4-character tactical FREQ invite code.
+ * Format: letter-digit-digit-letter (e.g. "A74B") with non-consecutive digits.
+ * Displayed as "FREQ: A7-4B" on the frontend.
  */
 export function generateInviteCode(): string {
-  return crypto.randomBytes(3).toString('hex').toUpperCase();
+  const letters = 'ABCDEF';
+  const digits = '0123456789';
+  const pick = (chars: string) => chars[crypto.randomInt(chars.length)];
+
+  const l1 = pick(letters);
+  const d1 = pick(digits);
+  // Ensure d2 is non-consecutive with d1
+  let d2 = pick(digits);
+  while (Math.abs(Number(d2) - Number(d1)) <= 1) {
+    d2 = pick(digits);
+  }
+  const l2 = pick(letters);
+
+  return `${l1}${d1}${d2}${l2}`;
 }
 
 /**

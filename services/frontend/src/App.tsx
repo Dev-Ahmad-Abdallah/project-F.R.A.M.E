@@ -56,6 +56,9 @@ import { useInstallPrompt } from './hooks/useInstallPrompt';
 import { playNotificationSound } from './sounds';
 import { useScreenProtection } from './hooks/useScreenProtection';
 import PrivacyShield from './components/PrivacyShield';
+import RankBadge from './components/RankBadge';
+import RankDisplay from './components/RankDisplay';
+import VaultCalculator from './components/VaultCalculator';
 
 // Lazy-load components not needed on initial render — reduces main bundle size
 const LandingPage = React.lazy(() => import('./pages/LandingPage'));
@@ -139,6 +142,37 @@ function App() {
   const [isLocked, setIsLocked] = useState(false);
   const [lockPassphrase, setLockPassphrase] = useState('');
   const [lockError, setLockError] = useState<string | null>(null);
+
+  // Vault mode (calculator disguise)
+  const [vaultMode, setVaultMode] = useState<boolean>(() =>
+    localStorage.getItem('frame-vault-active') === 'true',
+  );
+  const vaultTapCountRef = useRef(0);
+  const vaultTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const activateVaultMode = useCallback(() => {
+    setVaultMode(true);
+    localStorage.setItem('frame-vault-active', 'true');
+  }, []);
+
+  const deactivateVaultMode = useCallback(() => {
+    setVaultMode(false);
+    localStorage.removeItem('frame-vault-active');
+  }, []);
+
+  /** Triple-tap handler for the sidebar logo to activate vault mode. */
+  const handleLogoTap = useCallback(() => {
+    vaultTapCountRef.current += 1;
+    if (vaultTapTimerRef.current) clearTimeout(vaultTapTimerRef.current);
+    if (vaultTapCountRef.current >= 3) {
+      vaultTapCountRef.current = 0;
+      activateVaultMode();
+    } else {
+      vaultTapTimerRef.current = setTimeout(() => {
+        vaultTapCountRef.current = 0;
+      }, 600);
+    }
+  }, [activateVaultMode]);
 
   // Notification state
   const {
@@ -1093,6 +1127,11 @@ function App() {
     );
   }
 
+  // ── Vault mode (calculator disguise) ──
+  if (vaultMode) {
+    return <VaultCalculator onUnlock={deactivateVaultMode} />;
+  }
+
   // ── Device verification gate ──
   // Shown after init is complete, blocks access until verified or skipped.
   // Must render BEFORE the main app layout so it overlays everything.
@@ -1182,7 +1221,9 @@ function App() {
             )}
             <ProfileSettings userId={auth.userId} onDisplayNameChange={setUserDisplayName} onStatusChange={setUserStatus} />
             <div style={{ borderTop: '1px solid rgba(48, 54, 61, 0.6)', width: '100%', maxWidth: 440, margin: '12px 0 24px' }} />
-            <SessionSettings />
+            <SessionSettings onActivateVault={activateVaultMode} />
+            <div style={{ borderTop: '1px solid rgba(48, 54, 61, 0.6)', width: '100%', maxWidth: 440, margin: '12px 0 24px' }} />
+            <RankDisplay />
             <div style={{ borderTop: '1px solid rgba(48, 54, 61, 0.6)', width: '100%', maxWidth: 440, margin: '12px 0 24px' }} />
             <React.Suspense fallback={<div style={{ padding: 16, color: '#8b949e' }}>Loading devices...</div>}>
             <DeviceList
@@ -1516,8 +1557,12 @@ function App() {
             animation: 'frame-scanline 10s linear infinite',
             opacity: 0.4,
           }} />
-          {/* F.R.A.M.E. sidebar header branding */}
-          <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #21262d' }}>
+          {/* F.R.A.M.E. sidebar header branding — triple-tap activates vault mode */}
+          <div
+            style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #21262d', cursor: 'default' }}
+            onClick={handleLogoTap}
+            role="banner"
+          >
             <svg width="16" height="16" viewBox="0 0 64 64" fill="none" aria-hidden="true" style={{ flexShrink: 0 }}>
               <path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#3fb950" strokeWidth="3" fill="rgba(63,185,80,0.06)" />
               <path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
@@ -1564,7 +1609,10 @@ function App() {
               }} />
             </div>
             <div style={styles.userDetails}>
-              <span className="frame-user-name" style={styles.userName}>{DOMPurify.sanitize(userDisplayName || formatDisplayName(auth.userId), PURIFY_CONFIG)}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span className="frame-user-name" style={styles.userName}>{DOMPurify.sanitize(userDisplayName || formatDisplayName(auth.userId), PURIFY_CONFIG)}</span>
+                <RankBadge />
+              </div>
               <span className="frame-user-status" style={{ ...styles.userStatus, color: connectionLost ? '#d29922' : (userStatus === 'online' ? '#3fb950' : userStatus === 'away' ? '#d29922' : userStatus === 'busy' ? '#f85149' : '#484f58') }} role="status" aria-live="polite">
                 <span style={{
                   display: 'inline-block',
@@ -1700,9 +1748,35 @@ function App() {
             )}
           </div>
 
-          {/* F.R.A.M.E. sidebar footer branding */}
-          <div className="frame-sidebar-footer" style={{ padding: '6px 16px 8px', borderTop: '1px solid #21262d', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+          {/* F.R.A.M.E. sidebar footer branding + vault mode toggle */}
+          <div className="frame-sidebar-footer" style={{ padding: '6px 16px 8px', borderTop: '1px solid #21262d', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <span style={{ fontSize: 10, color: '#30363d', fontWeight: 500, letterSpacing: 0.5 }}>F.R.A.M.E. v1.0.0</span>
+            <button
+              type="button"
+              onClick={activateVaultMode}
+              title="Activate Vault Mode"
+              aria-label="Activate Vault Mode"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '2px 4px',
+                fontSize: 12,
+                color: '#30363d',
+                lineHeight: 1,
+                opacity: 0.7,
+                transition: 'opacity 0.15s',
+                fontFamily: 'inherit',
+                display: 'flex',
+                alignItems: 'center',
+                minHeight: 0,
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                <rect x="3" y="8" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.3" fill="none" />
+                <path d="M5.5 8V5.5a2.5 2.5 0 015 0V8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
         </aside>
       )}

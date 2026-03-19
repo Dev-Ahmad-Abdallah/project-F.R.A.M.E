@@ -21,6 +21,8 @@ import { FrameApiError } from '../api/client';
 import { fetchAndVerifyKey } from '../verification/keyTransparency';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { generateCodename, generateMissionCode } from '../utils/codenames';
+import { playJoinSound, playErrorSound } from '../sounds';
 
 // ── Friendly error mapping ──
 
@@ -83,16 +85,28 @@ type TabMode = 'start' | 'join' | 'dm';
 
 // ── Helpers ──
 
-/** Format a raw invite code with dashes for readability: "A3FK9P" -> "A3F-K9P" */
+/**
+ * Format a raw invite code as a tactical FREQ code for display.
+ * Raw backend code is 6 hex chars (e.g. "A3F5BE"). We transform it
+ * to a 4-character FREQ format: letter-digit-digit-letter (e.g. "A3-5B")
+ * displayed as "FREQ: A3-5B".
+ */
 function formatSessionId(code: string): string {
   const clean = code.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-  if (clean.length <= 3) return clean;
-  return clean.slice(0, 3) + '-' + clean.slice(3, 6);
+  if (clean.length < 4) return clean;
+  // Take first 4 meaningful characters and format as XX-XX
+  const freq = clean.slice(0, 2) + '-' + clean.slice(2, 4);
+  return freq;
 }
 
-/** Strip dashes from a formatted session ID: "A3F-K9P" -> "A3FK9P" */
+/** Format with FREQ prefix for display */
+function formatFreqDisplay(code: string): string {
+  return 'FREQ: ' + formatSessionId(code);
+}
+
+/** Strip dashes from a formatted session ID */
 function stripDashes(value: string): string {
-  return value.replace(/-/g, '').toUpperCase();
+  return value.replace(/-/g, '').replace(/^FREQ:\s*/i, '').toUpperCase();
 }
 
 // ── Inject keyframes ──
@@ -173,6 +187,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   const [sessionCreated, setSessionCreated] = useState(false);
   const [sessionId, setSessionId] = useState('');
   const [sessionRoomId, setSessionRoomId] = useState('');
+  const [missionCode, setMissionCode] = useState('');
   const [copied, setCopied] = useState(false);
 
   // Join Session state
@@ -291,6 +306,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
 
       setSessionRoomId(result.roomId);
       setSessionId(code);
+      setMissionCode(generateMissionCode());
       setSessionCreated(true);
     } catch (err) {
       setError(friendlyErrorMessage(err, isGuest));
@@ -300,13 +316,14 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   }, [sessionPassword, showPasswordField, isGuest]);
 
   const handleCopySessionId = useCallback(() => {
-    const formatted = formatSessionId(sessionId);
+    const formatted = formatFreqDisplay(sessionId);
     void navigator.clipboard.writeText(formatted);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [sessionId]);
 
   const handleEnterSession = useCallback(() => {
+    playJoinSound();
     const newRoom: RoomSummary = {
       roomId: sessionRoomId,
       roomType: 'group',
@@ -321,16 +338,15 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   // ── Join Session ──
 
   const handleJoinSessionIdChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    // Allow typing, auto-insert dash after 3 chars
-    // Only allow hex characters (A-F, 0-9) since invite codes are hex-based
+    // Allow hex characters (A-F, 0-9) — FREQ format: XX-XX (4 chars total)
     let raw = e.target.value.replace(/[^A-Fa-f0-9-]/g, '').toUpperCase();
     // Remove all dashes first to normalize
     const stripped = raw.replace(/-/g, '');
-    // Only keep up to 6 chars
-    const trimmed = stripped.slice(0, 6);
-    // Re-format with dash
-    if (trimmed.length > 3) {
-      raw = trimmed.slice(0, 3) + '-' + trimmed.slice(3);
+    // Only keep up to 4 chars for FREQ code
+    const trimmed = stripped.slice(0, 4);
+    // Re-format with dash after 2 chars
+    if (trimmed.length > 2) {
+      raw = trimmed.slice(0, 2) + '-' + trimmed.slice(2);
     } else {
       raw = trimmed;
     }
@@ -341,11 +357,11 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   const handleJoinSession = useCallback(async () => {
     const code = stripDashes(joinSessionId);
     if (!code) {
-      setError('Please enter a Session ID.');
+      setError('Please enter a FREQ code.');
       return;
     }
-    if (code.length !== 6 || !/^[A-F0-9]{6}$/.test(code)) {
-      setError('Invalid Session ID. Use hex characters only (0-9, A-F), e.g., A3F-B9E.');
+    if (code.length !== 4 || !/^[A-F0-9]{4}$/.test(code)) {
+      setError('Invalid FREQ code. Use format A7-4B (hex characters 0-9, A-F).');
       return;
     }
 
@@ -362,6 +378,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         unreadCount: 0,
       };
 
+      playJoinSound();
       setShowSuccess(true);
       setTimeout(() => {
         onCreated(newRoom);
@@ -373,8 +390,10 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       if (msg.includes('password') || (code === 'M_FORBIDDEN' && !joinPassword)) {
         setShowJoinPassword(true);
         setError('This session requires a password to join.');
+        playErrorSound();
       } else {
         setError(friendlyErrorMessage(err, isGuest));
+        playErrorSound();
       }
     } finally {
       setJoining(false);
@@ -560,7 +579,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
             fontWeight: 600,
             color: '#f0f6fc',
           }}>
-            Session Ready
+            {'\uD83D\uDCE1'} COMMS CHANNEL ESTABLISHED
           </h2>
 
           <p style={{
@@ -568,39 +587,56 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
             color: '#8b949e',
             margin: '0 0 24px',
           }}>
-            Share this Session ID with the person you want to connect with
+            Share this FREQ code with the person you want to connect with
           </p>
 
-          {/* Session ID display — large, prominent, TeamViewer-style */}
+          {/* Session ID display — tactical mission style */}
           <div style={{
             backgroundColor: '#0d1117',
-            border: '1px solid #30363d',
-            borderRadius: 14,
+            border: '1.5px solid rgba(63, 185, 80, 0.4)',
+            borderRadius: 6,
             padding: '28px 24px',
             marginBottom: 16,
+            boxShadow: '0 0 12px rgba(63, 185, 80, 0.08), inset 0 0 20px rgba(63, 185, 80, 0.03)',
           }}>
+            {/* Mission codename + code */}
+            <div style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: '#3fb950',
+              textTransform: 'uppercase' as const,
+              letterSpacing: '0.12em',
+              marginBottom: 16,
+              fontFamily: FONT_MONO,
+              textAlign: 'center' as const,
+              textShadow: '0 0 8px rgba(63, 185, 80, 0.3)',
+            }}>
+              MISSION: {generateCodename(sessionRoomId)} [{missionCode}]
+            </div>
             <div style={{
               fontSize: 11,
               fontWeight: 600,
-              color: '#8b949e',
+              color: '#3fb950',
               textTransform: 'uppercase' as const,
-              letterSpacing: '0.1em',
+              letterSpacing: '0.15em',
               marginBottom: 14,
+              fontFamily: FONT_MONO,
             }}>
-              Your Session ID
+              {'\u25C8'} FREQ CODE
             </div>
             <div style={{
               fontFamily: FONT_MONO,
-              fontSize: 36,
+              fontSize: 38,
               fontWeight: 700,
-              color: '#58a6ff',
-              letterSpacing: '0.18em',
+              color: '#3fb950',
+              letterSpacing: '0.22em',
               userSelect: 'all' as const,
               marginBottom: 18,
               lineHeight: 1.2,
               textAlign: 'center' as const,
+              textShadow: '0 0 12px rgba(63, 185, 80, 0.4)',
             }}>
-              {formatSessionId(sessionId)}
+              {formatFreqDisplay(sessionId)}
             </div>
 
             {/* Copy button */}
@@ -610,18 +646,18 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 padding: '10px 24px',
                 fontSize: 14,
                 fontWeight: 600,
-                backgroundColor: copied ? 'rgba(63, 185, 80, 0.15)' : 'rgba(88, 166, 255, 0.1)',
-                color: copied ? '#3fb950' : '#58a6ff',
-                border: `1px solid ${copied ? 'rgba(63, 185, 80, 0.4)' : 'rgba(88, 166, 255, 0.3)'}`,
-                borderRadius: 8,
+                backgroundColor: copied ? 'rgba(63, 185, 80, 0.2)' : 'rgba(63, 185, 80, 0.08)',
+                color: copied ? '#3fb950' : '#3fb950',
+                border: `1px solid ${copied ? 'rgba(63, 185, 80, 0.5)' : 'rgba(63, 185, 80, 0.3)'}`,
+                borderRadius: 4,
                 cursor: 'pointer',
-                fontFamily: 'inherit',
+                fontFamily: FONT_MONO,
                 transition: 'all 0.2s ease',
                 minWidth: 180,
               }}
               onClick={handleCopySessionId}
             >
-              {copied ? 'Copied!' : 'Copy Session ID'}
+              {copied ? 'Copied!' : 'Copy FREQ Code'}
             </button>
 
             {showPasswordField && sessionPassword.trim() && (
@@ -896,9 +932,9 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                     color: '#8b949e',
                     lineHeight: 1.6,
                   }}>
-                    <li>Click &ldquo;Create Session&rdquo; to generate a unique Session ID</li>
-                    <li>Share the Session ID with your contact (via phone, text, etc.)</li>
-                    <li>They enter the ID in &ldquo;Join Session&rdquo; to connect</li>
+                    <li>Click &ldquo;Create Session&rdquo; to establish a comms channel</li>
+                    <li>Share the FREQ code with your contact (via phone, text, etc.)</li>
+                    <li>They enter the FREQ code in &ldquo;Join Session&rdquo; to connect</li>
                   </ol>
                 </div>
               </div>
@@ -1001,7 +1037,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                     display: 'inline-block',
                     animation: 'frame-pulse-ring 1s linear infinite',
                   }} />
-                  Creating Session...
+                  {'\uD83D\uDCE1'} ESTABLISHING COMMS CHANNEL...
                 </>
               ) : (
                 <>
@@ -1019,8 +1055,8 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         {activeTab === 'join' && (
           <div style={{ animation: 'frame-dialog-slide-up 0.2s ease-out' }}>
             <div style={styles.fieldGroup}>
-              <label style={styles.label} htmlFor="join-session-id">
-                Session ID
+              <label style={{ ...styles.label, fontFamily: FONT_MONO, color: '#3fb950', letterSpacing: '0.1em' }} htmlFor="join-session-id">
+                FREQ CODE
               </label>
               <input
                 id="join-session-id"
@@ -1029,23 +1065,24 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 style={{
                   ...styles.input,
                   fontFamily: FONT_MONO,
-                  fontSize: 22,
+                  fontSize: 24,
                   fontWeight: 700,
-                  letterSpacing: '0.12em',
+                  letterSpacing: '0.18em',
                   textAlign: 'center' as const,
                   textTransform: 'uppercase' as const,
                   padding: '14px 16px',
-                  ...(stripDashes(joinSessionId).length === 6 ? styles.inputValid : {}),
-                  transition: 'border-color 0.2s ease',
+                  borderColor: stripDashes(joinSessionId).length === 4 ? '#3fb950' : undefined,
+                  boxShadow: stripDashes(joinSessionId).length === 4 ? '0 0 8px rgba(63, 185, 80, 0.2)' : undefined,
+                  transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
                 }}
                 value={joinSessionId}
                 onChange={handleJoinSessionIdChange}
-                placeholder="A3F-B9E"
-                maxLength={7} // 6 chars + 1 dash
+                placeholder="Enter FREQ code (e.g. A7-B2)"
+                maxLength={5} // 4 chars + 1 dash
                 disabled={isLoading}
               />
               <span style={styles.fieldHint}>
-                Enter the Session ID shared with you (e.g., A3F-B9E)
+                Enter the FREQ code shared with you (e.g., A7-B2)
               </span>
             </div>
 

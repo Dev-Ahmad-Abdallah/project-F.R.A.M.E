@@ -25,6 +25,7 @@ import type { RoomSummary } from '../api/roomsAPI';
 import { getUserStatus } from '../api/authAPI';
 import type { UserStatus } from '../api/authAPI';
 import { formatDisplayName } from '../utils/displayName';
+import { generateCodename } from '../utils/codenames';
 import { SkeletonRoomItem } from './Skeleton';
 import { useIsMobile } from '../hooks/useIsMobile';
 
@@ -80,6 +81,16 @@ function getRoomDisplayName(
 ): string {
   if (room.name) {
     return DOMPurify.sanitize(room.name, PURIFY_CONFIG);
+  }
+
+  // Anonymous rooms: use tactical codenames instead of "Anonymous User N"
+  if (room.isAnonymous) {
+    const otherMembers = room.members.filter((m) => m.userId !== currentUserId);
+    if (otherMembers.length === 0) return generateCodename(room.roomId);
+    const names = otherMembers
+      .slice(0, 3)
+      .map((m) => generateCodename(m.userId + room.roomId));
+    return names.join(', ');
   }
 
   if (room.roomType === 'direct') {
