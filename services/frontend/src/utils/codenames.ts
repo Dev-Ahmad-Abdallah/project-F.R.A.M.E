@@ -57,3 +57,32 @@ export function generateMissionLabel(roomId: string): string {
   const code = generateMissionCode();
   return `MISSION: ${codename} [${code}]`;
 }
+
+// ── Tactical Session Name Generator ──
+
+const SESSION_PREFIXES = [
+  'Operation', 'Mission', 'Protocol', 'Cipher', 'Project',
+  'Vector', 'Signal', 'Phantom',
+];
+
+const SESSION_ADJECTIVES = [
+  'Shadow', 'Iron', 'Dark', 'Ghost', 'Silent', 'Crimson',
+  'Frost', 'Storm', 'Cobalt', 'Ember', 'Stealth', 'Onyx',
+];
+
+const SESSION_NOUNS = [
+  'Fox', 'Eagle', 'Viper', 'Hawk', 'Wolf', 'Falcon',
+  'Phoenix', 'Titan', 'Raven', 'Spectre', 'Hydra', 'Apex',
+];
+
+function pick<T>(arr: readonly T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+/**
+ * Generate a random tactical session name like "Operation Shadow Fox".
+ * Used as the default room name when creating a new session.
+ */
+export function generateSessionName(): string {
+  return `${pick(SESSION_PREFIXES)} ${pick(SESSION_ADJECTIVES)} ${pick(SESSION_NOUNS)}`;
+}

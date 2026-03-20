@@ -232,10 +232,12 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
         style={{
           display: 'block',
           width: '100%',
+          maxWidth: '100%',
           maxHeight: 300,
           objectFit: 'cover',
           cursor: 'pointer',
           minWidth: 160,
+          borderRadius: 0,
         }}
         onClick={() => { void handleDownload(); }}
         title={`${fileName} — click to download`}

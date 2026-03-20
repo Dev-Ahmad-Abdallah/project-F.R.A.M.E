@@ -326,7 +326,21 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
       )}
       <div
         className="frame-msg-bubble"
-        style={{ ...styles.messageBubble, ...(isMobile ? { padding: '10px 14px', fontSize: 'clamp(14px, 3.8vw, 16px)' } : {}), ...(isOwn ? styles.ownMessage : styles.otherMessage), ...(hasError ? styles.previousSessionMessage : {}), ...bubbleRadius, marginTop: 0, position: 'relative' as const, ...(isImageMessage ? { padding: 0, overflow: 'hidden' } : {}) }}
+        style={{
+          ...styles.messageBubble,
+          ...(isMobile ? { padding: '10px 14px', fontSize: 'clamp(14px, 3.8vw, 16px)' } : {}),
+          ...(isOwn ? styles.ownMessage : styles.otherMessage),
+          ...(hasError ? styles.previousSessionMessage : {}),
+          ...bubbleRadius,
+          marginTop: 0,
+          position: 'relative' as const,
+          ...(isImageMessage ? { padding: 0, overflow: 'hidden' } : {}),
+          // Force overflow/word-break inline to prevent production CSS issues
+          maxWidth: 'clamp(200px, 65%, 480px)',
+          overflow: 'hidden' as const,
+          wordBreak: 'break-word' as const,
+          overflowWrap: 'break-word' as const,
+        }}
         onContextMenu={isMobile ? undefined : (e) => onContextMenu(e, event.eventId, event.senderId)}
         onClick={(e) => onClick(e, event.eventId)}
       >
@@ -393,6 +407,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                         fileKey={fc.fileKey}
                         fileIv={fc.fileIv}
                         isSent={isOwn}
+                        isImageContent={isImageMessage}
                         viewOnce={isViewOnce || undefined}
                         onConsumed={isViewOnce && onConsumedOnce ? () => onConsumedOnce(event.eventId) : undefined}
                       />

@@ -21,7 +21,7 @@ import { FrameApiError } from '../api/client';
 import { fetchAndVerifyKey } from '../verification/keyTransparency';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { generateCodename } from '../utils/codenames';
+import { generateCodename, generateSessionName } from '../utils/codenames';
 import { playJoinSound, playErrorSound } from '../sounds';
 
 // ── Friendly error mapping ──
@@ -183,7 +183,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   const [sessionCreated, setSessionCreated] = useState(false);
   const [sessionId, setSessionId] = useState('');
   const [sessionRoomId, setSessionRoomId] = useState('');
-  // missionCode removed — MISSION label now uses the 6-char FREQ code directly
+  const [sessionCodename, setSessionCodename] = useState('');
   const [copied, setCopied] = useState(false);
 
   // Join Session state
@@ -284,10 +284,11 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
     setError(null);
 
     try {
+      const codename = generateSessionName();
       const result = await createRoom(
         'group',
         [],
-        'Secure Session',
+        codename,
         {
           isPrivate: true,
           password: showPasswordField && sessionPassword.trim()
@@ -300,6 +301,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       const codeResult = await getRoomCode(result.roomId);
       const code = codeResult.inviteCode ?? '';
 
+      setSessionCodename(codename);
       setSessionRoomId(result.roomId);
       setSessionId(code);
       setSessionCreated(true);
@@ -323,13 +325,13 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
     const newRoom: RoomSummary = {
       roomId: sessionRoomId,
       roomType: 'group',
-      name: 'Secure Session',
+      name: sessionCodename || 'Secure Session',
       members: [{ userId: currentUserId }],
       unreadCount: 0,
     };
     onCreated(newRoom);
     onClose(); // Close the dialog overlay so chat is interactive
-  }, [sessionRoomId, currentUserId, onCreated, onClose]);
+  }, [sessionRoomId, sessionCodename, currentUserId, onCreated, onClose]);
 
   // ── Join Session ──
 
@@ -369,7 +371,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       const newRoom: RoomSummary = {
         roomId: result.roomId,
         roomType: 'group',
-        name: result.name ?? 'Secure Session',
+        name: result.name ?? generateSessionName(),
         members: [{ userId: currentUserId }],
         unreadCount: 0,
       };
@@ -617,7 +619,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
               textAlign: 'center' as const,
               textShadow: '0 0 8px rgba(63, 185, 80, 0.3)',
             }}>
-              MISSION: {generateCodename(sessionRoomId)} [{stripDashes(sessionId)}]
+              {sessionCodename} [{stripDashes(sessionId)}]
             </div>
             <div style={{
               fontSize: 11,
