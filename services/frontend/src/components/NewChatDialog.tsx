@@ -21,7 +21,7 @@ import { FrameApiError } from '../api/client';
 import { fetchAndVerifyKey } from '../verification/keyTransparency';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { generateCodename, generateMissionCode } from '../utils/codenames';
+import { generateCodename } from '../utils/codenames';
 import { playJoinSound, playErrorSound } from '../sounds';
 
 // ── Friendly error mapping ──
@@ -183,7 +183,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   const [sessionCreated, setSessionCreated] = useState(false);
   const [sessionId, setSessionId] = useState('');
   const [sessionRoomId, setSessionRoomId] = useState('');
-  const [missionCode, setMissionCode] = useState('');
+  // missionCode removed — MISSION label now uses the 6-char FREQ code directly
   const [copied, setCopied] = useState(false);
 
   // Join Session state
@@ -302,7 +302,6 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
 
       setSessionRoomId(result.roomId);
       setSessionId(code);
-      setMissionCode(generateMissionCode());
       setSessionCreated(true);
     } catch (err) {
       setError(friendlyErrorMessage(err, isGuest));
@@ -312,8 +311,9 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   }, [sessionPassword, showPasswordField, isGuest]);
 
   const handleCopySessionId = useCallback(() => {
-    const formatted = formatFreqDisplay(sessionId);
-    void navigator.clipboard.writeText(formatted);
+    // Copy the raw 6-char hex code without dash so it pastes cleanly into the join field
+    const raw = stripDashes(sessionId);
+    void navigator.clipboard.writeText(raw);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [sessionId]);
@@ -334,7 +334,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   // ── Join Session ──
 
   const handleJoinSessionIdChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    // Allow hex characters (A-F, 0-9) — FREQ format: XX-XX (4 chars total)
+    // Allow hex characters (A-F, 0-9) — FREQ format: XXX-XXX (6 chars total)
     let raw = e.target.value.replace(/[^A-Fa-f0-9-]/g, '').toUpperCase();
     // Remove all dashes first to normalize
     const stripped = raw.replace(/-/g, '');
@@ -357,7 +357,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       return;
     }
     if (code.length !== 6 || !/^[A-F0-9]{6}$/.test(code)) {
-      setError('Invalid FREQ code. Use format A7-4B (hex characters 0-9, A-F).');
+      setError('Invalid FREQ code. Use format A7B-4C2 (6 hex characters: 0-9, A-F).');
       return;
     }
 
@@ -617,7 +617,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
               textAlign: 'center' as const,
               textShadow: '0 0 8px rgba(63, 185, 80, 0.3)',
             }}>
-              MISSION: {generateCodename(sessionRoomId)} [{missionCode}]
+              MISSION: {generateCodename(sessionRoomId)} [{stripDashes(sessionId)}]
             </div>
             <div style={{
               fontSize: 11,

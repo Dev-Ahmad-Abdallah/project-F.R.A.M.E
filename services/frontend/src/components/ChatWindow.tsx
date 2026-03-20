@@ -213,6 +213,30 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         const result = await syncMessages(nextBatchRef.current, 10000, 50); if (syncGenRef.current !== gen) break;
         if (result.events.length > 0) { setIsSyncing(true); setTimeout(() => setIsSyncing(false), 600); }
         await processSyncResponse(result); nextBatchRef.current = result.nextBatch;
+        // After processing to-device messages (which may contain Megolm session keys),
+        // retry decryption of any previously failed messages so "Unable to decrypt" resolves.
+        if (result.to_device && result.to_device.length > 0) {
+          setMessages(prev => {
+            const failed = prev.filter(m => m.decryptionError !== null);
+            if (failed.length === 0) return prev;
+            // Re-attempt decryption asynchronously and update state when done
+            void (async () => {
+              const updated: Map<string, DecryptedEvent> = new Map();
+              for (const m of failed) {
+                try {
+                  const retried = await decryptEvent(m.event);
+                  if (!retried.decryptionError) {
+                    updated.set(m.event.eventId, retried);
+                  }
+                } catch { /* keep original on error */ }
+              }
+              if (updated.size > 0) {
+                setMessages(p => p.map(m => updated.get(m.event.eventId) ?? m));
+              }
+            })();
+            return prev;
+          });
+        }
         if (result.events.length > 0) {
           const re = result.events.filter(e => e.roomId === roomId); const de = re.length > 0 ? await decryptEvents(re) : [];
           if (syncGenRef.current !== gen) break;
