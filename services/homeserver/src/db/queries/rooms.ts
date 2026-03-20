@@ -292,20 +292,8 @@ export async function isRoomMember(roomId: string, userId: string): Promise<bool
  * Displayed as "FREQ: A7-4B" on the frontend.
  */
 export function generateInviteCode(): string {
-  const letters = 'ABCDEF';
-  const digits = '0123456789';
-  const pick = (chars: string) => chars[crypto.randomInt(chars.length)];
-
-  const l1 = pick(letters);
-  const d1 = pick(digits);
-  // Ensure d2 is non-consecutive with d1
-  let d2 = pick(digits);
-  while (Math.abs(Number(d2) - Number(d1)) <= 1) {
-    d2 = pick(digits);
-  }
-  const l2 = pick(letters);
-
-  return `${l1}${d1}${d2}${l2}`;
+  // Generate 6-char codes: 3 hex bytes = 6 hex chars (e.g. "A3F5BE")
+  return crypto.randomBytes(3).toString('hex').toUpperCase();
 }
 
 /**

@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import React from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../../utils/purifyConfig';

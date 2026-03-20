@@ -136,7 +136,7 @@ export const roomInviteSchema = z.object({
 });
 
 export const joinByCodeSchema = z.object({
-  code: z.string().min(4).max(6).regex(/^[A-Z0-9]{4,6}$/, 'Invalid FREQ code format'),
+  code: z.string().length(6).regex(/^[A-F0-9]{6}$/, 'Invalid session code format (6 hex characters)'),
   password: z.string().max(128).optional(),
 });
 

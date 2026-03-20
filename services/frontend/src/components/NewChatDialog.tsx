@@ -87,21 +87,17 @@ type TabMode = 'start' | 'join' | 'dm';
 
 /**
  * Format a raw invite code as a tactical FREQ code for display.
- * Raw backend code is 6 hex chars (e.g. "A3F5BE"). We transform it
- * to a 4-character FREQ format: letter-digit-digit-letter (e.g. "A3-5B")
- * displayed as "FREQ: A3-5B".
+ * Raw backend code is 6 hex chars (e.g. "A3F5BE"). Format as "A3F-5BE".
  */
 function formatSessionId(code: string): string {
-  const clean = code.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-  if (clean.length < 4) return clean;
-  // Take first 4 meaningful characters and format as XX-XX
-  const freq = clean.slice(0, 2) + '-' + clean.slice(2, 4);
-  return freq;
+  const clean = code.replace(/[^A-F0-9]/gi, '').toUpperCase();
+  if (clean.length <= 3) return clean;
+  return clean.slice(0, 3) + '-' + clean.slice(3, 6);
 }
 
 /** Format with FREQ prefix for display */
 function formatFreqDisplay(code: string): string {
-  return 'FREQ: ' + formatSessionId(code);
+  return formatSessionId(code);
 }
 
 /** Strip dashes from a formatted session ID */
@@ -360,7 +356,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       setError('Please enter a FREQ code.');
       return;
     }
-    if (code.length !== 4 || !/^[A-F0-9]{4}$/.test(code)) {
+    if (code.length !== 6 || !/^[A-F0-9]{6}$/.test(code)) {
       setError('Invalid FREQ code. Use format A7-4B (hex characters 0-9, A-F).');
       return;
     }
@@ -1071,8 +1067,8 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                   textAlign: 'center' as const,
                   textTransform: 'uppercase' as const,
                   padding: '14px 16px',
-                  borderColor: stripDashes(joinSessionId).length === 4 ? '#3fb950' : undefined,
-                  boxShadow: stripDashes(joinSessionId).length === 4 ? '0 0 8px rgba(63, 185, 80, 0.2)' : undefined,
+                  borderColor: stripDashes(joinSessionId).length === 6 ? '#3fb950' : undefined,
+                  boxShadow: stripDashes(joinSessionId).length === 6 ? '0 0 8px rgba(63, 185, 80, 0.2)' : undefined,
                   transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
                 }}
                 value={joinSessionId}
@@ -1128,7 +1124,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 type="button"
                 style={{
                   ...styles.createButton,
-                  ...(isLoading || stripDashes(joinSessionId).length !== 4 ? styles.buttonDisabled : {}),
+                  ...(isLoading || stripDashes(joinSessionId).length !== 6 ? styles.buttonDisabled : {}),
                   transition: 'all 0.15s ease',
                   display: 'flex',
                   alignItems: 'center',
@@ -1137,7 +1133,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                   ...(isMobile ? { width: '100%', minHeight: 48 } : {}),
                 }}
                 onClick={() => void handleJoinSession()}
-                disabled={isLoading || stripDashes(joinSessionId).length !== 4}
+                disabled={isLoading || stripDashes(joinSessionId).length !== 6}
               >
                 {joining ? (
                   <>

@@ -1,3 +1,4 @@
+/* eslint-disable react/prop-types */
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import VoiceRecorder from '../VoiceRecorder';
 import CameraCapture from '../CameraCapture';
@@ -128,12 +129,15 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
     if (ta) {
       const start = ta.selectionStart ?? inputValue.length;
       const end = ta.selectionEnd ?? inputValue.length;
-      // We need to trigger the onChange through the parent
-      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
       const newVal = inputValue.slice(0, start) + emoji + inputValue.slice(end);
-      nativeInputValueSetter?.call(ta, newVal);
-      const event = new Event('input', { bubbles: true });
-      ta.dispatchEvent(event);
+      // Simulate a change event through the native setter to trigger React's onChange
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+      if (setter) {
+        setter.call(ta, newVal);
+        const event = new Event('input', { bubbles: true });
+        ta.dispatchEvent(event);
+      }
       setTimeout(() => {
         ta.selectionStart = ta.selectionEnd = start + emoji.length;
         ta.focus();
