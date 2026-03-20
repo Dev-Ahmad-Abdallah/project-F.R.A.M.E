@@ -6,7 +6,6 @@ import { formatDisplayName } from '../../utils/displayName';
 import { getUserStatus } from '../../api/authAPI';
 import type { UserStatus } from '../../api/authAPI';
 import { renameRoom } from '../../api/roomsAPI';
-import { generateCodename } from '../../utils/codenames';
 import { SyncIndicator } from '../Skeleton';
 import { styles } from './chatStyles';
 
@@ -25,80 +24,6 @@ const STATUS_LABELS: Record<UserStatus, string> = {
   busy: 'Busy',
   offline: 'Offline',
 };
-
-// ── DEFCON Threat Level Badge ──
-
-type ThreatLevel = 'secure' | 'caution' | 'alert';
-
-const THREAT_CONFIG: Record<ThreatLevel, { color: string; bg: string; border: string; label: string; sub: string }> = {
-  secure: { color: '#3fb950', bg: 'rgba(63,185,80,0.08)', border: '#3fb950', label: 'DEFCON 5', sub: 'SECURE' },
-  caution: { color: '#d29922', bg: 'rgba(210,153,34,0.08)', border: '#d29922', label: 'DEFCON 3', sub: 'CAUTION' },
-  alert: { color: '#f85149', bg: 'rgba(248,81,73,0.08)', border: '#f85149', label: 'DEFCON 1', sub: 'ALERT' },
-};
-
-function ThreatLevelBadge({ level }: { level: ThreatLevel }) {
-  const cfg = THREAT_CONFIG[level];
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '3px 10px 3px 8px',
-        borderRadius: 999,
-        backgroundColor: cfg.bg,
-        border: `1.5px solid ${cfg.border}`,
-        background: `linear-gradient(${cfg.bg}, ${cfg.bg}) padding-box, linear-gradient(135deg, ${cfg.color}, transparent 60%, ${cfg.color}) border-box`,
-        boxShadow: `0 0 8px ${cfg.bg}, inset 0 0 4px ${cfg.bg}`,
-        maxWidth: 120,
-        cursor: 'default',
-        lineHeight: 1,
-      }}
-      title={`${cfg.label} — ${cfg.sub}: ${level === 'secure' ? 'All devices verified, full E2EE' : level === 'caution' ? 'Encrypted but unverified devices present' : 'Key transparency warning or new unverified device'}`}
-    >
-      <span
-        style={{
-          display: 'inline-block',
-          width: 7,
-          height: 7,
-          borderRadius: '50%',
-          backgroundColor: cfg.color,
-          boxShadow: `0 0 6px ${cfg.color}`,
-          animation: 'frame-defcon-pulse 2s ease-in-out infinite',
-          flexShrink: 0,
-        }}
-      />
-      <span
-        style={{
-          fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
-          fontSize: 11,
-          fontWeight: 700,
-          color: cfg.color,
-          letterSpacing: '0.12em',
-          textTransform: 'uppercase' as const,
-          whiteSpace: 'nowrap' as const,
-        }}
-      >
-        {cfg.label}
-      </span>
-      <span style={{ color: cfg.color, opacity: 0.4, fontSize: 9 }}>{'\u2014'}</span>
-      <span
-        style={{
-          fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
-          fontSize: 9,
-          fontWeight: 600,
-          color: cfg.color,
-          opacity: 0.85,
-          letterSpacing: '0.15em',
-          textTransform: 'uppercase' as const,
-          whiteSpace: 'nowrap' as const,
-        }}
-      >
-        {cfg.sub}
-      </span>
-    </span>
-  );
-}
 
 // ── Avatar color helper ──
 const AVATAR_COLORS = ['#da3633', '#58a6ff', '#3fb950', '#d29922', '#bc8cff', '#f78166'];
@@ -268,50 +193,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
               {headerName}
             </span>
           )}
-          {isAnonymous && !isEditingName && (
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 3,
-              fontSize: 10,
-              fontWeight: 600,
-              color: '#bc8cff',
-              backgroundColor: 'rgba(188, 140, 255, 0.1)',
-              border: '1px solid rgba(188, 140, 255, 0.25)',
-              borderRadius: 4,
-              padding: '2px 6px',
-              marginLeft: 4,
-            }} title="Anonymous mode — identities are hidden">
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-                <circle cx="12" cy="7" r="4" />
-                <line x1="2" y1="2" x2="22" y2="22" />
-              </svg>
-              Anonymous
-            </span>
-          )}
-          {roomType === 'group' && !isEditingName && (
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 3,
-              fontSize: 9,
-              fontWeight: 700,
-              color: '#3fb950',
-              backgroundColor: 'rgba(63, 185, 80, 0.1)',
-              border: '1px solid rgba(63, 185, 80, 0.25)',
-              borderRadius: 4,
-              padding: '2px 6px',
-              marginLeft: 4,
-              fontFamily: '"SF Mono", "Fira Code", monospace',
-              letterSpacing: '0.05em',
-            }} title={`Mission codename: ${generateCodename(roomId)}`}>
-              MISSION: {generateCodename(roomId)}
-            </span>
-          )}
-          {roomType === 'direct' && !isEditingName && (
-            <span style={styles.verifiedBadge} title="Verified contact">&#10003;</span>
-          )}
+          {/* Anonymous and mission badges removed — clean header */}
           {roomType === 'direct' && !isEditingName && (
             <span
               style={{
@@ -358,22 +240,13 @@ const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
           )}
         </div>
         <div style={{ ...styles.headerSubRow, ...(isMobile ? { flexWrap: 'nowrap' as const, overflow: 'hidden', gap: 4 } : {}) }}>
-          <ThreatLevelBadge level="secure" />
-          {roomType === 'group' && (
-            <span style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 3,
-              padding: '1px 5px',
-              borderRadius: 4,
-              backgroundColor: 'rgba(247, 129, 102, 0.1)',
-              color: '#f78166',
-              fontSize: 10,
-              fontWeight: 600,
-            }} title="Password protected room">
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#f78166" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
-            </span>
-          )}
+          {/* Small lock icon — indicates E2EE */}
+          <span title="End-to-end encrypted" style={{ display: 'inline-flex', flexShrink: 0, opacity: 0.6 }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0110 0v4" />
+            </svg>
+          </span>
           {disappearingSettings?.enabled && (
             <span style={{
               display: 'inline-flex',
@@ -388,15 +261,6 @@ const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
             }} title={`Messages auto-delete after ${disappearingSettings.timeoutSeconds < 60 ? String(disappearingSettings.timeoutSeconds) + 's' : disappearingSettings.timeoutSeconds < 3600 ? String(Math.floor(disappearingSettings.timeoutSeconds / 60)) + 'm' : String(Math.floor(disappearingSettings.timeoutSeconds / 3600)) + 'h'}`}>
               <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#d29922" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
               {disappearingSettings.timeoutSeconds < 60 ? String(disappearingSettings.timeoutSeconds) + 's' : disappearingSettings.timeoutSeconds < 3600 ? String(Math.floor(disappearingSettings.timeoutSeconds / 60)) + 'm' : String(Math.floor(disappearingSettings.timeoutSeconds / 3600)) + 'h'}
-            </span>
-          )}
-          {disappearingSettings?.enabled && (
-            <span style={{
-              fontSize: 11,
-              fontStyle: 'italic',
-              color: '#6e7681',
-            }}>
-              Messages delete from this device only. Screenshots and copies are not prevented.
             </span>
           )}
           {isSyncing && <SyncIndicator />}

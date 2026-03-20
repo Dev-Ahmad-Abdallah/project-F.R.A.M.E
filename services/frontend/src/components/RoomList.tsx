@@ -355,14 +355,17 @@ const RoomList: React.FC<RoomListProps> = ({
     );
   }
 
+  // Deduplicate rooms by roomId (server may return duplicates)
+  const uniqueRooms = Array.from(new Map(rooms.map(r => [r.roomId, r])).values());
+
   // Filter rooms by search query (client-side)
   const filteredRooms = searchQuery.trim()
-    ? rooms.filter((room) => {
+    ? uniqueRooms.filter((room) => {
         const name = getRoomDisplayName(room, currentUserId).toLowerCase();
         const query = searchQuery.trim().toLowerCase();
         return name.includes(query);
       })
-    : rooms;
+    : uniqueRooms;
 
   // Partition rooms into sections
   const starredRooms: RoomSummary[] = [];
@@ -506,7 +509,6 @@ const RoomList: React.FC<RoomListProps> = ({
               }}>Anonymous</span>
             )}
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-              <span style={{ fontSize: 10, opacity: 0.4 }} title="End-to-end encrypted">{'\u{1F512}'}</span>
               {room.lastMessage && (
                 <span style={{
                   ...styles.timestamp,
@@ -517,11 +519,7 @@ const RoomList: React.FC<RoomListProps> = ({
               )}
             </div>
           </div>
-          {room.roomType === 'group' && (
-            <div style={styles.memberCount}>
-              {room.members.length} member{room.members.length !== 1 ? 's' : ''}
-            </div>
-          )}
+          {/* Member count removed from room items to reduce clutter */}
           <div style={{
             ...styles.roomPreview,
             minWidth: 0,
@@ -533,7 +531,7 @@ const RoomList: React.FC<RoomListProps> = ({
               flex: 1,
             }}>
               {room.lastMessage
-                ? room.lastMessage.body
+                ? room.lastMessage.body && room.lastMessage.body !== 'Encrypted message'
                   ? (() => {
                       const senderPrefix =
                         room.roomType === 'group' && room.lastMessage.senderId
@@ -545,7 +543,7 @@ const RoomList: React.FC<RoomListProps> = ({
                           : '';
                       return truncate(senderPrefix + (room.lastMessage?.body ?? ''), 40);
                     })()
-                  : <em style={{ fontStyle: 'italic', color: '#8b949e' }}>Encrypted message</em>
+                  : <em style={{ fontStyle: 'italic', color: '#6e7681' }}>New message</em>
                 : <span style={{ fontStyle: 'italic' }}>Say hello! {'\u{1F44B}'}</span>}
             </span>
             {unread > 0 && (
@@ -823,7 +821,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 12,
-    padding: '10px 16px',
+    padding: '8px 16px',
     backgroundColor: 'transparent',
     border: 'none',
     borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
@@ -895,12 +893,12 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 1,
   },
   previewText: {
-    fontSize: 13,
-    color: '#8b949e',
+    fontSize: 11,
+    color: '#6e7681',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    lineHeight: '18px',
+    lineHeight: '16px',
   },
   unreadBadge: {
     backgroundColor: '#238636',

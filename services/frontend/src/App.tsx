@@ -56,7 +56,6 @@ import { useInstallPrompt } from './hooks/useInstallPrompt';
 import { playNotificationSound } from './sounds';
 import { useScreenProtection } from './hooks/useScreenProtection';
 import PrivacyShield from './components/PrivacyShield';
-import RankBadge from './components/RankBadge';
 import RankDisplay from './components/RankDisplay';
 import VaultCalculator from './components/VaultCalculator';
 
@@ -1611,7 +1610,6 @@ function App() {
             <div style={styles.userDetails}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span className="frame-user-name" style={styles.userName}>{DOMPurify.sanitize(userDisplayName || formatDisplayName(auth.userId), PURIFY_CONFIG)}</span>
-                <RankBadge />
               </div>
               <span className="frame-user-status" style={{ ...styles.userStatus, color: connectionLost ? '#d29922' : (userStatus === 'online' ? '#3fb950' : userStatus === 'away' ? '#d29922' : userStatus === 'busy' ? '#f85149' : '#484f58') }} role="status" aria-live="polite">
                 <span style={{
@@ -1674,7 +1672,7 @@ function App() {
           {/* Room list with scroll fade gradient */}
           <div style={styles.roomListContainer}>
             <RoomList
-              rooms={rooms}
+              rooms={(() => { const seen = new Set<string>(); return rooms.filter((r) => { if (seen.has(r.roomId)) return false; seen.add(r.roomId); return true; }); })()}
               selectedRoomId={selectedRoomId}
               currentUserId={auth.userId}
               onSelectRoom={handleSelectRoom}
