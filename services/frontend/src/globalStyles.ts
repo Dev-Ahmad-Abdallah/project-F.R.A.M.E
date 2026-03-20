@@ -1079,10 +1079,22 @@ body {
 }
 
 @keyframes frame-destruct-text-fade {
-  0% { opacity: 0; transform: scale(0.9); }
-  20% { opacity: 1; transform: scale(1); }
-  80% { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(0.95); }
+  0% { opacity: 0; transform: scale(0.9); max-height: 40px; padding: 8px 16px; margin-top: 4px; }
+  20% { opacity: 1; transform: scale(1); max-height: 40px; padding: 8px 16px; margin-top: 4px; }
+  80% { opacity: 1; transform: scale(1); max-height: 40px; padding: 8px 16px; margin-top: 4px; }
+  90% { opacity: 0; transform: scale(0.95); max-height: 40px; padding: 8px 16px; margin-top: 4px; }
+  100% { opacity: 0; transform: scale(0.95); max-height: 0; padding: 0; margin-top: 0; }
+}
+
+/* ══════════════════════════════════════════════════
+   ACCESSIBILITY: REDUCED MOTION
+   ══════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 `;
 

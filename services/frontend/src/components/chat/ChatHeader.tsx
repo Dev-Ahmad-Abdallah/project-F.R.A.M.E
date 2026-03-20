@@ -1,0 +1,455 @@
+import React, { useRef, useState, useCallback, useEffect } from 'react';
+import DOMPurify from 'dompurify';
+import { PURIFY_CONFIG } from '../../utils/purifyConfig';
+import { formatDisplayName } from '../../utils/displayName';
+import { getUserStatus } from '../../api/authAPI';
+import type { UserStatus } from '../../api/authAPI';
+import { renameRoom } from '../../api/roomsAPI';
+import { generateCodename } from '../../utils/codenames';
+import { SyncIndicator } from '../Skeleton';
+import { styles } from './chatStyles';
+
+// ── Status helpers ──
+
+const STATUS_COLORS: Record<UserStatus, string> = {
+  online: '#3fb950',
+  away: '#d29922',
+  busy: '#f85149',
+  offline: '#484f58',
+};
+
+const STATUS_LABELS: Record<UserStatus, string> = {
+  online: 'Online',
+  away: 'Away',
+  busy: 'Busy',
+  offline: 'Offline',
+};
+
+// ── DEFCON Threat Level Badge ──
+
+type ThreatLevel = 'secure' | 'caution' | 'alert';
+
+const THREAT_CONFIG: Record<ThreatLevel, { color: string; bg: string; border: string; label: string; sub: string }> = {
+  secure: { color: '#3fb950', bg: 'rgba(63,185,80,0.08)', border: '#3fb950', label: 'DEFCON 5', sub: 'SECURE' },
+  caution: { color: '#d29922', bg: 'rgba(210,153,34,0.08)', border: '#d29922', label: 'DEFCON 3', sub: 'CAUTION' },
+  alert: { color: '#f85149', bg: 'rgba(248,81,73,0.08)', border: '#f85149', label: 'DEFCON 1', sub: 'ALERT' },
+};
+
+function ThreatLevelBadge({ level }: { level: ThreatLevel }) {
+  const cfg = THREAT_CONFIG[level];
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '3px 10px 3px 8px',
+        borderRadius: 999,
+        backgroundColor: cfg.bg,
+        border: `1.5px solid ${cfg.border}`,
+        background: `linear-gradient(${cfg.bg}, ${cfg.bg}) padding-box, linear-gradient(135deg, ${cfg.color}, transparent 60%, ${cfg.color}) border-box`,
+        boxShadow: `0 0 8px ${cfg.bg}, inset 0 0 4px ${cfg.bg}`,
+        maxWidth: 120,
+        cursor: 'default',
+        lineHeight: 1,
+      }}
+      title={`${cfg.label} — ${cfg.sub}: ${level === 'secure' ? 'All devices verified, full E2EE' : level === 'caution' ? 'Encrypted but unverified devices present' : 'Key transparency warning or new unverified device'}`}
+    >
+      <span
+        style={{
+          display: 'inline-block',
+          width: 7,
+          height: 7,
+          borderRadius: '50%',
+          backgroundColor: cfg.color,
+          boxShadow: `0 0 6px ${cfg.color}`,
+          animation: 'frame-defcon-pulse 2s ease-in-out infinite',
+          flexShrink: 0,
+        }}
+      />
+      <span
+        style={{
+          fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
+          fontSize: 11,
+          fontWeight: 700,
+          color: cfg.color,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase' as const,
+          whiteSpace: 'nowrap' as const,
+        }}
+      >
+        {cfg.label}
+      </span>
+      <span style={{ color: cfg.color, opacity: 0.4, fontSize: 9 }}>{'\u2014'}</span>
+      <span
+        style={{
+          fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
+          fontSize: 9,
+          fontWeight: 600,
+          color: cfg.color,
+          opacity: 0.85,
+          letterSpacing: '0.15em',
+          textTransform: 'uppercase' as const,
+          whiteSpace: 'nowrap' as const,
+        }}
+      >
+        {cfg.sub}
+      </span>
+    </span>
+  );
+}
+
+// ── Avatar color helper ──
+const AVATAR_COLORS = ['#da3633', '#58a6ff', '#3fb950', '#d29922', '#bc8cff', '#f78166'];
+
+function getAvatarColor(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+export interface ChatHeaderProps {
+  roomId: string;
+  currentUserId: string;
+  memberUserIds: string[];
+  roomDisplayName?: string;
+  roomType?: 'direct' | 'group';
+  memberCount?: number;
+  isAnonymous?: boolean;
+  isMobile: boolean;
+  isSyncing: boolean;
+  disappearingSettings: { enabled: boolean; timeoutSeconds: number } | null;
+  showSearch: boolean;
+  showDisappearingMenu: boolean;
+  onToggleSearch: () => void;
+  onToggleDisappearingMenu: () => void;
+  onUpdateDisappearing: (seconds: number) => void;
+  onLeave?: () => void;
+  onOpenSettings?: () => void;
+  onRoomRenamed?: (roomId: string, newName: string) => void;
+  onShowMobileMoreMenu: () => void;
+  showToast?: (type: 'success' | 'error' | 'info' | 'warning', message: string, options?: { persistent?: boolean; dedupeKey?: string; duration?: number }) => void;
+}
+
+const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
+  roomId,
+  currentUserId,
+  memberUserIds,
+  roomDisplayName,
+  roomType,
+  memberCount,
+  isAnonymous,
+  isMobile,
+  isSyncing,
+  disappearingSettings,
+  showSearch,
+  showDisappearingMenu,
+  onToggleSearch,
+  onToggleDisappearingMenu,
+  onUpdateDisappearing,
+  onLeave,
+  onOpenSettings,
+  onRoomRenamed,
+  onShowMobileMoreMenu,
+}) => {
+  // Inline rename state
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editNameValue, setEditNameValue] = useState('');
+  const [isRenaming, setIsRenaming] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  // Contact status for DM header
+  const [contactStatus, setContactStatus] = useState<UserStatus>('offline');
+  const [contactStatusHovered, setContactStatusHovered] = useState(false);
+
+  // Fetch contact status for DM rooms
+  useEffect(() => {
+    if (roomType !== 'direct') return;
+    const otherUserId = memberUserIds.find((id) => id !== currentUserId);
+    if (!otherUserId) return;
+
+    let cancelled = false;
+
+    const fetchStatus = async () => {
+      try {
+        const res = await getUserStatus(otherUserId);
+        if (!cancelled) setContactStatus(res.status);
+      } catch {
+        // Silently default to offline on error
+      }
+    };
+
+    void fetchStatus();
+    const interval = setInterval(() => void fetchStatus(), 30_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [roomId, roomType, memberUserIds, currentUserId]);
+
+  const handleStartRename = useCallback(() => {
+    setEditNameValue(roomDisplayName || '');
+    setIsEditingName(true);
+    setTimeout(() => renameInputRef.current?.focus(), 0);
+  }, [roomDisplayName]);
+
+  const handleCancelRename = useCallback(() => {
+    setIsEditingName(false);
+    setEditNameValue('');
+  }, []);
+
+  const handleConfirmRename = useCallback(async () => {
+    const trimmed = editNameValue.trim();
+    if (!trimmed || trimmed === roomDisplayName) {
+      handleCancelRename();
+      return;
+    }
+    setIsRenaming(true);
+    try {
+      await renameRoom(roomId, trimmed);
+      onRoomRenamed?.(roomId, trimmed);
+      setIsEditingName(false);
+    } catch (err) {
+      console.error('Failed to rename room:', err);
+    } finally {
+      setIsRenaming(false);
+    }
+  }, [editNameValue, roomDisplayName, roomId, onRoomRenamed, handleCancelRename]);
+
+  const handleRenameKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      void handleConfirmRename();
+    } else if (e.key === 'Escape') {
+      handleCancelRename();
+    }
+  }, [handleConfirmRename, handleCancelRename]);
+
+  const headerName = roomDisplayName
+    ? DOMPurify.sanitize(roomDisplayName, PURIFY_CONFIG)
+    : DOMPurify.sanitize(roomId, PURIFY_CONFIG);
+
+  return (
+    <div style={{ ...styles.header, padding: isMobile ? '6px 8px' : 'clamp(6px, 1vw, 10px) clamp(10px, 1.2vw, 14px)' }}>
+      <div style={styles.headerLeft}>
+        <div style={styles.headerNameRow}>
+          {roomType === 'group' && memberUserIds.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', marginRight: 6, flexShrink: 0 }}>
+              {isAnonymous ? (
+                <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: '#6e40aa', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid #161b22' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                    <line x1="2" y1="2" x2="22" y2="22" />
+                  </svg>
+                </div>
+              ) : (
+                <>
+                  {memberUserIds.filter((id) => id !== currentUserId).slice(0, 3).map((userId, idx) => (
+                    <div key={userId} title={formatDisplayName(userId)} style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: getAvatarColor(userId), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#fff', border: '2px solid #161b22', marginLeft: idx === 0 ? 0 : -8, zIndex: 3 - idx, position: 'relative' as const }}>
+                      {formatDisplayName(userId).charAt(0).toUpperCase()}
+                    </div>
+                  ))}
+                  {memberUserIds.filter((id) => id !== currentUserId).length > 3 && (
+                    <div style={{ width: 24, height: 24, borderRadius: '50%', backgroundColor: '#30363d', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#c9d1d9', border: '2px solid #161b22', marginLeft: -8, zIndex: 0, position: 'relative' as const }}>
+                      +{memberUserIds.filter((id) => id !== currentUserId).length - 3}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+          {isEditingName ? (
+            <input ref={renameInputRef} type="text" style={styles.renameInput} value={editNameValue} onChange={(e) => setEditNameValue(e.target.value)} onKeyDown={handleRenameKeyDown} onBlur={handleCancelRename} disabled={isRenaming} maxLength={128} aria-label="Rename room" />
+          ) : (
+            <span className="frame-chat-header-name" style={{ maxWidth: '50vw', cursor: 'pointer' }} onClick={handleStartRename} title="Click to rename">
+              {headerName}
+            </span>
+          )}
+          {isAnonymous && !isEditingName && (
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 3,
+              fontSize: 10,
+              fontWeight: 600,
+              color: '#bc8cff',
+              backgroundColor: 'rgba(188, 140, 255, 0.1)',
+              border: '1px solid rgba(188, 140, 255, 0.25)',
+              borderRadius: 4,
+              padding: '2px 6px',
+              marginLeft: 4,
+            }} title="Anonymous mode — identities are hidden">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+                <line x1="2" y1="2" x2="22" y2="22" />
+              </svg>
+              Anonymous
+            </span>
+          )}
+          {roomType === 'group' && !isEditingName && (
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 3,
+              fontSize: 9,
+              fontWeight: 700,
+              color: '#3fb950',
+              backgroundColor: 'rgba(63, 185, 80, 0.1)',
+              border: '1px solid rgba(63, 185, 80, 0.25)',
+              borderRadius: 4,
+              padding: '2px 6px',
+              marginLeft: 4,
+              fontFamily: '"SF Mono", "Fira Code", monospace',
+              letterSpacing: '0.05em',
+            }} title={`Mission codename: ${generateCodename(roomId)}`}>
+              MISSION: {generateCodename(roomId)}
+            </span>
+          )}
+          {roomType === 'direct' && !isEditingName && (
+            <span style={styles.verifiedBadge} title="Verified contact">&#10003;</span>
+          )}
+          {roomType === 'direct' && !isEditingName && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                position: 'relative' as const,
+              }}
+              onMouseEnter={() => setContactStatusHovered(true)}
+              onMouseLeave={() => setContactStatusHovered(false)}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  backgroundColor: STATUS_COLORS[contactStatus],
+                  display: 'inline-block',
+                  flexShrink: 0,
+                }}
+                title={STATUS_LABELS[contactStatus]}
+              />
+              {contactStatusHovered && (
+                <span style={{
+                  position: 'absolute' as const,
+                  top: '100%',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  marginTop: 4,
+                  padding: '3px 8px',
+                  fontSize: 11,
+                  color: '#c9d1d9',
+                  backgroundColor: '#1c2128',
+                  border: '1px solid #30363d',
+                  borderRadius: 4,
+                  whiteSpace: 'nowrap' as const,
+                  zIndex: 10,
+                  pointerEvents: 'none' as const,
+                }}>
+                  {STATUS_LABELS[contactStatus] /* eslint-disable-line security/detect-object-injection */}
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+        <div style={{ ...styles.headerSubRow, ...(isMobile ? { flexWrap: 'nowrap' as const, overflow: 'hidden', gap: 4 } : {}) }}>
+          <ThreatLevelBadge level="secure" />
+          {roomType === 'group' && (
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 3,
+              padding: '1px 5px',
+              borderRadius: 4,
+              backgroundColor: 'rgba(247, 129, 102, 0.1)',
+              color: '#f78166',
+              fontSize: 10,
+              fontWeight: 600,
+            }} title="Password protected room">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#f78166" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg>
+            </span>
+          )}
+          {disappearingSettings?.enabled && (
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 3,
+              padding: '1px 5px',
+              borderRadius: 4,
+              backgroundColor: 'rgba(210, 153, 34, 0.1)',
+              color: '#d29922',
+              fontSize: 10,
+              fontWeight: 600,
+            }} title={`Messages auto-delete after ${disappearingSettings.timeoutSeconds < 60 ? String(disappearingSettings.timeoutSeconds) + 's' : disappearingSettings.timeoutSeconds < 3600 ? String(Math.floor(disappearingSettings.timeoutSeconds / 60)) + 'm' : String(Math.floor(disappearingSettings.timeoutSeconds / 3600)) + 'h'}`}>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#d29922" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+              {disappearingSettings.timeoutSeconds < 60 ? String(disappearingSettings.timeoutSeconds) + 's' : disappearingSettings.timeoutSeconds < 3600 ? String(Math.floor(disappearingSettings.timeoutSeconds / 60)) + 'm' : String(Math.floor(disappearingSettings.timeoutSeconds / 3600)) + 'h'}
+            </span>
+          )}
+          {disappearingSettings?.enabled && (
+            <span style={{
+              fontSize: 11,
+              fontStyle: 'italic',
+              color: '#6e7681',
+            }}>
+              Messages delete from this device only. Screenshots and copies are not prevented.
+            </span>
+          )}
+          {isSyncing && <SyncIndicator />}
+          {memberCount != null && memberCount > 0 && (
+            <span style={styles.headerMemberCount}>
+              {memberCount} member{memberCount !== 1 ? 's' : ''}
+            </span>
+          )}
+          {roomType === 'direct' && contactStatus !== 'offline' && (
+            <span style={{ fontSize: 11, color: '#8b949e' }}>
+              {/* eslint-disable-next-line security/detect-object-injection */}
+              {'\u00B7'} {STATUS_LABELS[contactStatus]}
+            </span>
+          )}
+          {roomType === 'direct' && contactStatus === 'offline' && (
+            <span style={{ fontSize: 11, color: '#6e7681' }}>
+              {'\u00B7'} Offline
+            </span>
+          )}
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 6, position: 'relative' as const }}>
+        <button type="button" style={styles.searchButton} title="Search in chat" aria-label="Search in chat" onClick={onToggleSearch}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={showSearch ? '#58a6ff' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+        </button>
+        {!isMobile && <button type="button" style={{ ...styles.disappearingButton, ...(disappearingSettings?.enabled ? styles.disappearingButtonActive : {}) }} title="Disappearing messages" onClick={onToggleDisappearingMenu}>
+          {disappearingSettings?.enabled ? 'Auto-delete ON' : 'Auto-delete'}
+        </button>}
+        {showDisappearingMenu && (
+          <div style={styles.disappearingMenu}>
+            <div style={styles.disappearingMenuTitle}>Disappearing Messages</div>
+            {[{ label: 'Off', seconds: 0 }, { label: '30 seconds', seconds: 30 }, { label: '5 minutes', seconds: 300 }, { label: '1 hour', seconds: 3600 }, { label: '24 hours', seconds: 86400 }].map((opt) => (
+              <button key={opt.seconds} type="button" style={{ ...styles.disappearingMenuItem, ...(disappearingSettings?.enabled && disappearingSettings.timeoutSeconds === opt.seconds ? { color: '#58a6ff' } : {}), ...(!disappearingSettings?.enabled && opt.seconds === 0 ? { color: '#58a6ff' } : {}) }} onClick={() => onUpdateDisappearing(opt.seconds)}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {!isMobile && onLeave && (
+          <button type="button" style={styles.leaveButton} title="Leave conversation" onClick={onLeave}>Leave</button>
+        )}
+        {isMobile && (
+          <button type="button" style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#8b949e', fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', flexShrink: 0, minWidth: 44, minHeight: 44 }} title="More options" onClick={onShowMobileMoreMenu} aria-label="More options">
+            &#8943;
+          </button>
+        )}
+        {!isMobile && (
+          <button type="button" style={styles.infoButton} title="Room info" aria-label="Room info" onClick={() => onOpenSettings?.()}>i</button>
+        )}
+      </div>
+    </div>
+  );
+});
+
+ChatHeader.displayName = 'ChatHeader';
+
+export default ChatHeader;

@@ -23,6 +23,20 @@ import { fetchAndVerifyKey } from '../verification/keyTransparency';
 // Track which users have already been warned about key transparency — prevents console spam
 const ktWarnedUsers = new Set<string>();
 
+// ── Periodic Session Rotation ──
+
+/** Maximum messages before forcing a Megolm session rotation. */
+const MEGOLM_ROTATION_MESSAGE_LIMIT = 100;
+
+/** Maximum age (ms) of a Megolm session before forcing rotation (24 hours). */
+const MEGOLM_ROTATION_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** Per-room message counter since last session rotation. */
+const roomMessageCounts: Map<string, number> = new Map();
+
+/** Per-room session creation timestamp (epoch ms). */
+const roomSessionCreated: Map<string, number> = new Map();
+
 // ── Mutex ──
 
 /**
@@ -245,6 +259,33 @@ export async function encryptForRoom(
   plaintext: Record<string, unknown>,
   memberUserIds: string[],
 ): Promise<Record<string, unknown>> {
+  // ── Periodic session rotation check ──
+  // Rotate the Megolm session if the message count or session age exceeds limits.
+  const msgCount = roomMessageCounts.get(roomId) ?? 0;
+  const sessionCreated = roomSessionCreated.get(roomId) ?? 0;
+  const sessionAge = sessionCreated > 0 ? Date.now() - sessionCreated : 0;
+
+  if (msgCount >= MEGOLM_ROTATION_MESSAGE_LIMIT) {
+    console.info(
+      `[F.R.A.M.E.] Rotating Megolm session for room ${roomId}: message count limit reached (${msgCount}/${MEGOLM_ROTATION_MESSAGE_LIMIT})`,
+    );
+    await invalidateRoomSession(roomId);
+    roomMessageCounts.set(roomId, 0);
+    roomSessionCreated.set(roomId, Date.now());
+  } else if (sessionAge >= MEGOLM_ROTATION_AGE_MS) {
+    console.info(
+      `[F.R.A.M.E.] Rotating Megolm session for room ${roomId}: session age limit reached (${Math.round(sessionAge / 3600000)}h)`,
+    );
+    await invalidateRoomSession(roomId);
+    roomMessageCounts.set(roomId, 0);
+    roomSessionCreated.set(roomId, Date.now());
+  }
+
+  // Initialise tracking for new sessions
+  if (!roomSessionCreated.has(roomId)) {
+    roomSessionCreated.set(roomId, Date.now());
+  }
+
   // Ensure all devices have Olm sessions and the Megolm key is shared
   await ensureSessionsForRoom(roomId, memberUserIds);
 
@@ -257,6 +298,9 @@ export async function encryptForRoom(
     eventType,
     JSON.stringify(plaintext),
   );
+
+  // Increment message counter for this room
+  roomMessageCounts.set(roomId, (roomMessageCounts.get(roomId) ?? 0) + 1);
 
   return JSON.parse(encrypted) as Record<string, unknown>;
 }
@@ -380,6 +424,10 @@ export async function invalidateRoomSession(roomId: string): Promise<void> {
   const machine = getOlmMachine();
   const roomIdObj = new sdk.RoomId(roomId);
   await machine.invalidateGroupSession(roomIdObj);
+
+  // Reset periodic rotation tracking so the new session starts fresh
+  roomMessageCounts.set(roomId, 0);
+  roomSessionCreated.set(roomId, Date.now());
 }
 
 /**

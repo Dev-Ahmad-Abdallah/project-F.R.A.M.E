@@ -136,7 +136,7 @@ export const roomInviteSchema = z.object({
 });
 
 export const joinByCodeSchema = z.object({
-  code: z.string().min(6).max(6).regex(/^[A-F0-9]{6}$/, 'Invalid invite code format'),
+  code: z.string().min(4).max(6).regex(/^[A-Z0-9]{4,6}$/, 'Invalid FREQ code format'),
   password: z.string().max(128).optional(),
 });
 

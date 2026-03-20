@@ -1128,7 +1128,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 type="button"
                 style={{
                   ...styles.createButton,
-                  ...(isLoading || stripDashes(joinSessionId).length !== 6 ? styles.buttonDisabled : {}),
+                  ...(isLoading || stripDashes(joinSessionId).length !== 4 ? styles.buttonDisabled : {}),
                   transition: 'all 0.15s ease',
                   display: 'flex',
                   alignItems: 'center',
@@ -1137,7 +1137,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                   ...(isMobile ? { width: '100%', minHeight: 48 } : {}),
                 }}
                 onClick={() => void handleJoinSession()}
-                disabled={isLoading || stripDashes(joinSessionId).length !== 6}
+                disabled={isLoading || stripDashes(joinSessionId).length !== 4}
               >
                 {joining ? (
                   <>

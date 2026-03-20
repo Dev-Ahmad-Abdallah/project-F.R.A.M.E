@@ -5,6 +5,7 @@ import { asyncHandler } from '../middleware/errorHandler';
 import { validateBody, deviceRegisterSchema } from '../middleware/validation';
 import { registerDevice, listDevices, removeDevice, heartbeat, verifyDevice } from '../services/deviceService';
 import { usersShareRoom } from '../db/queries/rooms';
+import { setMasterSigningKey, getMasterSigningKey } from '../db/queries/users';
 import { ApiError } from '../middleware/errorHandler';
 
 export const devicesRouter = Router();
@@ -100,5 +101,40 @@ devicesRouter.post(
     }
     await heartbeat(req.auth.deviceId);
     res.json({ ok: true });
+  })
+);
+
+// PUT /devices/master-key — Upload master signing public key (one per user)
+devicesRouter.put(
+  '/master-key',
+  requireAuth,
+  apiLimiter,
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const body = req.body as { masterSigningKey?: string };
+    if (!body.masterSigningKey || typeof body.masterSigningKey !== 'string') {
+      throw new ApiError(400, 'M_BAD_JSON', 'masterSigningKey is required and must be a string');
+    }
+    await setMasterSigningKey(req.auth.sub, body.masterSigningKey);
+    res.json({ ok: true });
+  })
+);
+
+// GET /devices/master-key/:userId — Get a user's master signing public key
+devicesRouter.get(
+  '/master-key/:userId',
+  requireAuth,
+  apiLimiter,
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const masterKey = await getMasterSigningKey(req.params.userId);
+    if (!masterKey) {
+      throw new ApiError(404, 'M_NOT_FOUND', 'No master signing key found for this user');
+    }
+    res.json({ userId: req.params.userId, masterSigningKey: masterKey });
   })
 );

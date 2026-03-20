@@ -14,6 +14,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { generateFingerprint } from '../crypto/cryptoUtils';
+import { signDeviceKey, getMasterPublicKey, fetchMasterPublicKey, verifyCrossSignature } from '../crypto/crossSigning';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
 
@@ -76,6 +77,8 @@ interface DeviceLinkingProps {
   onApprove: (scannedFingerprint: string) => void;
   /** Called when the user rejects a scanned device. */
   onReject: () => void;
+  /** The scanned device's public key (base64) — needed for cross-signing. */
+  scannedDevicePublicKey?: string;
 }
 
 /**
@@ -164,12 +167,14 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
   userId,
   onApprove,
   onReject,
+  scannedDevicePublicKey,
 }) => {
   const isMobile = useIsMobile();
   const [fingerprint, setFingerprint] = useState<string>('');
   const [qrPayload, setQrPayload] = useState<string>('');
   const [scannedFingerprint, setScannedFingerprint] = useState<string>('');
   const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [crossSignStatus, setCrossSignStatus] = useState<string | null>(null);
 
   // Camera / scanner state
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -386,6 +391,34 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
     onApprove(shortCodeClean);
   }, [scannedFingerprint, onApprove]);
 
+  // Cross-sign the device after approval when a device public key is available
+  useEffect(() => {
+    if (!scannedDevicePublicKey) return;
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const masterKey = await getMasterPublicKey();
+        if (!masterKey) {
+          // No master key yet — skip cross-signing
+          return;
+        }
+        const signature = await signDeviceKey(scannedDevicePublicKey);
+        if (!cancelled) {
+          setCrossSignStatus(`Cross-signed \u2713`);
+          console.info('[F.R.A.M.E.] Device cross-signed. Signature:', signature.slice(0, 16) + '...');
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.warn('[F.R.A.M.E.] Cross-signing failed:', err);
+          setCrossSignStatus(null);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [scannedDevicePublicKey]);
+
   return (
     <div style={{
       ...styles.container,
@@ -568,6 +601,11 @@ const DeviceLinking: React.FC<DeviceLinkingProps> = ({
           </span>
         </div>
       </div>
+
+      {/* Cross-sign status */}
+      {crossSignStatus && (
+        <p style={{ margin: 0, fontSize: 13, color: '#3fb950', fontWeight: 600 }}>{crossSignStatus}</p>
+      )}
 
       {/* Verification error */}
       {verificationError && (

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
+import { sanitizeUrl, truncateUrl, linkifyText, parseMarkdownLite, parseInlineFormatting, URL_REGEX } from '../utils/messageFormatting';
 import { sendMessage, deleteMessage, syncMessages, SyncEvent, reactToMessage, markAsRead, getReadReceipts, ReactionData, setTyping, getTypingUsers } from '../api/messagesAPI';
 import { renameRoom, listRooms, getRoomMembers } from '../api/roomsAPI';
 import type { RoomSummary } from '../api/roomsAPI';
@@ -114,21 +115,19 @@ function DisappearingCountdownBadge({ msgTimestamp, timeoutSeconds, enabled, isE
     return () => clearInterval(timer);
   }, [msgTimestamp, timeoutSeconds, enabled, isExpired]);
 
-  if (secondsLeft === null || secondsLeft <= 0) return null;
+  if (secondsLeft === null || secondsLeft <= 0 || secondsLeft > 30) return null;
 
   const isUrgent = secondsLeft <= 10;
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 3,
-      padding: '1px 5px', fontSize: 9, fontWeight: 700,
-      fontFamily: 'monospace', letterSpacing: '0.05em',
+      padding: '1px 5px', fontSize: 11,
       borderRadius: 4,
       backgroundColor: isUrgent ? 'rgba(248, 81, 73, 0.15)' : 'rgba(210, 153, 34, 0.12)',
-      color: isUrgent ? '#f85149' : '#d29922',
       border: `1px solid ${isUrgent ? 'rgba(248, 81, 73, 0.3)' : 'rgba(210, 153, 34, 0.25)'}`,
       marginLeft: 4,
     }}>
-      {'\u{1F4A3}'} {secondsLeft}s
+      {isUrgent ? '\u{1F4A3}' : '\u23F3'}
     </span>
   );
 }
@@ -153,10 +152,10 @@ const STATUS_LABELS: Record<UserStatus, string> = {
 
 type ThreatLevel = 'secure' | 'caution' | 'alert';
 
-const THREAT_CONFIG: Record<ThreatLevel, { color: string; bg: string; border: string; label: string; sub: string }> = {
-  secure: { color: '#3fb950', bg: 'rgba(63,185,80,0.08)', border: '#3fb950', label: 'DEFCON 5', sub: 'SECURE' },
-  caution: { color: '#d29922', bg: 'rgba(210,153,34,0.08)', border: '#d29922', label: 'DEFCON 3', sub: 'CAUTION' },
-  alert: { color: '#f85149', bg: 'rgba(248,81,73,0.08)', border: '#f85149', label: 'DEFCON 1', sub: 'ALERT' },
+const THREAT_CONFIG: Record<ThreatLevel, { color: string; bg: string; border: string; label: string }> = {
+  secure: { color: '#3fb950', bg: 'rgba(63,185,80,0.08)', border: '#3fb950', label: 'SECURE' },
+  caution: { color: '#d29922', bg: 'rgba(210,153,34,0.08)', border: '#d29922', label: 'CAUTION' },
+  alert: { color: '#f85149', bg: 'rgba(248,81,73,0.08)', border: '#f85149', label: 'ALERT' },
 };
 
 function ThreatLevelBadge({ level }: { level: ThreatLevel }) {
@@ -177,7 +176,7 @@ function ThreatLevelBadge({ level }: { level: ThreatLevel }) {
         cursor: 'default',
         lineHeight: 1,
       }}
-      title={`${cfg.label} — ${cfg.sub}: ${level === 'secure' ? 'All devices verified, full E2EE' : level === 'caution' ? 'Encrypted but unverified devices present' : 'Key transparency warning or new unverified device'}`}
+      title={`${cfg.label}: ${level === 'secure' ? 'All devices verified, full E2EE' : level === 'caution' ? 'Encrypted but unverified devices present' : 'Key transparency warning or new unverified device'}`}
     >
       {/* Pulsing dot */}
       <span
@@ -192,11 +191,11 @@ function ThreatLevelBadge({ level }: { level: ThreatLevel }) {
           flexShrink: 0,
         }}
       />
-      {/* DEFCON label */}
+      {/* Status label */}
       <span
         style={{
           fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: 700,
           color: cfg.color,
           letterSpacing: '0.12em',
@@ -205,23 +204,6 @@ function ThreatLevelBadge({ level }: { level: ThreatLevel }) {
         }}
       >
         {cfg.label}
-      </span>
-      {/* Separator */}
-      <span style={{ color: cfg.color, opacity: 0.4, fontSize: 9 }}>{'\u2014'}</span>
-      {/* Sub-label */}
-      <span
-        style={{
-          fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
-          fontSize: 9,
-          fontWeight: 600,
-          color: cfg.color,
-          opacity: 0.85,
-          letterSpacing: '0.15em',
-          textTransform: 'uppercase' as const,
-          whiteSpace: 'nowrap' as const,
-        }}
-      >
-        {cfg.sub}
       </span>
     </span>
   );
@@ -302,165 +284,7 @@ function isDifferentDay(a: Date | string, b: Date | string): boolean {
 }
 
 // ── URL & Markdown-lite formatting helpers ──
-
-const URL_REGEX = /(https?:\/\/[^\s<]+|www\.[^\s<]+)/gi;
-
-/**
- * Sanitize a URL — only allow http/https protocols.
- */
-function sanitizeUrl(raw: string): string | null {
-  let url = raw;
-  if (url.startsWith('www.')) url = 'https://' + url;
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
-    return parsed.href;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Truncate a display URL: show first 40 chars + "..." for long URLs.
- */
-function truncateUrl(url: string): string {
-  if (url.length <= 50) return url;
-  return url.slice(0, 40) + '\u2026';
-}
-
-/**
- * Parse markdown-lite formatting tokens in a text segment into React elements.
- * Supports: ```code blocks```, `inline code`, **bold** / *bold*, __italic__ / _italic_,
- * ~~strikethrough~~ / ~strikethrough~.
- */
-function parseMarkdownLite(text: string, isOwn: boolean): React.ReactNode[] {
-  const elements: React.ReactNode[] = [];
-  const codeBlockRegex = /```([\s\S]*?)```/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  // eslint-disable-next-line no-cond-assign
-  while ((match = codeBlockRegex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      elements.push(...parseInlineFormatting(text.slice(lastIndex, match.index), isOwn));
-    }
-    elements.push(
-      React.createElement('pre', {
-        key: `cb-${match.index}`,
-        style: {
-          backgroundColor: isOwn ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.3)',
-          color: '#e6edf3',
-          padding: '8px 10px',
-          borderRadius: 6,
-          fontSize: 13,
-          fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
-          overflowX: 'auto' as const,
-          margin: '4px 0',
-          whiteSpace: 'pre-wrap' as const,
-          wordBreak: 'break-word' as const,
-        },
-      }, match[1])
-    );
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < text.length) {
-    elements.push(...parseInlineFormatting(text.slice(lastIndex), isOwn));
-  }
-  return elements;
-}
-
-/**
- * Parse inline formatting: `code`, **bold**, *bold*, __italic__, _italic_, ~~strike~~, ~strike~.
- */
-function parseInlineFormatting(text: string, isOwn: boolean): React.ReactNode[] {
-  const inlineRegex = /(`([^`]+?)`|\*\*(.+?)\*\*|\*(.+?)\*|__(.+?)__|_(.+?)_|~~(.+?)~~|~(.+?)~)/g;
-  const elements: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  // eslint-disable-next-line no-cond-assign
-  while ((match = inlineRegex.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      elements.push(text.slice(lastIndex, match.index));
-    }
-    const key = `fmt-${match.index}`;
-    if (match[2] !== undefined) {
-      elements.push(React.createElement('code', {
-        key,
-        style: {
-          backgroundColor: isOwn ? 'rgba(0,0,0,0.25)' : 'rgba(0,0,0,0.3)',
-          color: '#e6edf3',
-          padding: '1px 5px',
-          borderRadius: 3,
-          fontSize: '0.9em',
-          fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace',
-        },
-      }, match[2]));
-    } else if (match[3] !== undefined) {
-      elements.push(React.createElement('strong', { key }, match[3]));
-    } else if (match[4] !== undefined) {
-      elements.push(React.createElement('strong', { key }, match[4]));
-    } else if (match[5] !== undefined) {
-      elements.push(React.createElement('em', { key }, match[5]));
-    } else if (match[6] !== undefined) {
-      elements.push(React.createElement('em', { key }, match[6]));
-    } else if (match[7] !== undefined) {
-      elements.push(React.createElement('s', { key }, match[7]));
-    } else if (match[8] !== undefined) {
-      elements.push(React.createElement('s', { key }, match[8]));
-    }
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < text.length) {
-    elements.push(text.slice(lastIndex));
-  }
-  return elements;
-}
-
-/**
- * linkifyText: split text by URLs, apply markdown formatting to non-URL parts,
- * and render URLs as clickable <a> tags. Returns React elements.
- */
-function linkifyText(text: string, isOwn: boolean): React.ReactNode[] {
-  const sanitized = DOMPurify.sanitize(text, PURIFY_CONFIG);
-  const elements: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  const regex = new RegExp(URL_REGEX.source, 'gi');
-
-  // eslint-disable-next-line no-cond-assign
-  while ((match = regex.exec(sanitized)) !== null) {
-    if (match.index > lastIndex) {
-      elements.push(...parseMarkdownLite(sanitized.slice(lastIndex, match.index), isOwn));
-    }
-    const rawUrl = match[0];
-    const href = sanitizeUrl(rawUrl);
-    if (href) {
-      elements.push(
-        React.createElement('a', {
-          key: `link-${match.index}`,
-          href,
-          target: '_blank',
-          rel: 'noopener noreferrer',
-          style: {
-            color: isOwn ? 'rgba(255,255,255,0.95)' : '#58a6ff',
-            textDecoration: 'underline',
-            textUnderlineOffset: '2px',
-            wordBreak: 'break-all' as const,
-          },
-          onClick: (e: React.MouseEvent) => e.stopPropagation(),
-        }, truncateUrl(rawUrl))
-      );
-    } else {
-      elements.push(rawUrl);
-    }
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < sanitized.length) {
-    elements.push(...parseMarkdownLite(sanitized.slice(lastIndex), isOwn));
-  }
-  return elements;
-}
+// (extracted to ../utils/messageFormatting.ts)
 
 /**
  * Format full timestamp for tooltip display.
@@ -2165,6 +1989,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             alignSelf: isOwn ? 'flex-end' : 'flex-start',
             padding: '8px 16px', marginTop: 4,
             animation: 'frame-destruct-text-fade 2s ease-out forwards',
+            overflow: 'hidden',
           }}>
             <span style={{
               fontFamily: 'monospace', fontSize: 11, fontWeight: 700,
@@ -2317,8 +2142,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         (new Date(nextMsg.event.originServerTs).getTime() - msgDate.getTime()) > GROUP_GAP_MS;
 
       const bubbleRadius = isOwn
-        ? { borderTopLeftRadius: 16, borderTopRightRadius: isFirstInGroup ? 16 : 4, borderBottomLeftRadius: 16, borderBottomRightRadius: isLastInGroup ? 4 : 4 }
-        : { borderTopLeftRadius: isFirstInGroup ? 16 : 4, borderTopRightRadius: 16, borderBottomLeftRadius: isLastInGroup ? 4 : 4, borderBottomRightRadius: 16 };
+        ? { borderTopLeftRadius: 16, borderTopRightRadius: isFirstInGroup ? 16 : 4, borderBottomLeftRadius: 16, borderBottomRightRadius: isLastInGroup ? 16 : 4 }
+        : { borderTopLeftRadius: isFirstInGroup ? 16 : 4, borderTopRightRadius: 16, borderBottomLeftRadius: isLastInGroup ? 16 : 4, borderBottomRightRadius: 16 };
 
       const hasPopIn = recentlyArrivedIds.has(event.eventId);
       elements.push(
@@ -2847,6 +2672,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               }} title={`Messages auto-delete after ${disappearingSettings.timeoutSeconds < 60 ? String(disappearingSettings.timeoutSeconds) + 's' : disappearingSettings.timeoutSeconds < 3600 ? String(Math.floor(disappearingSettings.timeoutSeconds / 60)) + 'm' : String(Math.floor(disappearingSettings.timeoutSeconds / 3600)) + 'h'}`}>
                 <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#d29922" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
                 {disappearingSettings.timeoutSeconds < 60 ? String(disappearingSettings.timeoutSeconds) + 's' : disappearingSettings.timeoutSeconds < 3600 ? String(Math.floor(disappearingSettings.timeoutSeconds / 60)) + 'm' : String(Math.floor(disappearingSettings.timeoutSeconds / 3600)) + 'h'}
+              </span>
+            )}
+            {disappearingSettings?.enabled && (
+              <span style={{
+                fontSize: 11,
+                fontStyle: 'italic',
+                color: '#6e7681',
+              }}>
+                Messages delete from this device only. Screenshots and copies are not prevented.
               </span>
             )}
             {isSyncing && <SyncIndicator />}

@@ -49,6 +49,23 @@ export async function userExists(username: string): Promise<boolean> {
   return result.rowCount !== null && result.rowCount > 0;
 }
 
+export async function setMasterSigningKey(userId: string, masterSigningKey: string): Promise<void> {
+  await pool.query(
+    `UPDATE users SET master_signing_key = $2, updated_at = NOW()
+     WHERE user_id = $1`,
+    [userId, masterSigningKey]
+  );
+}
+
+export async function getMasterSigningKey(userId: string): Promise<string | null> {
+  const result = await pool.query<{ master_signing_key: string | null }>(
+    'SELECT master_signing_key FROM users WHERE user_id = $1',
+    [userId]
+  );
+  if (result.rows.length === 0) return null;
+  return result.rows[0].master_signing_key;
+}
+
 export async function updateDisplayName(userId: string, displayName: string): Promise<UserRow> {
   const result = await pool.query<UserRow>(
     `UPDATE users SET display_name = $2, updated_at = NOW()
