@@ -212,6 +212,15 @@ export function isAudioMessage(content: unknown): boolean {
 /**
  * Check if the content represents a file message.
  */
+const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
+export function isImageFile(content: unknown): boolean {
+  const obj = parseContentIfString(content);
+  if (obj == null) return false;
+  if (!isFileMessage(content)) return false;
+  return typeof obj.mimeType === 'string' && IMAGE_MIME_TYPES.has(obj.mimeType);
+}
+
 export function isFileMessage(content: unknown): boolean {
   const obj = parseContentIfString(content);
   if (obj == null) return false;

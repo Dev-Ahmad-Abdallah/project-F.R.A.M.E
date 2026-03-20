@@ -3,7 +3,7 @@ import React from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../../utils/purifyConfig';
 import { formatDisplayName } from '../../utils/displayName';
-import { linkifyText, isEmojiOnly, isFileMessage, isAudioMessage, getFileContent, getAudioContent } from '../../utils/messageFormatting';
+import { linkifyText, isEmojiOnly, isFileMessage, isAudioMessage, getFileContent, getAudioContent, isImageFile } from '../../utils/messageFormatting';
 import type { DecryptedEvent } from '../../crypto/sessionManager';
 import type { ReactionData } from '../../api/messagesAPI';
 import AudioPlayer from '../AudioPlayer';
@@ -285,6 +285,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
     ? { borderTopLeftRadius: 16, borderTopRightRadius: isFirstInGroup ? 16 : 4, borderBottomLeftRadius: 16, borderBottomRightRadius: isLastInGroup ? 4 : 4 }
     : { borderTopLeftRadius: isFirstInGroup ? 16 : 4, borderTopRightRadius: 16, borderBottomLeftRadius: isLastInGroup ? 4 : 4, borderBottomRightRadius: 16 };
 
+  // Detect if this message is an image — used to strip bubble padding
+  const isImageMessage = !isDeleted && !isExpired && !hasError && decrypted.plaintext != null && isFileMessage(decrypted.plaintext) && isImageFile(decrypted.plaintext);
+
   const isCurrentSearchMatch = searchQuery.trim() && filteredMessages.length > 0 && searchMatchIndex < filteredMessages.length && filteredMessages[searchMatchIndex]?.event.eventId === event.eventId;
 
   return (
@@ -294,7 +297,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
       style={{
         display: 'flex', alignItems: 'flex-end', gap: 8,
         alignSelf: isOwn ? 'flex-end' : 'flex-start',
-        maxWidth: isMobile ? '85%' : 'clamp(180px, 65%, 480px)',
+        maxWidth: isMobile ? '85%' : 'clamp(200px, 65%, 480px)',
         marginTop: isFirstInGroup ? 8 : 2,
         position: 'relative' as const,
         ...(isSelfDestructing ? { animation: 'frame-self-destruct 0.8s ease-in forwards', overflow: 'hidden' as const } : hasPopIn ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}),
@@ -323,7 +326,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
       )}
       <div
         className="frame-msg-bubble"
-        style={{ ...styles.messageBubble, ...(isMobile ? { padding: '10px 14px', fontSize: 'clamp(14px, 3.8vw, 16px)' } : {}), ...(isOwn ? styles.ownMessage : styles.otherMessage), ...(hasError ? styles.previousSessionMessage : {}), ...bubbleRadius, marginTop: 0, position: 'relative' as const }}
+        style={{ ...styles.messageBubble, ...(isMobile ? { padding: '10px 14px', fontSize: 'clamp(14px, 3.8vw, 16px)' } : {}), ...(isOwn ? styles.ownMessage : styles.otherMessage), ...(hasError ? styles.previousSessionMessage : {}), ...bubbleRadius, marginTop: 0, position: 'relative' as const, ...(isImageMessage ? { padding: 0, overflow: 'hidden' } : {}) }}
         onContextMenu={isMobile ? undefined : (e) => onContextMenu(e, event.eventId, event.senderId)}
         onClick={(e) => onClick(e, event.eventId)}
       >
@@ -450,8 +453,23 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
           )}
         </div>
         {isLastInGroup && (
-          <div style={styles.timestampRow}>
-            <span style={styles.timestamp} title={formatFullTimestamp(event.originServerTs)}>{formatRelativeTime(event.originServerTs)}</span>
+          <div style={{
+            ...styles.timestampRow,
+            ...(isImageMessage ? {
+              position: 'absolute' as const,
+              bottom: 6,
+              right: 8,
+              marginTop: 0,
+              backgroundColor: 'rgba(0,0,0,0.55)',
+              borderRadius: 8,
+              padding: '2px 6px',
+              zIndex: 2,
+            } : {}),
+          }}>
+            <span style={{
+              ...styles.timestamp,
+              ...(isImageMessage ? { color: '#fff', opacity: 0.9, fontSize: 10 } : {}),
+            }} title={formatFullTimestamp(event.originServerTs)}>{formatRelativeTime(event.originServerTs)}</span>
             {isOwn && (() => {
               const evId = event.eventId;
               // eslint-disable-next-line security/detect-object-injection

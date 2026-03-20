@@ -156,8 +156,8 @@ button, label, [role="button"] {
 }
 
 .frame-sidebar {
-  width: 300px;
-  min-width: 300px;
+  width: 320px;
+  min-width: 320px;
   display: flex;
   flex-direction: column;
   background-color: #161b22;

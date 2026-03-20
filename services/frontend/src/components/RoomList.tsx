@@ -955,7 +955,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   roomName: {
     fontSize: 14,

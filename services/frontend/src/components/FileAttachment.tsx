@@ -7,7 +7,8 @@
  * 2. Server-hosted: fileId points to an encrypted blob on the server.
  *    Download, decrypt, then display/download.
  *
- * For image types, shows an inline thumbnail preview after decryption.
+ * Images render edge-to-edge (WhatsApp style) with no card wrapper.
+ * Non-image files render as compact file cards.
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -25,6 +26,8 @@ interface FileAttachmentProps {
   fileKey: string;   // AES key (base64) — from the E2EE message content
   fileIv: string;    // IV (base64) — from the E2EE message content
   isSent: boolean;   // true if sent by current user
+  /** True when the parent bubble has detected this is an image and removed padding */
+  isImageContent?: boolean;
   /** If true, the file can only be downloaded once, then shows an expired message. */
   viewOnce?: boolean;
   /** Called after a view-once file has been downloaded. */
@@ -34,13 +37,13 @@ interface FileAttachmentProps {
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
 function getFileIcon(mimeType: string): string {
-  if (IMAGE_TYPES.has(mimeType)) return '\uD83D\uDDBC\uFE0F'; // framed picture
-  if (mimeType === 'application/pdf') return '\uD83D\uDCC4';   // page facing up
+  if (IMAGE_TYPES.has(mimeType)) return '\uD83D\uDDBC\uFE0F';
+  if (mimeType === 'application/pdf') return '\uD83D\uDCC4';
   if (mimeType === 'text/plain' || mimeType === 'text/csv') return '\uD83D\uDCC3';
   if (mimeType === 'application/json') return '{ }';
-  if (mimeType.includes('zip')) return '\uD83D\uDCE6';          // package
+  if (mimeType.includes('zip')) return '\uD83D\uDCE6';
   if (mimeType.includes('word') || mimeType.includes('document')) return '\uD83D\uDCC4';
-  return '\uD83D\uDCC1'; // file folder
+  return '\uD83D\uDCC1';
 }
 
 const FileAttachment: React.FC<FileAttachmentProps> = ({
@@ -52,6 +55,7 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
   fileKey,
   fileIv,
   isSent,
+  isImageContent,
   viewOnce,
   onConsumed,
 }) => {
@@ -204,185 +208,158 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
     }
   }, [downloading, isInline, isImage, fileName, decryptInlineData, decryptServerData, viewOnce, consumed, onConsumed]);
 
+  // ── Consumed / expired state ──
   if (consumed) {
     return (
       <div style={{
-        ...containerStyle,
-        backgroundColor: isSent ? 'rgba(255, 255, 255, 0.06)' : 'rgba(13, 17, 23, 0.5)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '8px 12px',
       }}>
-        <div style={fileInfoRowStyle}>
-          <span style={{ fontSize: 12, opacity: 0.7 }}>&#128065;</span>
-          <span style={{ fontStyle: 'italic', color: '#8b949e', fontSize: 13 }}>File expired</span>
-        </div>
+        <span style={{ fontSize: 12, opacity: 0.7 }}>&#128065;</span>
+        <span style={{ fontStyle: 'italic', color: '#8b949e', fontSize: 13 }}>File expired</span>
       </div>
     );
   }
 
+  // ── IMAGE rendering: edge-to-edge, no card ──
+  if (isImage && previewUrl) {
+    return (
+      <img
+        src={previewUrl}
+        alt={fileName}
+        style={{
+          display: 'block',
+          width: '100%',
+          maxHeight: 300,
+          objectFit: 'cover',
+          cursor: 'pointer',
+          minWidth: 160,
+        }}
+        onClick={() => { void handleDownload(); }}
+        title={`${fileName} — click to download`}
+      />
+    );
+  }
+
+  // ── IMAGE loading placeholder (before decryption completes) ──
+  if (isImage && !previewUrl) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+        minHeight: 120,
+        backgroundColor: isSent ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.15)',
+        ...(isImageContent ? {} : { padding: '8px 12px' }),
+      }}>
+        {error ? (
+          <span style={{ fontSize: 12, color: '#f85149' }}>{error}</span>
+        ) : (
+          <svg width="24" height="24" viewBox="0 0 16 16" fill="none" style={{ animation: 'frame-spin 1s linear infinite', opacity: 0.5 }}>
+            <circle cx="8" cy="8" r="6" stroke="#8b949e" strokeWidth="2" strokeDasharray="10 20" />
+          </svg>
+        )}
+      </div>
+    );
+  }
+
+  // ── NON-IMAGE FILE: compact WhatsApp-style card ──
   return (
     <div style={{
-      ...containerStyle,
-      backgroundColor: isSent ? 'rgba(255, 255, 255, 0.06)' : 'rgba(13, 17, 23, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 10,
+      padding: '8px 12px',
+      borderRadius: 8,
+      backgroundColor: isSent ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.15)',
+      width: '100%',
+      boxSizing: 'border-box' as const,
+      minWidth: 0,
+      overflow: 'hidden',
     }}>
-      {/* Image preview */}
-      {previewUrl && isImage && (
-        <div style={previewContainerStyle}>
-          <img
-            src={previewUrl}
-            alt={fileName}
-            style={previewImageStyle}
-          />
-        </div>
-      )}
+      {/* File icon */}
+      <span style={{
+        fontSize: 20,
+        flexShrink: 0,
+        lineHeight: 1,
+        width: 28,
+        textAlign: 'center' as const,
+      }} aria-hidden="true">
+        {getFileIcon(mimeType)}
+      </span>
 
-      {/* File info row — only shown when no image preview is available */}
-      {!(previewUrl && isImage) && (
-        <div style={fileInfoRowStyle}>
-          <span style={fileIconStyle} aria-hidden="true">
-            {getFileIcon(mimeType)}
-          </span>
-          <div style={fileDetailsStyle}>
-            <div style={fileNameStyle} title={fileName}>
-              {fileName}
-            </div>
-            <div style={fileSizeStyle}>
-              {formatFileSize(fileSize)}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => { void handleDownload(); }}
-            disabled={downloading}
-            style={{
-              ...downloadButtonStyle,
-              opacity: downloading ? 0.5 : 1,
-              cursor: downloading ? 'not-allowed' : 'pointer',
-            }}
-            title="Download file"
-            aria-label={`Download ${fileName}`}
-          >
-            {downloading ? (
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ animation: 'frame-spin 1s linear infinite' }}>
-                <circle cx="8" cy="8" r="6" stroke="#8b949e" strokeWidth="2" strokeDasharray="10 20" />
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-            )}
-          </button>
+      {/* File details */}
+      <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+        <div style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: '#e6edf3',
+          whiteSpace: 'nowrap' as const,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          lineHeight: 1.3,
+        }} title={fileName}>
+          {fileName}
         </div>
-      )}
+        <div style={{
+          fontSize: 11,
+          color: '#8b949e',
+          marginTop: 1,
+          lineHeight: 1,
+        }}>
+          {formatFileSize(fileSize)}
+        </div>
+      </div>
 
-      {/* Progress indicator */}
+      {/* Download button */}
+      <button
+        type="button"
+        onClick={() => { void handleDownload(); }}
+        disabled={downloading}
+        style={{
+          background: 'none',
+          border: 'none',
+          borderRadius: '50%',
+          padding: 4,
+          width: 28,
+          height: 28,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          transition: 'background-color 0.15s, opacity 0.15s',
+          backgroundColor: 'rgba(88, 166, 255, 0.12)',
+          opacity: downloading ? 0.5 : 1,
+          cursor: downloading ? 'not-allowed' : 'pointer',
+        }}
+        title="Download file"
+        aria-label={`Download ${fileName}`}
+      >
+        {downloading ? (
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ animation: 'frame-spin 1s linear infinite' }}>
+            <circle cx="8" cy="8" r="6" stroke="#8b949e" strokeWidth="2" strokeDasharray="10 20" />
+          </svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+        )}
+      </button>
+
+      {/* Progress / error inline */}
       {downloadProgress && (
-        <div style={progressStyle}>{downloadProgress}</div>
+        <span style={{ fontSize: 10, color: '#58a6ff', flexShrink: 0 }}>{downloadProgress}</span>
       )}
-
-      {/* Error message */}
       {error && (
-        <div style={errorStyle}>{error}</div>
+        <span style={{ fontSize: 10, color: '#f85149', flexShrink: 0 }}>{error}</span>
       )}
     </div>
   );
 };
 
 export default FileAttachment;
-
-// ── Styles ──
-
-const containerStyle: React.CSSProperties = {
-  border: 'none',
-  borderRadius: 8,
-  padding: 8,
-  width: '100%',
-  maxWidth: '100%',
-  minWidth: 0,
-  overflow: 'hidden',
-  boxSizing: 'border-box',
-};
-
-const previewContainerStyle: React.CSSProperties = {
-  marginBottom: 8,
-  borderRadius: 10,
-  overflow: 'hidden',
-  backgroundColor: 'rgba(0,0,0,0.15)',
-  boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
-};
-
-const previewImageStyle: React.CSSProperties = {
-  display: 'block',
-  maxWidth: '100%',
-  width: 'auto',
-  maxHeight: 240,
-  objectFit: 'contain',
-  borderRadius: 8,
-};
-
-const fileInfoRowStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  width: '100%',
-  overflow: 'hidden',
-  boxSizing: 'border-box',
-};
-
-const fileIconStyle: React.CSSProperties = {
-  fontSize: 22,
-  flexShrink: 0,
-  lineHeight: 1,
-  width: 32,
-  textAlign: 'center',
-};
-
-const fileDetailsStyle: React.CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  overflow: 'hidden',
-};
-
-const fileNameStyle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#e6edf3',
-  whiteSpace: 'nowrap',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  lineHeight: 1.3,
-};
-
-const fileSizeStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: '#8b949e',
-  marginTop: 2,
-  lineHeight: 1,
-};
-
-const downloadButtonStyle: React.CSSProperties = {
-  background: 'none',
-  border: 'none',
-  borderRadius: '50%',
-  padding: 4,
-  width: 28,
-  height: 28,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flexShrink: 0,
-  transition: 'background-color 0.15s, opacity 0.15s',
-  backgroundColor: 'rgba(88, 166, 255, 0.12)',
-};
-
-const progressStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: '#58a6ff',
-  marginTop: 6,
-};
-
-const errorStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: '#f85149',
-  marginTop: 6,
-};
