@@ -338,11 +338,11 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
     let raw = e.target.value.replace(/[^A-Fa-f0-9-]/g, '').toUpperCase();
     // Remove all dashes first to normalize
     const stripped = raw.replace(/-/g, '');
-    // Only keep up to 4 chars for FREQ code
-    const trimmed = stripped.slice(0, 4);
-    // Re-format with dash after 2 chars
-    if (trimmed.length > 2) {
-      raw = trimmed.slice(0, 2) + '-' + trimmed.slice(2);
+    // Only keep up to 6 chars
+    const trimmed = stripped.slice(0, 6);
+    // Re-format with dash after 3 chars (e.g. A3F-5BE)
+    if (trimmed.length > 3) {
+      raw = trimmed.slice(0, 3) + '-' + trimmed.slice(3);
     } else {
       raw = trimmed;
     }
@@ -404,7 +404,17 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       setError('Please enter a username.');
       return;
     }
-    if (trimmedUsername === currentUserId) {
+
+    // Auto-format plain username to full Matrix-style userId
+    // e.g. "abc" → "@abc:project-frame-production.up.railway.app"
+    const homeserverDomain = (process.env.REACT_APP_HOMESERVER_URL || '')
+      .replace(/^https?:\/\//, '')
+      .replace(/\/+$/, '');
+    const fullUserId = trimmedUsername.startsWith('@')
+      ? trimmedUsername
+      : `@${trimmedUsername}:${homeserverDomain}`;
+
+    if (fullUserId === currentUserId) {
       setError('You cannot message yourself.');
       return;
     }
@@ -415,28 +425,28 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
 
     try {
       try {
-        const verification = await fetchAndVerifyKey(trimmedUsername);
+        const verification = await fetchAndVerifyKey(fullUserId);
         if (!verification.verified && verification.proof !== null) {
           console.warn(
-            `[F.R.A.M.E.] Key transparency verification failed for ${trimmedUsername} — proceeding.`,
+            `[F.R.A.M.E.] Key transparency verification failed for ${fullUserId} — proceeding.`,
           );
         }
       } catch (err) {
         console.warn(
-          `[F.R.A.M.E.] Could not verify key for ${trimmedUsername}:`,
+          `[F.R.A.M.E.] Could not verify key for ${fullUserId}:`,
           err instanceof Error ? err.message : err,
         );
       }
       setVerifying(false);
 
-      const result = await createRoom('direct', [trimmedUsername]);
+      const result = await createRoom('direct', [fullUserId]);
       const newRoom: RoomSummary = {
         roomId: result.roomId,
         roomType: 'direct',
         name: undefined,
         members: [
           { userId: currentUserId },
-          { userId: trimmedUsername },
+          { userId: fullUserId },
         ],
         unreadCount: 0,
       };
@@ -1073,8 +1083,8 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
                 }}
                 value={joinSessionId}
                 onChange={handleJoinSessionIdChange}
-                placeholder="Enter FREQ code (e.g. A7-B2)"
-                maxLength={5} // 4 chars + 1 dash
+                placeholder="Enter code (e.g. A3F-5BE)"
+                maxLength={7} // 6 chars + 1 dash
                 disabled={isLoading}
               />
               <span style={styles.fieldHint}>
