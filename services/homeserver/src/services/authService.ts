@@ -141,9 +141,10 @@ export async function login(params: LoginParams): Promise<AuthResult> {
     await client.query('BEGIN');
 
     if (!existingDevice) {
-      // Lock the user's device rows and count atomically
+      // Lock the user's device rows first, then count
+      await client.query('SELECT device_id FROM devices WHERE user_id = $1 FOR UPDATE', [user.user_id]);
       const countResult = await client.query<{ count: number }>(
-        'SELECT COUNT(*)::int as count FROM devices WHERE user_id = $1 FOR UPDATE',
+        'SELECT COUNT(*)::int as count FROM devices WHERE user_id = $1',
         [user.user_id]
       );
       const deviceCount = countResult.rows[0].count;
