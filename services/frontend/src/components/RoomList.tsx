@@ -133,15 +133,15 @@ function formatRelativeTimestamp(isoDate: string): string {
     const diffDays = Math.floor(diffHr / 24);
 
     if (diffSec < 60) return 'now';
-    if (diffMin < 60) return `${diffMin}m ago`;
-    if (diffHr < 24) return `${diffHr}h ago`;
+    if (diffMin < 60) return `${diffMin}m`;
+    if (diffHr < 24) return `${diffHr}h`;
 
     const isYesterday =
       diffDays === 1 ||
       (diffDays === 0 && date.getDate() !== now.getDate());
-    if (isYesterday && diffDays <= 1) return 'Yesterday';
+    if (isYesterday && diffDays <= 1) return '1d';
 
-    if (diffDays < 7) return `${diffDays}d ago`;
+    if (diffDays < 7) return `${diffDays}d`;
 
     return date.toLocaleDateString(undefined, {
       month: 'short',
@@ -355,8 +355,40 @@ const RoomList: React.FC<RoomListProps> = ({
     );
   }
 
-  // Deduplicate rooms by roomId (server may return duplicates)
-  const uniqueRooms = Array.from(new Map(rooms.map(r => [r.roomId, r])).values());
+  // Deduplicate rooms: collapse duplicate DMs with the same user and
+  // duplicate single-member group rooms with the same name into the
+  // most-recently-active entry.
+  const uniqueRooms = (() => {
+    const seen = new Map<string, RoomSummary>();
+    const getRoomTimestamp = (r: RoomSummary): number =>
+      r.lastMessage?.timestamp ? new Date(r.lastMessage.timestamp).getTime() : 0;
+
+    for (const room of rooms) {
+      if (room.roomType === 'direct') {
+        // Key by the other user's ID so duplicate DMs collapse
+        const otherUser = room.members?.find(m => m.userId !== currentUserId)?.userId || room.roomId;
+        const key = `direct:${otherUser}`;
+        const existing = seen.get(key);
+        if (!existing || getRoomTimestamp(room) > getRoomTimestamp(existing)) {
+          seen.set(key, room);
+        }
+      } else {
+        // Group rooms with only 1 other member (or 0) and the same name: dedup
+        const otherMembers = room.members.filter(m => m.userId !== currentUserId);
+        if (otherMembers.length <= 1 && room.name) {
+          const key = `group:${room.name}:${otherMembers.map(m => m.userId).join(',')}`;
+          const existing = seen.get(key);
+          if (!existing || getRoomTimestamp(room) > getRoomTimestamp(existing)) {
+            seen.set(key, room);
+          }
+        } else {
+          // Unique group rooms — always show
+          seen.set(room.roomId, room);
+        }
+      }
+    }
+    return Array.from(seen.values());
+  })();
 
   // Filter rooms by search query (client-side)
   const filteredRooms = searchQuery.trim()
@@ -366,6 +398,26 @@ const RoomList: React.FC<RoomListProps> = ({
         return name.includes(query);
       })
     : uniqueRooms;
+
+  // Build duplicate-name suffix map: for rooms sharing the same display name,
+  // append " (2)", " (3)" etc. to disambiguate in the UI.
+  const displayNameSuffix = new Map<string, string>();
+  {
+    const nameToRoomIds = new Map<string, string[]>();
+    for (const room of filteredRooms) {
+      const name = getRoomDisplayName(room, currentUserId);
+      const ids = nameToRoomIds.get(name) || [];
+      ids.push(room.roomId);
+      nameToRoomIds.set(name, ids);
+    }
+    for (const [, ids] of nameToRoomIds) {
+      if (ids.length > 1) {
+        ids.forEach((id, idx) => {
+          displayNameSuffix.set(id, idx === 0 ? '' : ` (${idx + 1})`);
+        });
+      }
+    }
+  }
 
   // Partition rooms into sections
   const starredRooms: RoomSummary[] = [];
@@ -394,8 +446,16 @@ const RoomList: React.FC<RoomListProps> = ({
     const isHovered = hoveredRoomId === room.roomId;
     const isStarred = starredIds.has(room.roomId);
     const isArchived = archivedIds.has(room.roomId);
-    const displayName = getRoomDisplayName(room, currentUserId);
+    const baseName = getRoomDisplayName(room, currentUserId);
+    const displayName = baseName + (displayNameSuffix.get(room.roomId) || '');
     const unread = unreadByRoom?.[room.roomId] ?? room.unreadCount;
+
+    // Room type dot color: green=DM, blue=group, purple=anonymous
+    const roomTypeDotColor = room.isAnonymous
+      ? '#bc8cff'
+      : room.roomType === 'direct'
+        ? '#3fb950'
+        : '#58a6ff';
     const isStarAnimating = starAnimatingId === room.roomId;
     const roomIndex = visibleRoomOrder.indexOf(room.roomId);
     const isFocusedByKeyboard = focusedRoomIndex != null && roomIndex === focusedRoomIndex;
@@ -490,6 +550,15 @@ const RoomList: React.FC<RoomListProps> = ({
             ...(isMobile ? { gap: 6 } : {}),
           }}>
             <span style={{
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              backgroundColor: roomTypeDotColor,
+              display: 'inline-block',
+              flexShrink: 0,
+              opacity: 0.7,
+            }} title={room.isAnonymous ? 'Anonymous' : room.roomType === 'direct' ? 'DM' : 'Group'} />
+            <span style={{
               ...styles.roomName,
               ...(unread > 0 ? { color: '#f0f6fc', fontWeight: 700 } : {}),
               minWidth: 0,
@@ -543,7 +612,30 @@ const RoomList: React.FC<RoomListProps> = ({
                           : '';
                       return truncate(senderPrefix + (room.lastMessage?.body ?? ''), 40);
                     })()
-                  : <em style={{ fontStyle: 'italic', color: '#6e7681' }}>New message</em>
+                  : (() => {
+                      // Encrypted / unreadable message — show sender name prefix
+                      const senderId = room.lastMessage?.senderId;
+                      let prefix = '';
+                      if (senderId) {
+                        if (senderId === currentUserId) {
+                          prefix = 'You: ';
+                        } else {
+                          const senderMember = room.members.find(m => m.userId === senderId);
+                          prefix = DOMPurify.sanitize(
+                            senderMember?.displayName || formatDisplayName(senderId),
+                            PURIFY_CONFIG,
+                          ) + ': ';
+                        }
+                      }
+                      const ts = room.lastMessage?.timestamp
+                        ? ` \u00B7 ${formatRelativeTimestamp(room.lastMessage.timestamp)}`
+                        : '';
+                      return (
+                        <em style={{ fontStyle: 'italic', color: '#6e7681' }}>
+                          {prefix}New message{ts}
+                        </em>
+                      );
+                    })()
                 : <span style={{ fontStyle: 'italic' }}>Say hello! {'\u{1F44B}'}</span>}
             </span>
             {unread > 0 && (

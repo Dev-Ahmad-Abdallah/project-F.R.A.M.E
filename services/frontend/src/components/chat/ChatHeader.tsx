@@ -193,7 +193,17 @@ const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
               {headerName}
             </span>
           )}
-          {/* Anonymous and mission badges removed — clean header */}
+          {/* Subtle E2EE badge */}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, marginLeft: 6, opacity: 0.6, flexShrink: 0 }} title="End-to-end encrypted">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3fb950" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
+            <span style={{ fontSize: 10, color: '#3fb950', fontWeight: 600 }}>E2EE</span>
+          </span>
+          {/* Subtle anonymous label */}
+          {isAnonymous && (
+            <span style={{ fontSize: 10, color: '#bc8cff', opacity: 0.7, marginLeft: 4, fontWeight: 600, flexShrink: 0 }}>Anon</span>
+          )}
           {roomType === 'direct' && !isEditingName && (
             <span
               style={{
