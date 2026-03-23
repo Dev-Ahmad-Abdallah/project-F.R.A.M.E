@@ -86,8 +86,19 @@ export function getRefreshToken(): string | null {
 // ── Base URL ──
 
 function getBaseUrl(): string {
-  const url =
-    process.env.REACT_APP_HOMESERVER_URL ?? 'http://localhost:3000';
+  // In production, prefer the env var. If unset, fall back to same-origin
+  // (works when nginx reverse-proxies API routes on the same domain).
+  let url = process.env.REACT_APP_HOMESERVER_URL ?? '';
+
+  if (!url && typeof window !== 'undefined') {
+    url = process.env.NODE_ENV === 'production'
+      ? window.location.origin
+      : 'http://localhost:3000';
+  }
+
+  if (!url) {
+    url = 'http://localhost:3000';
+  }
 
   // Enforce HTTPS in production
   if (process.env.NODE_ENV === 'production' && url.startsWith('http://')) {

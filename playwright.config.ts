@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const BASE_URL = 'https://frontend-production-29a3.up.railway.app';
+const BASE_URL = process.env.E2E_BASE_URL || 'https://frame.up.railway.app';
 
 export default defineConfig({
   testDir: './services/frontend/e2e',

@@ -9,7 +9,7 @@
  *   5. Room management (room info, member list, leave room)
  *   6. Mobile responsiveness
  *
- * Target: https://frontend-production-29a3.up.railway.app
+ * Target: https://frame.up.railway.app
  */
 
 import { test, expect, type Page } from '@playwright/test';
@@ -18,7 +18,7 @@ import { test, expect, type Page } from '@playwright/test';
 // Shared helpers
 // ---------------------------------------------------------------------------
 
-const BASE_URL = 'https://frontend-production-29a3.up.railway.app';
+const BASE_URL = process.env.E2E_BASE_URL || 'https://frame.up.railway.app';
 
 /** Generate a unique username using a timestamp to avoid collisions. */
 function uniqueUsername(): string {
