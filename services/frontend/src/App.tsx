@@ -151,6 +151,16 @@ function App() {
   const vaultTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activateVaultMode = useCallback(() => {
+    // First time: prompt user to set their vault PIN
+    const existingPin = localStorage.getItem('frame-vault-pin');
+    if (!existingPin) {
+      const pin = prompt('Set your vault unlock code (numbers only, e.g. 1337):');
+      if (!pin || !/^\d{3,8}$/.test(pin.trim())) {
+        alert('PIN must be 3-8 digits. Vault not activated.');
+        return;
+      }
+      localStorage.setItem('frame-vault-pin', pin.trim());
+    }
     setVaultMode(true);
     localStorage.setItem('frame-vault-active', 'true');
   }, []);

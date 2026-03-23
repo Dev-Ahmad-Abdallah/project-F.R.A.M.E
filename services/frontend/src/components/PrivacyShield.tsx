@@ -68,8 +68,8 @@ const PrivacyShield: React.FC<PrivacyShieldProps> = ({
         />
       )}
 
-      {/* 2. FULL BLACK overlay — when window loses focus */}
-      {isBlurred && !isHidden && (
+      {/* 2. Blur overlay — desktop only (mobile blur triggers on normal actions like screenshots) */}
+      {isBlurred && !isHidden && typeof window !== 'undefined' && window.innerWidth > 600 && (
         <div
           style={overlayStyles.blurOverlay}
           aria-hidden="true"
