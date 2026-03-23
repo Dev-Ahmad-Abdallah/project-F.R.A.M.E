@@ -127,10 +127,14 @@ export async function createRoom(
     if (!invitee) {
       throw new ApiError(404, 'M_NOT_FOUND', `User not found: ${inviteeId}`);
     }
-    // Block check: prevent creating rooms with users who have blocked the creator
+    // Bidirectional block check: prevent creating rooms if either user has blocked the other
     const blockedByInvitee = await isBlocked(inviteeId, userId);
     if (blockedByInvitee) {
       throw new ApiError(403, 'M_FORBIDDEN', 'Cannot create room with this user');
+    }
+    const creatorBlockedInvitee = await isBlocked(userId, inviteeId);
+    if (creatorBlockedInvitee) {
+      throw new ApiError(403, 'M_FORBIDDEN', 'Cannot create room with a user you have blocked');
     }
   }
 

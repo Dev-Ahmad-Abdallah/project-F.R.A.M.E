@@ -5,6 +5,7 @@ import { isRoomMember, getRoomMembers } from '../db/queries/rooms';
 import { pool } from '../db/pool';
 import { redisClient, redisSubscriber } from '../redis/client';
 import { ApiError } from '../middleware/errorHandler';
+import { isBlocked } from '../db/queries/users';
 import { relayEventToPeers } from './federationService';
 import type { FederationEvent } from '@frame/shared/federation';
 
@@ -80,6 +81,27 @@ export async function sendMessage(params: SendMessageParams) {
   // Verify sender is a member of the room
   if (!(await isRoomMember(roomId, senderId))) {
     throw new ApiError(403, 'M_FORBIDDEN', 'Not a member of this room');
+  }
+
+  // In DM rooms, enforce bidirectional block check:
+  // If sender blocked the recipient OR recipient blocked the sender, reject.
+  const roomTypeCheck = await pool.query<{ room_type: string }>(
+    'SELECT room_type FROM rooms WHERE room_id = $1',
+    [roomId],
+  );
+  if (roomTypeCheck.rows[0]?.room_type === 'direct') {
+    const dmMembers = await getRoomMembers(roomId);
+    const otherUser = dmMembers.find((m) => m.user_id !== senderId);
+    if (otherUser) {
+      const senderBlockedRecipient = await isBlocked(senderId, otherUser.user_id);
+      if (senderBlockedRecipient) {
+        throw new ApiError(403, 'M_FORBIDDEN', 'You cannot message a blocked user');
+      }
+      const recipientBlockedSender = await isBlocked(otherUser.user_id, senderId);
+      if (recipientBlockedSender) {
+        throw new ApiError(403, 'M_FORBIDDEN', 'You have been blocked by this user');
+      }
+    }
   }
 
   // Generate event ID

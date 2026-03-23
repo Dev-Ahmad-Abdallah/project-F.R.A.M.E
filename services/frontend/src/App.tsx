@@ -1989,6 +1989,7 @@ const styles: Record<string, React.CSSProperties> = {
   appContainer: {
     display: 'flex',
     flex: 1,
+    minHeight: 0,
     overflow: 'hidden',
   },
 
@@ -2218,6 +2219,7 @@ const styles: Record<string, React.CSSProperties> = {
   // ── Main content ──
   mainContent: {
     flex: 1,
+    minHeight: 0,
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',

@@ -2,7 +2,7 @@ import React from 'react';
 import { FONT_BODY } from '../../globalStyles';
 
 export const styles: Record<string, React.CSSProperties> = {
-  container: { display: 'flex', flexDirection: 'column', height: '100%', fontFamily: FONT_BODY, border: '1px solid #21262d', borderRadius: 0, overflow: 'hidden', backgroundColor: '#0d1117', position: 'relative' },
+  container: { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, fontFamily: FONT_BODY, border: '1px solid #21262d', borderRadius: 0, overflow: 'hidden', backgroundColor: '#0d1117', position: 'relative' },
   header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '12px 16px', borderBottom: '1px solid #30363d', backgroundColor: '#161b22', minHeight: 56 },
   headerLeft: { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 },
   headerNameRow: { display: 'flex', alignItems: 'center', gap: 6 },
