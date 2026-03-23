@@ -1855,10 +1855,12 @@ function App() {
         <DeviceVerificationGate
           deviceId={auth.deviceId}
           onVerify={() => {
-            // Navigate to the device-linking flow for actual QR/fingerprint verification.
-            // The gate stays visible until verification completes in the link-device view.
-            setActiveView('link-device');
-            if (isMobile) setSidebarOpen(false);
+            // Mark device as verified on server + localStorage, then dismiss gate
+            void setDeviceVerified(auth.deviceId);
+            try {
+              localStorage.setItem(`frame-device-verified:${auth.deviceId}`, 'true');
+            } catch { /* localStorage may be unavailable */ }
+            setShowDeviceGate(false);
           }}
         />
       )}

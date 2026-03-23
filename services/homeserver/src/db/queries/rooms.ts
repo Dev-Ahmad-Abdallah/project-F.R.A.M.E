@@ -118,6 +118,7 @@ export async function getUserRooms(userId: string): Promise<RoomRow[]> {
 export interface LastMessage {
   content: Record<string, unknown>;
   timestamp: Date;
+  senderId?: string;
 }
 
 export interface RoomWithMembers extends RoomRow {
@@ -138,14 +139,15 @@ export async function getUserRoomsWithMembers(userId: string, deviceId?: string)
   interface RoomWithLastMsg extends RoomRow {
     last_msg_content: Record<string, unknown> | null;
     last_msg_ts: Date | null;
+    last_msg_sender: string | null;
   }
 
   const roomsResult = await pool.query<RoomWithLastMsg>(
-    `SELECT r.*, last_msg.content AS last_msg_content, last_msg.origin_ts AS last_msg_ts
+    `SELECT r.*, last_msg.content AS last_msg_content, last_msg.origin_ts AS last_msg_ts, last_msg.sender_id AS last_msg_sender
      FROM rooms r
      JOIN room_members rm ON r.room_id = rm.room_id
      LEFT JOIN LATERAL (
-       SELECT content, origin_ts FROM events
+       SELECT content, origin_ts, sender_id FROM events
        WHERE events.room_id = r.room_id AND deleted_at IS NULL
        ORDER BY sequence_id DESC LIMIT 1
      ) last_msg ON true
@@ -206,7 +208,7 @@ export async function getUserRoomsWithMembers(userId: string, deviceId?: string)
     invite_code: r.invite_code,
     members: membersByRoom.get(r.room_id) || [],
     lastMessage: r.last_msg_content
-      ? { content: r.last_msg_content, timestamp: r.last_msg_ts ?? new Date() }
+      ? { content: r.last_msg_content, timestamp: r.last_msg_ts ?? new Date(), senderId: r.last_msg_sender ?? undefined }
       : null,
     unreadCount: unreadsByRoom.get(r.room_id) ?? 0,
   }));
