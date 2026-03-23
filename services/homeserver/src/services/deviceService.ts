@@ -23,6 +23,11 @@ export async function registerDevice(
 
   const device = await createDevice(deviceId, userId, publicKey, signingKey, displayName);
 
+  // Auto-verify the first device on the account (master device)
+  if (deviceCount === 0) {
+    await setDeviceVerifiedDb(deviceId, userId);
+  }
+
   return {
     deviceId: device.device_id,
     userId: device.user_id,

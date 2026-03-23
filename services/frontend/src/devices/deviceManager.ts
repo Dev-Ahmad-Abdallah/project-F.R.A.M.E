@@ -10,6 +10,7 @@ import {
   registerDevice,
   listDevices,
   removeDevice as apiRemoveDevice,
+  verifyDeviceOnServer,
   type DeviceInfo,
   type RegisterDeviceParams,
 } from '../api/devicesAPI';
@@ -80,6 +81,14 @@ export async function registerCurrentDevice(
   };
 
   await registerDevice(params);
+
+  // Auto-verify the first device on the server
+  try {
+    await verifyDeviceOnServer(deviceId);
+  } catch {
+    // May fail if this isn't the first device — server verification
+    // will be handled by the gate flow in that case.
+  }
 
   const fingerprint = await generateFingerprint(devicePublicKey);
 
@@ -172,17 +181,25 @@ export async function getKnownDevices(userId: string): Promise<KnownDevice[]> {
 }
 
 /**
- * Mark a device as verified in the known device list.
+ * Mark a device as verified in the known device list AND on the server.
  */
 export async function verifyDevice(
   userId: string,
   deviceId: string,
 ): Promise<void> {
+  // Update local known device list
   const known = await getKnownDevices(userId);
   const device = known.find((d) => d.deviceId === deviceId);
   if (device) {
     device.verified = true;
     await setEncrypted('devices', `${KNOWN_DEVICES_KEY}:${userId}`, known);
+  }
+
+  // Also mark as verified on the server
+  try {
+    await verifyDeviceOnServer(deviceId);
+  } catch (err) {
+    console.error('[F.R.A.M.E.] Failed to verify device on server:', err);
   }
 }
 

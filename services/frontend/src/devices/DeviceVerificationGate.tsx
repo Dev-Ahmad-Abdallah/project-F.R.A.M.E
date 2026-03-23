@@ -9,9 +9,27 @@
  * never appears.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { listDevices, verifyDeviceOnServer } from '../api/devicesAPI';
+
+// ── LocalStorage key helpers ──
+
+const VERIFIED_KEY_PREFIX = 'frame-device-verified:';
+
+export function getLocalVerified(deviceId: string): boolean {
+  try {
+    return localStorage.getItem(`${VERIFIED_KEY_PREFIX}${deviceId}`) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function setLocalVerified(deviceId: string): void {
+  try {
+    localStorage.setItem(`${VERIFIED_KEY_PREFIX}${deviceId}`, 'true');
+  } catch { /* localStorage may be unavailable */ }
+}
 
 // ── Server-side device verification helpers ──
 
@@ -31,11 +49,12 @@ export async function isDeviceVerified(deviceId: string, userId: string): Promis
 }
 
 /**
- * Mark a device as verified on the server.
+ * Mark a device as verified on the server AND in localStorage.
  */
 export async function setDeviceVerified(deviceId: string): Promise<void> {
   try {
     await verifyDeviceOnServer(deviceId);
+    setLocalVerified(deviceId);
   } catch {
     // Server call failed — verification not persisted
     console.error('[F.R.A.M.E.] Failed to set device as verified on server');
@@ -44,10 +63,38 @@ export async function setDeviceVerified(deviceId: string): Promise<void> {
 
 /**
  * Check whether the current device needs verification gating.
- * Returns true if the device has NOT been verified (async, queries server).
+ *
+ * - First checks localStorage for a fast cached answer.
+ * - Then verifies with the server (source of truth).
+ * - If localStorage says verified but server disagrees, clears localStorage
+ *   and returns true (needs verification).
+ *
+ * Returns true if the device has NOT been verified.
  */
 export async function deviceNeedsVerification(deviceId: string, userId: string): Promise<boolean> {
-  return !(await isDeviceVerified(deviceId, userId));
+  // Quick localStorage check
+  const locallyVerified = getLocalVerified(deviceId);
+
+  // Always confirm with the server (source of truth)
+  const serverVerified = await isDeviceVerified(deviceId, userId);
+
+  if (serverVerified) {
+    // Server says verified — make sure localStorage is in sync
+    if (!locallyVerified) {
+      setLocalVerified(deviceId);
+    }
+    return false;
+  }
+
+  // Server says NOT verified
+  if (locallyVerified) {
+    // localStorage was stale/tampered — clear it
+    try {
+      localStorage.removeItem(`${VERIFIED_KEY_PREFIX}${deviceId}`);
+    } catch { /* */ }
+  }
+
+  return true;
 }
 
 // ── Keyframes ──
@@ -76,6 +123,10 @@ function injectKeyframes() {
       0%, 100% { filter: drop-shadow(0 0 6px rgba(63,185,80,0.15)); }
       50% { filter: drop-shadow(0 0 12px rgba(63,185,80,0.30)); }
     }
+    @keyframes frameGatePulse {
+      0%, 100% { opacity: 0.5; }
+      50% { opacity: 1; }
+    }
   `;
   document.head.appendChild(style);
 }
@@ -84,14 +135,19 @@ function injectKeyframes() {
 
 interface DeviceVerificationGateProps {
   deviceId: string;
+  userId: string;
   onVerify: () => void;
+  /** Called when polling detects that the device was verified remotely. */
+  onRemoteVerified: () => void;
 }
 
 // ── Component ──
 
 const DeviceVerificationGate: React.FC<DeviceVerificationGateProps> = ({
   deviceId,
+  userId,
   onVerify,
+  onRemoteVerified,
 }) => {
   useEffect(() => { injectKeyframes(); }, []);
 
@@ -101,6 +157,53 @@ const DeviceVerificationGate: React.FC<DeviceVerificationGateProps> = ({
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = prev; };
   }, []);
+
+  // Block keyboard shortcuts while gate is shown
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Only allow Escape (no-op) and Tab (accessibility)
+      if (e.key !== 'Tab' && e.key !== 'Escape') {
+        const mod = e.metaKey || e.ctrlKey;
+        if (mod) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+    };
+    // Capture phase to intercept before App's keyboard handler
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, []);
+
+  // Poll the server every 5 seconds to detect remote verification
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!deviceId || !userId) return;
+
+    const checkRemoteVerification = async () => {
+      try {
+        const verified = await isDeviceVerified(deviceId, userId);
+        if (verified) {
+          setLocalVerified(deviceId);
+          onRemoteVerified();
+        }
+      } catch {
+        // Silently ignore polling errors
+      }
+    };
+
+    pollingRef.current = setInterval(() => {
+      void checkRemoteVerification();
+    }, 5000);
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [deviceId, userId, onRemoteVerified]);
 
   return (
     <div style={gateStyles.overlay} role="alertdialog" aria-modal="true" aria-labelledby="device-gate-title">
@@ -131,6 +234,11 @@ const DeviceVerificationGate: React.FC<DeviceVerificationGateProps> = ({
           <span style={gateStyles.deviceIdLabel}>DEVICE ID</span>
           <code style={gateStyles.deviceIdValue}>{deviceId}</code>
         </div>
+
+        {/* Waiting for remote verification indicator */}
+        <p style={gateStyles.pollingIndicator}>
+          Waiting for verification from another device...
+        </p>
 
         {/* Single action — verify only */}
         <div style={gateStyles.actions}>
@@ -237,7 +345,7 @@ const gateStyles: Record<string, React.CSSProperties> = {
     backgroundColor: '#0d1117',
     border: '1px solid #21262d',
     borderRadius: 8,
-    marginBottom: 24,
+    marginBottom: 16,
     position: 'relative' as const,
     zIndex: 1,
   },
@@ -253,6 +361,15 @@ const gateStyles: Record<string, React.CSSProperties> = {
     color: '#3fb950',
     fontFamily: FONT_MONO,
     wordBreak: 'break-all' as const,
+  },
+  pollingIndicator: {
+    margin: '0 0 20px',
+    fontSize: 12,
+    color: '#8b949e',
+    fontStyle: 'italic' as const,
+    animation: 'frameGatePulse 2s ease-in-out infinite',
+    position: 'relative' as const,
+    zIndex: 1,
   },
   actions: {
     display: 'flex',

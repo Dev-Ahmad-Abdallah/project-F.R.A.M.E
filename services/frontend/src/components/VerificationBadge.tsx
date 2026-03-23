@@ -43,6 +43,8 @@ function injectKeyframes() {
 interface VerificationBadgeProps {
   verified: boolean;
   size?: 'small' | 'medium';
+  /** Show a text label next to the icon ("Verified" / "Not Verified"). */
+  showLabel?: boolean;
 }
 
 // ── Component ──
@@ -50,6 +52,7 @@ interface VerificationBadgeProps {
 const VerificationBadge: React.FC<VerificationBadgeProps> = ({
   verified,
   size = 'medium',
+  showLabel = false,
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
 
@@ -112,6 +115,18 @@ const VerificationBadge: React.FC<VerificationBadgeProps> = ({
             fill="#0d1117"
           />
         </svg>
+      )}
+
+      {/* Text label */}
+      {showLabel && (
+        <span style={{
+          fontSize: size === 'small' ? 11 : 12,
+          fontWeight: 600,
+          color: verified ? '#3fb950' : '#d29922',
+          marginLeft: 4,
+        }}>
+          {verified ? 'Verified' : 'Not Verified'}
+        </span>
       )}
 
       {/* Tooltip */}

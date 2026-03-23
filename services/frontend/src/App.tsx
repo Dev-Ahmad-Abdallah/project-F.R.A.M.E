@@ -30,6 +30,7 @@ import type { UnknownDeviceInfo } from './devices/deviceAlert';
 import DeviceVerificationGate, {
   deviceNeedsVerification,
   setDeviceVerified,
+  setLocalVerified,
 } from './devices/DeviceVerificationGate';
 import { listDevices as listUserDevices } from './api/devicesAPI';
 import KeyChangeAlert from './verification/keyChangeAlert';
@@ -557,6 +558,8 @@ function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (currentPage !== 'app') return;
+      // Block all keyboard shortcuts while the device verification gate is active
+      if (showDeviceGate) return;
       const mod = e.metaKey || e.ctrlKey;
       if (mod && e.key === 'k') { e.preventDefault(); searchInputRef.current?.focus(); return; }
       if (mod && e.key === 'n') { e.preventDefault(); setShowNewChatDialog(true); return; }
@@ -599,7 +602,7 @@ function App() {
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, isMobile, sidebarOpen, rooms, focusedRoomIndex, showShortcutsHelp, showNewChatDialog, showRoomSettings, showLeaveConfirm, deviceAlertInfo, keyChangeInfo]);
+  }, [currentPage, isMobile, sidebarOpen, rooms, focusedRoomIndex, showShortcutsHelp, showNewChatDialog, showRoomSettings, showLeaveConfirm, deviceAlertInfo, keyChangeInfo, showDeviceGate]);
 
   // ── Auth handler ──
 
@@ -696,25 +699,19 @@ function App() {
         if (!cancelled) {
           setInitPhase('done');
 
-          // Check device verification status from the server on each app load.
-          // If this is the user's only device, auto-verify it (no gate needed).
-          // If there are other devices, the gate blocks until verification.
-          // First check localStorage for a previously persisted verification.
-          let locallyVerified = false;
-          try {
-            locallyVerified = localStorage.getItem(`frame-device-verified:${currentAuth.deviceId}`) === 'true';
-          } catch { /* localStorage may be unavailable */ }
-
-          if (!locallyVerified && await deviceNeedsVerification(currentAuth.deviceId, currentAuth.userId)) {
+          // Check device verification status — always consult the server
+          // (source of truth). deviceNeedsVerification checks localStorage
+          // first for speed but always confirms with the server, and clears
+          // localStorage if the server disagrees.
+          if (await deviceNeedsVerification(currentAuth.deviceId, currentAuth.userId)) {
             try {
               const deviceListResp = await listUserDevices(currentAuth.userId);
               const deviceCount = deviceListResp.devices?.length ?? 0;
               if (deviceCount <= 1) {
-                // First/only device — auto-verify on server, no gate
+                // First/only device — auto-verify on server + localStorage
                 await setDeviceVerified(currentAuth.deviceId);
-                try { localStorage.setItem(`frame-device-verified:${currentAuth.deviceId}`, 'true'); } catch { /* */ }
               } else {
-                // Multiple devices — must verify
+                // Multiple devices — must verify via QR/fingerprint
                 setShowDeviceGate(true);
               }
             } catch {
@@ -758,7 +755,9 @@ function App() {
           (d) => d.fingerprint === pendingVerifyLink.fingerprint,
         );
         if (matched) {
+          // Mark the matched device as verified locally AND on the server
           await verifyDevice(auth.userId, matched.deviceId);
+          await setDeviceVerified(matched.deviceId);
           showToast('success', `Device verified successfully`, { dedupeKey: 'deep-link-verify' });
         } else {
           // No exact match — show the link-device view for manual confirmation
@@ -827,6 +826,8 @@ function App() {
 
   const handleSelectRoom = useCallback(
     (roomId: string) => {
+      // Block room selection while device verification gate is active
+      if (showDeviceGate) return;
       setSelectedRoomId(roomId);
       setActiveView('chat');
       clearUnread(roomId);
@@ -834,7 +835,7 @@ function App() {
         setSidebarOpen(false);
       }
     },
-    [isMobile, clearUnread],
+    [isMobile, clearUnread, showDeviceGate],
   );
 
   const handleNewChatCreated = useCallback(
@@ -1362,13 +1363,13 @@ function App() {
                       (d) => d.fingerprint === fingerprint,
                     );
                     if (matched) {
+                      // Verify the matched (remote) device locally AND on the server
                       await verifyDevice(auth.userId, matched.deviceId);
+                      await setDeviceVerified(matched.deviceId);
                     }
-                    // Mark current device as verified on the server and locally
+                    // Mark current device as verified on the server and localStorage
                     await setDeviceVerified(auth.deviceId);
-                    try {
-                      localStorage.setItem(`frame-device-verified:${auth.deviceId}`, 'true');
-                    } catch { /* localStorage may be unavailable */ }
+                    setLocalVerified(auth.deviceId);
                     setShowDeviceGate(false);
                     unlockRank('operator');
                   } catch (err) {
@@ -1886,12 +1887,20 @@ function App() {
       {showDeviceGate && activeView !== 'link-device' && auth && (
         <DeviceVerificationGate
           deviceId={auth.deviceId}
+          userId={auth.userId}
           onVerify={() => {
             // Navigate to the device linking/verification view — do NOT
             // auto-verify here. The gate is hidden (activeView === 'link-device')
             // but showDeviceGate stays true. If the user rejects verification,
             // activeView reverts to 'empty' and the gate reappears.
             setActiveView('link-device');
+          }}
+          onRemoteVerified={() => {
+            // Another device verified this one — dismiss the gate
+            setLocalVerified(auth.deviceId);
+            setShowDeviceGate(false);
+            setActiveView('chat');
+            unlockRank('operator');
           }}
         />
       )}

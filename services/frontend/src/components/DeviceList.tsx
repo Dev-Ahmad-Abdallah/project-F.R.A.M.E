@@ -99,10 +99,20 @@ const DeviceList: React.FC<DeviceListProps> = ({
         await addKnownDevice(userId, ud);
       }
 
-      // Reload known devices to include any newly added, then deduplicate by deviceId
+      // Reload known devices to include any newly added, then deduplicate by deviceId.
+      // Sync the verified field from the server (source of truth) into local devices.
       const updatedKnown = await getKnownDevices(userId);
+      const serverVerifiedMap = new Map<string, boolean>();
+      for (const sd of serverDevices) {
+        serverVerifiedMap.set(sd.deviceId, sd.verified === true);
+      }
       const seen = new Map<string, KnownDevice>();
       for (const d of updatedKnown) {
+        // Use server verified status as source of truth
+        const serverVerified = serverVerifiedMap.get(d.deviceId);
+        if (serverVerified !== undefined) {
+          d.verified = serverVerified;
+        }
         seen.set(d.deviceId, d);
       }
       setDevices(Array.from(seen.values()));
@@ -215,7 +225,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
                     ...styles.deviceHeader,
                     ...(isMobile ? { flexWrap: 'wrap' as const, gap: 6 } : {}),
                   }}>
-                    <VerificationBadge verified={device.verified} size="small" />
+                    <VerificationBadge verified={device.verified} size="small" showLabel />
                     <span style={{
                       ...styles.deviceName,
                       ...(isMobile ? { fontSize: 13 } : {}),
