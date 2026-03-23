@@ -45,7 +45,7 @@ jobs:
 
       # Cache node_modules across runs (keyed on lockfile hash)
       - name: Cache node_modules
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -167,7 +167,7 @@ jobs:
           cache: "npm"
 
       - name: Cache node_modules
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -207,7 +207,7 @@ jobs:
           CI: true
 
       - name: Upload coverage
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage-${{ github.sha }}
@@ -242,7 +242,7 @@ jobs:
           cache: "npm"
 
       - name: Cache node_modules
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: node_modules
           key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
