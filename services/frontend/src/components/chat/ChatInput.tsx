@@ -13,6 +13,16 @@ const CHAT_EMOJIS = [
   '\u{1F389}', '\u{1F44F}', '\u{1F4AF}', '\u{1F440}', '\u{2705}', '\u{274C}',
 ];
 
+const EMOJI_LABELS: Record<string, string> = {
+  '\u{1F600}': 'Grinning face', '\u{1F602}': 'Laughing', '\u{1F605}': 'Sweat smile', '\u{1F609}': 'Wink',
+  '\u{1F60D}': 'Heart eyes', '\u{1F618}': 'Blowing kiss', '\u{1F970}': 'Smiling with hearts',
+  '\u{1F914}': 'Thinking', '\u{1F923}': 'Rolling on floor', '\u{1F62D}': 'Crying',
+  '\u{1F621}': 'Angry', '\u{1F631}': 'Screaming', '\u{1F44D}': 'Thumbs up', '\u{1F44E}': 'Thumbs down',
+  '\u{1F44B}': 'Waving hand', '\u{1F64F}': 'Pray', '\u{1F525}': 'Fire', '\u{2764}\u{FE0F}': 'Red heart',
+  '\u{1F389}': 'Party', '\u{1F44F}': 'Clapping', '\u{1F4AF}': 'Hundred points', '\u{1F440}': 'Eyes',
+  '\u{2705}': 'Check mark', '\u{274C}': 'Cross mark',
+};
+
 const INPUT_PLACEHOLDERS = [
   'Type a message...',
   'Say something encrypted...',
@@ -145,6 +155,13 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
     }
     setShowEmojiPicker(false);
   }, [inputValue, textareaRef]);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pastedText = e.clipboardData.getData('text');
+    if (pastedText.length + inputValue.length > 5000) {
+      showToast?.('warning', 'Pasted text was trimmed to fit the 5000 character limit', { duration: 4000 });
+    }
+  }, [inputValue, showToast]);
 
   const handleSendClick = useCallback(() => {
     setSendButtonAnimating(true);
@@ -355,7 +372,7 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
           </button>
           {/* Textarea */}
           {/* eslint-disable-next-line security/detect-object-injection */}
-          <textarea ref={textareaRef} className="frame-chat-textarea" value={inputValue} onChange={onInputChange} onKeyDown={onKeyDown} onFocus={() => setIsTextareaFocused(true)} onBlur={() => setIsTextareaFocused(false)} placeholder={viewOnceMode ? 'View-once message...' : INPUT_PLACEHOLDERS[placeholderIndex]} disabled={isSending} autoFocus aria-label="Message input" rows={1} maxLength={5000} />
+          <textarea ref={textareaRef} className="frame-chat-textarea" value={inputValue} onChange={onInputChange} onKeyDown={onKeyDown} onPaste={handlePaste} onFocus={() => setIsTextareaFocused(true)} onBlur={() => setIsTextareaFocused(false)} placeholder={viewOnceMode ? 'View-once message...' : INPUT_PLACEHOLDERS[placeholderIndex]} disabled={isSending} autoFocus aria-label="Message input" rows={1} maxLength={5000} />
           {/* Character count */}
           {inputValue.length > 4000 && (
             <span style={{ position: 'absolute' as const, bottom: 6, right: inputValue.trim() ? 88 : 44, fontSize: 10, color: inputValue.length > 4800 ? '#f85149' : inputValue.length > 4500 ? '#d29922' : '#8b949e', fontWeight: inputValue.length > 4800 ? 700 : 400, fontFamily: 'inherit', pointerEvents: 'none' as const, transition: 'color 0.2s' }} aria-live="polite">{inputValue.length}/5000</span>
@@ -368,7 +385,7 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
             {!isMobile && showEmojiPicker && (
               <div style={{ position: 'absolute' as const, bottom: 40, right: 0, backgroundColor: '#1c2128', border: '1px solid #30363d', borderRadius: 12, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.45)', zIndex: 1000, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 2, width: 228 }}>
                 {CHAT_EMOJIS.map((em) => (
-                  <button key={em} type="button" onClick={() => insertEmojiAtCursor(em)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', padding: 4, borderRadius: 6, lineHeight: 1.2, transition: 'background-color 0.1s' }} onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(88,166,255,0.15)'; }} onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'; }}>{em}</button>
+                  <button key={em} type="button" onClick={() => insertEmojiAtCursor(em)} aria-label={EMOJI_LABELS[em] || em} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', padding: 4, borderRadius: 6, lineHeight: 1.2, transition: 'background-color 0.1s' }} onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(88,166,255,0.15)'; }} onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'; }}>{em}</button>
                 ))}
               </div>
             )}
@@ -418,7 +435,7 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
             <div style={{ fontSize: 13, fontWeight: 600, color: '#8b949e', padding: '4px 4px 8px', textAlign: 'center' as const }}>Emoji</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4, padding: '8px 0' }}>
               {CHAT_EMOJIS.map((em) => (
-                <button key={em} type="button" onClick={() => { insertEmojiAtCursor(em); setShowMobileEmojiSheet(false); }} style={{ background: 'none', border: 'none', fontSize: 26, cursor: 'pointer', padding: 8, borderRadius: 10, lineHeight: 1.2, minHeight: 48, minWidth: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{em}</button>
+                <button key={em} type="button" onClick={() => { insertEmojiAtCursor(em); setShowMobileEmojiSheet(false); }} aria-label={EMOJI_LABELS[em] || em} style={{ background: 'none', border: 'none', fontSize: 26, cursor: 'pointer', padding: 8, borderRadius: 10, lineHeight: 1.2, minHeight: 48, minWidth: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{em}</button>
               ))}
             </div>
           </div>

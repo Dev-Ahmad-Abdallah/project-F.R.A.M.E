@@ -97,6 +97,27 @@ export async function createRoom(
   homeserver: string = config.HOMESERVER_DOMAIN,
   options?: { name?: string; isPrivate?: boolean; password?: string; isAnonymous?: boolean },
 ): Promise<{ roomId: string; room: RoomRow }> {
+  // For direct rooms, check if a DM room already exists with this user
+  // to prevent duplicate chat sessions.
+  if (roomType === 'direct' && inviteUserIds.length === 1) {
+    const existingRoom = await pool.query<{ room_id: string }>(
+      `SELECT r.room_id FROM rooms r
+       JOIN room_members m1 ON r.room_id = m1.room_id AND m1.user_id = $1
+       JOIN room_members m2 ON r.room_id = m2.room_id AND m2.user_id = $2
+       WHERE r.room_type = 'direct'
+       LIMIT 1`,
+      [userId, inviteUserIds[0]],
+    );
+    if (existingRoom.rows.length > 0) {
+      // Return the existing room instead of creating a duplicate
+      const existingRoomRow = await pool.query<RoomRow>(
+        'SELECT * FROM rooms WHERE room_id = $1',
+        [existingRoom.rows[0].room_id],
+      );
+      return { roomId: existingRoom.rows[0].room_id, room: existingRoomRow.rows[0] };
+    }
+  }
+
   // Validate all invited user IDs before creating the room
   for (const inviteeId of inviteUserIds) {
     if (!USER_ID_REGEX.test(inviteeId)) {

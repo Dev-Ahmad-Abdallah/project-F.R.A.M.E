@@ -19,6 +19,8 @@ interface ProfileSettingsProps {
   onStatusChange?: (status: UserStatus) => void;
   /** Called when the user updates their status message */
   onStatusMessageChange?: (message: string) => void;
+  /** Called when the user blocks or unblocks someone, so parent can refresh blocked list and rooms */
+  onBlockStatusChanged?: () => void;
 }
 
 const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
@@ -28,7 +30,7 @@ const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
   { value: 'offline', label: 'Offline', color: '#484f58' },
 ];
 
-const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayNameChange, onStatusChange, onStatusMessageChange }) => {
+const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayNameChange, onStatusChange, onStatusMessageChange, onBlockStatusChanged }) => {
   const isMobile = useIsMobile(600);
   const [displayName, setDisplayName] = useState('');
   const [editValue, setEditValue] = useState('');
@@ -36,6 +38,7 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('Updated successfully');
 
   // Status state
   const [currentStatus, setCurrentStatus] = useState<UserStatus>('online');
@@ -96,14 +99,17 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
     try {
       await unblockUser(blockedUserId);
       setBlockedUsers((prev) => prev.filter((id) => id !== blockedUserId));
+      setSuccessMessage('User unblocked');
       setSuccess(true);
       setTimeout(() => setSuccess(false), 2000);
+      // Notify parent to refresh blocked users list and room list
+      onBlockStatusChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to unblock user');
     } finally {
       setUnblockingId(null);
     }
-  }, []);
+  }, [onBlockStatusChanged]);
 
   const handleStatusChange = useCallback(async (newStatus: UserStatus) => {
     setIsSavingStatus(true);
@@ -148,6 +154,7 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
       setDisplayName(result.displayName);
       setEditValue(result.displayName);
       setIsEditing(false);
+      setSuccessMessage('Updated successfully');
       setSuccess(true);
       onDisplayNameChange?.(result.displayName);
       setTimeout(() => setSuccess(false), 2000);
@@ -437,7 +444,7 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
       </div>
 
       {error && <div style={styles.errorBanner}>{error}</div>}
-      {success && <div style={styles.successBanner}>Updated successfully</div>}
+      {success && <div style={styles.successBanner}>{successMessage}</div>}
     </div>
   );
 };

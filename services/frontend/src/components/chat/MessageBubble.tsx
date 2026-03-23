@@ -380,7 +380,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
         )}
         {!isOwn && isFirstInGroup && (
           <div style={{ ...styles.senderName, color: isAnonymous ? '#bc8cff' : getAvatarColor(event.senderId), display: 'flex', alignItems: 'center', gap: 4 }}>
-            {DOMPurify.sanitize(resolveDisplayName(event.senderId, event.senderDisplayName), PURIFY_CONFIG)}
+            <span style={{ maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, display: 'inline-block' }}>{DOMPurify.sanitize(resolveDisplayName(event.senderId, event.senderDisplayName), PURIFY_CONFIG)}</span>
             {event.senderId.startsWith('@guest_') && (
               <span style={{
                 fontSize: 9,

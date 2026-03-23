@@ -1287,7 +1287,7 @@ function App() {
                 <button type="button" onClick={() => setSettingsVerifyBannerDismissed(true)} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1 }} title="Dismiss" aria-label="Dismiss verification banner">&#215;</button>
               </div>
             )}
-            <ProfileSettings userId={auth.userId} onDisplayNameChange={setUserDisplayName} onStatusChange={setUserStatus} onStatusMessageChange={setUserStatusMessage} />
+            <ProfileSettings userId={auth.userId} onDisplayNameChange={setUserDisplayName} onStatusChange={setUserStatus} onStatusMessageChange={setUserStatusMessage} onBlockStatusChanged={refreshBlockedUsers} />
             <div style={{ borderTop: '1px solid rgba(48, 54, 61, 0.6)', width: '100%', maxWidth: 440, margin: '12px 0 24px' }} />
             <SessionSettings onActivateVault={activateVaultMode} />
             <div style={{ borderTop: '1px solid rgba(48, 54, 61, 0.6)', width: '100%', maxWidth: 440, margin: '12px 0 24px' }} />

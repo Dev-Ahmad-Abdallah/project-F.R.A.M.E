@@ -103,8 +103,21 @@ export async function sendMessage(params: SendMessageParams) {
   const memberIds = members.map((m) => m.user_id);
 
   // Check which members have blocked the sender — skip delivery for their devices
-  const blockingUsers = await getUsersWhoBlocked(senderId);
-  const nonBlockingMemberIds = memberIds.filter((id) => !blockingUsers.has(id));
+  // ONLY for direct (DM) rooms. In group chats, blocking only affects new DM
+  // requests — messages from blocked users in groups should still be delivered
+  // since they are E2EE and the server cannot filter content anyway.
+  const roomTypeResult = await pool.query<{ room_type: string }>(
+    'SELECT room_type FROM rooms WHERE room_id = $1',
+    [roomId],
+  );
+  const roomType = roomTypeResult.rows[0]?.room_type;
+  let nonBlockingMemberIds: string[];
+  if (roomType === 'direct') {
+    const blockingUsers = await getUsersWhoBlocked(senderId);
+    nonBlockingMemberIds = memberIds.filter((id) => !blockingUsers.has(id));
+  } else {
+    nonBlockingMemberIds = memberIds;
+  }
 
   const deviceResult = await pool.query<{ device_id: string; user_id: string }>(
     'SELECT device_id, user_id FROM devices WHERE user_id = ANY($1::text[])',
