@@ -277,7 +277,7 @@ jobs:
       # GATE 3: CodeQL SAST (requires GitHub Advanced Security — free for public repos)
       - name: Initialize CodeQL
         if: github.repository_visibility == 'public'
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
           config-file: .codeql/codeql-config.yml
@@ -285,11 +285,11 @@ jobs:
 
       - name: Autobuild for CodeQL
         if: github.repository_visibility == 'public'
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@v4
 
       - name: Perform CodeQL analysis
         if: github.repository_visibility == 'public'
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: "/language:javascript-typescript"
           upload: true
@@ -313,7 +313,7 @@ jobs:
       - name: Upload Trivy results to GHAS
         if: github.repository_visibility == 'public' && hashFiles('trivy-results.sarif') != ''
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: "trivy-results.sarif"
           category: "container-scan"
