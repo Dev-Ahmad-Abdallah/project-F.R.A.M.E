@@ -250,9 +250,11 @@ filesRouter.get(
     // 2. Replace non-ASCII and control characters
     // 3. Escape double quotes for safe quoting in the header
     const safeFileName = fileRow.file_name
-      .replace(/\0/g, '')           // strip null bytes first (incomplete sanitization fix)
-      .replace(/[^\x20-\x7E]/g, '_')
-      .replace(/"/g, '\\"');
+      .replace(/\0/g, '')              // strip null bytes (truncation attack)
+      .replace(/\\/g, '\\\\')          // escape backslashes FIRST
+      .replace(/"/g, '\\"')            // escape double quotes
+      .replace(/\r|\n/g, '_')          // strip newlines (header injection)
+      .replace(/[^\x20-\x7E]/g, '_'); // replace non-ASCII and control chars
 
     // SECURITY: Always serve as opaque binary — never trust stored MIME type
     res.set({

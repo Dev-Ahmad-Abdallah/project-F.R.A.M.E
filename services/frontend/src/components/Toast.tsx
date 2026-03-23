@@ -103,8 +103,8 @@ function ToastItem({
     <div
       role={toast.onClick ? 'button' : undefined}
       tabIndex={toast.onClick ? 0 : undefined}
-      onClick={toast.onClick ? () => { toast.onClick!(); handleDismiss(); } : undefined}
-      onKeyDown={toast.onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { toast.onClick!(); handleDismiss(); } } : undefined}
+      onClick={toast.onClick ? () => { const fn = toast.onClick; if (fn) fn(); handleDismiss(); } : undefined}
+      onKeyDown={toast.onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { const fn = toast.onClick; if (fn) fn(); handleDismiss(); } } : undefined}
       style={{
         ...toastStyles.toast,
         borderLeftColor: borderColors[toast.type],

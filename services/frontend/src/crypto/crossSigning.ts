@@ -67,21 +67,19 @@ async function idbSet(key: string, value: unknown): Promise<void> {
 
 /**
  * Get or generate the storage passphrase used to encrypt the master private key.
- * The passphrase is derived from the user's identity and stored in sessionStorage
- * so it survives page reloads within the same tab session.
+ * Kept in memory only — never written to sessionStorage/localStorage.
+ * This means the passphrase is lost on page reload, which is acceptable
+ * since cross-signing keys are re-derived from the OlmMachine on init.
  */
+let _memoryPassphrase: string | null = null;
+
 function getStoragePassphrase(): string {
-  let passphrase = sessionStorage.getItem(STORAGE_PASSPHRASE_KEY);
-  if (!passphrase) {
-    // Generate a random passphrase for this session
-    passphrase = Array.from(randomBytes(32))
+  if (!_memoryPassphrase) {
+    _memoryPassphrase = Array.from(randomBytes(32))
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
-    // Store obfuscated — not true encryption but avoids CodeQL clear-text alert.
-    // sessionStorage is already ephemeral (cleared on tab close).
-    sessionStorage.setItem(STORAGE_PASSPHRASE_KEY, btoa(passphrase));
   }
-  return passphrase;
+  return _memoryPassphrase;
 }
 
 // ── Helpers: base64 <-> ArrayBuffer ──

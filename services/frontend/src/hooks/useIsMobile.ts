@@ -8,8 +8,7 @@ export function useIsMobile(breakpoint = 768): boolean {
 
   useEffect(() => {
     const handler = () => {
-      // Debounce resize events to prevent flickering on mobile
-      // (keyboard open/close, orientation change fire rapid resize events)
+      // Debounce resize to prevent flickering on mobile
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
         setIsMobile(window.innerWidth < breakpoint);

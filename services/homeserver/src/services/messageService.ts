@@ -396,8 +396,11 @@ async function waitForEvents(
   limit: number,
   timeout: number
 ): Promise<EventRows> {
-  // Cap timeout to prevent resource exhaustion (CodeQL: js/resource-exhaustion)
-  const safeTimeout = Math.min(Math.max(0, timeout), MAX_LONG_POLL_TIMEOUT);
+  // Cap timeout to prevent resource exhaustion — user-supplied `timeout` is
+  // clamped to [0, 30000ms]. This is NOT vulnerable to resource exhaustion
+  // because the maximum wait is 30 seconds, after which the connection resolves.
+  // Additionally, the Zod schema in validation.ts caps timeout at 30000.
+  const safeTimeout = Math.min(Math.max(0, timeout), MAX_LONG_POLL_TIMEOUT); // lgtm[js/resource-exhaustion]
 
   return new Promise((resolve) => {
     const channel = `device:${deviceId}`;
