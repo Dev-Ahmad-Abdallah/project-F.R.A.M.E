@@ -58,6 +58,8 @@ interface DeviceListProps {
   currentDeviceId: string;
   /** Called when an unknown device is detected. */
   onUnknownDevice?: (device: DeviceInfo) => void;
+  /** Optional toast callback for security event notifications. */
+  showToast?: (type: 'success' | 'error' | 'info' | 'warning', message: string, options?: { persistent?: boolean; dedupeKey?: string; duration?: number }) => void;
 }
 
 // ── Component ──
@@ -66,6 +68,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
   userId,
   currentDeviceId,
   onUnknownDevice,
+  showToast,
 }) => {
   const isMobile = useIsMobile();
   const [devices, setDevices] = useState<KnownDevice[]>([]);
@@ -89,9 +92,19 @@ const DeviceList: React.FC<DeviceListProps> = ({
 
       // Detect any new unknown devices
       const unknown = detectNewDevices(serverDevices, knownDevices);
-      if (unknown.length > 0 && onUnknownDevice) {
-        // Report the first unknown device — caller can handle it
-        onUnknownDevice(unknown[0]);
+      if (unknown.length > 0) {
+        if (onUnknownDevice) {
+          // Report the first unknown device — caller can handle it
+          onUnknownDevice(unknown[0]);
+        }
+        // Show security toast for each new device
+        for (const ud of unknown) {
+          const name = ud.deviceDisplayName || ud.deviceId.slice(0, 12);
+          showToast?.('warning',
+            `New device detected: ${name}. Verify it in Settings \u2192 Linked Devices.`,
+            { dedupeKey: `new-device-${ud.deviceId}`, duration: 8000 },
+          );
+        }
       }
 
       // Add unknown devices to known list (as unverified) so they show up
@@ -143,12 +156,13 @@ const DeviceList: React.FC<DeviceListProps> = ({
     try {
       await removeDevice(userId, deviceId);
       setDevices((prev) => prev.filter((d) => d.deviceId !== deviceId));
+      showToast?.('info', 'A device was removed from your account.', { dedupeKey: 'device-removed-action' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove device');
     } finally {
       setRemovingId(null);
     }
-  }, [userId, confirmRemoveId]);
+  }, [userId, confirmRemoveId, showToast]);
 
   const formatLastSeen = (isoDate?: string): string => {
     if (!isoDate) return 'Never';
@@ -283,15 +297,39 @@ const DeviceList: React.FC<DeviceListProps> = ({
 
                 <div style={{
                   ...styles.deviceActions,
-                  ...(isMobile ? { alignSelf: 'stretch', width: '100%' } : {}),
+                  ...(isMobile ? { alignSelf: 'stretch', width: '100%', display: 'flex', gap: 8 } : { display: 'flex', gap: 8 }),
                 }}>
+                  {!isCurrent && !device.verified && (
+                    <button
+                      type="button"
+                      style={{
+                        padding: '6px 14px',
+                        fontSize: 13,
+                        fontWeight: 500,
+                        backgroundColor: '#238636',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: 6,
+                        cursor: 'pointer',
+                        transition: 'background-color 0.15s, transform 0.1s',
+                        ...(isMobile ? { flex: 1, minHeight: 48, fontSize: 14, borderRadius: 8 } : {}),
+                      }}
+                      onClick={() => {
+                        if (onUnknownDevice) {
+                          onUnknownDevice(device as unknown as DeviceInfo);
+                        }
+                      }}
+                    >
+                      Verify
+                    </button>
+                  )}
                   {!isCurrent && (
                     <button
                       type="button"
                       style={{
                         ...styles.removeButton,
                         ...(isRemoving ? styles.buttonDisabled : {}),
-                        ...(isMobile ? { width: '100%', minHeight: 48, fontSize: 14, borderRadius: 8 } : {}),
+                        ...(isMobile ? { flex: 1, minHeight: 48, fontSize: 14, borderRadius: 8 } : {}),
                       }}
                       onClick={() => handleRemoveRequest(device.deviceId)}
                       disabled={isRemoving}
@@ -310,8 +348,18 @@ const DeviceList: React.FC<DeviceListProps> = ({
       {confirmRemoveId && (
         <div style={styles.confirmOverlay}>
           <div style={styles.confirmDialog} role="alertdialog" aria-modal="true" aria-label="Confirm device removal">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M1 21h22L12 2 1 21z" fill="#da3633" />
+                <path d="M13 18h-2v-2h2v2zm0-4h-2V9h2v5z" fill="#ffffff" />
+              </svg>
+              <span style={{ fontSize: 15, fontWeight: 600, color: '#f85149' }}>Remove Device</span>
+            </div>
             <p style={styles.confirmText}>
-              Remove device <strong>{DOMPurify.sanitize(confirmRemoveId.slice(0, 12), PURIFY_CONFIG)}...</strong>? This will revoke its access.
+              Are you sure you want to remove device <strong>{DOMPurify.sanitize(confirmRemoveId.slice(0, 12), PURIFY_CONFIG)}...</strong>?
+            </p>
+            <p style={{ margin: '8px 0 16px', fontSize: 13, color: '#d29922', lineHeight: 1.5 }}>
+              The device will be logged out immediately and will need to sign in again.
             </p>
             <div style={{
               ...styles.confirmActions,

@@ -35,7 +35,7 @@ import DeviceVerificationGate, {
 import { listDevices as listUserDevices } from './api/devicesAPI';
 import KeyChangeAlert from './verification/keyChangeAlert';
 import type { KeyChangeAction } from './verification/keyChangeAlert';
-import { getAccessToken, setApiToastCallback, setSessionExpiredCallback, clearTokens } from './api/client';
+import { getAccessToken, setApiToastCallback, setSessionExpiredCallback, setDeviceRemovedCallback, clearTokens } from './api/client';
 import { logout as apiLogout, updateStatus, loginAsGuest } from './api/authAPI';
 import { formatDisplayName } from './utils/displayName';
 import DOMPurify from 'dompurify';
@@ -210,7 +210,7 @@ function App() {
   // Track previous connection state for reconnection toast
   const prevConnectionLostRef = useRef(false);
 
-  // ── Wire API client toast + session-expired callbacks ──
+  // ── Wire API client toast + session-expired + device-removed callbacks ──
   useEffect(() => {
     setApiToastCallback(showToast);
     setSessionExpiredCallback((message: string) => {
@@ -225,6 +225,23 @@ function App() {
       setInitPhase('keys');
       setRoomFetchError(null);
       showToast('warning', message, { persistent: true, dedupeKey: 'session-expired' });
+    });
+    setDeviceRemovedCallback((message: string) => {
+      // Device was removed from another session — force immediate logout
+      clearTokens();
+      try {
+        localStorage.removeItem('frame-device-id');
+      } catch { /* localStorage may be unavailable */ }
+      setAuth(null);
+      setCurrentPage('landing');
+      setActiveView('empty');
+      setSelectedRoomId(null);
+      setRooms([]);
+      setShowDeviceGate(false);
+      setInitError(null);
+      setInitPhase('keys');
+      setRoomFetchError(null);
+      showToast('error', message, { persistent: true, dedupeKey: 'device-removed' });
     });
   }, [showToast]);
 
@@ -1299,6 +1316,7 @@ function App() {
             <DeviceList
               userId={auth.userId}
               currentDeviceId={auth.deviceId}
+              showToast={showToast}
               onUnknownDevice={(device) =>
                 setDeviceAlertInfo({
                   deviceId: device.deviceId,
@@ -1901,6 +1919,27 @@ function App() {
             setShowDeviceGate(false);
             setActiveView('chat');
             unlockRank('operator');
+            showToast('success', 'Device verified successfully. You can now send messages.', { dedupeKey: 'device-verified' });
+          }}
+          onDeviceRemoved={() => {
+            // Device was removed from another session — force logout
+            clearTokens();
+            try {
+              localStorage.removeItem('frame-device-id');
+            } catch { /* localStorage may be unavailable */ }
+            setAuth(null);
+            setCurrentPage('landing');
+            setActiveView('empty');
+            setSelectedRoomId(null);
+            setRooms([]);
+            setShowDeviceGate(false);
+            setInitError(null);
+            setInitPhase('keys');
+            setRoomFetchError(null);
+            showToast('error', 'This device has been removed from your account. Please log in again.', {
+              persistent: true,
+              dedupeKey: 'device-removed',
+            });
           }}
         />
       )}

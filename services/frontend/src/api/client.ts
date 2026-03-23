@@ -40,6 +40,20 @@ export function setSessionExpiredCallback(cb: SessionExpiredCallback): void {
   sessionExpiredCallback = cb;
 }
 
+// ── Device-removed callback (set by App to force logout on device removal) ──
+
+type DeviceRemovedCallback = (message: string) => void;
+let deviceRemovedCallback: DeviceRemovedCallback | null = null;
+
+/**
+ * Register a callback invoked when the server reports that this device
+ * has been removed (M_DEVICE_REMOVED). The App should clear all tokens,
+ * localStorage device data, and redirect to login with a clear message.
+ */
+export function setDeviceRemovedCallback(cb: DeviceRemovedCallback): void {
+  deviceRemovedCallback = cb;
+}
+
 // ── Session timeout (configurable, default 30 minutes) ──
 
 const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
@@ -352,12 +366,36 @@ export async function apiRequest<T>(
 
   let res = await doFetch();
 
-  // ── Handle 401: silent token refresh + retry ──
-  if (res.status === 401 && !noAuth && refreshTokenValue) {
-    // Attempt silent refresh — user should never notice
-    await refreshAccessToken();
-    // Refresh succeeded — retry original request with new token
-    res = await doFetch();
+  // ── Handle 401: check for device removal, then silent token refresh + retry ──
+  if (res.status === 401 && !noAuth) {
+    // Peek at the error body to check for M_DEVICE_REMOVED
+    const clonedRes = res.clone();
+    try {
+      const errBody = await clonedRes.json() as { error?: { code?: string; message?: string } };
+      if (errBody?.error?.code === 'M_DEVICE_REMOVED') {
+        // Device was removed from another session — force immediate logout
+        clearTokens();
+        try {
+          localStorage.removeItem('frame-device-id');
+        } catch { /* localStorage may be unavailable */ }
+        const msg = 'This device has been removed from your account. Please log in again.';
+        deviceRemovedCallback?.(msg);
+        throw new FrameApiError(401, {
+          error: { code: 'M_DEVICE_REMOVED', message: msg },
+        });
+      }
+    } catch (peekErr) {
+      // If it's already a FrameApiError from M_DEVICE_REMOVED, re-throw it
+      if (peekErr instanceof FrameApiError) throw peekErr;
+      // Otherwise ignore peek failure and proceed with normal 401 handling
+    }
+
+    if (refreshTokenValue) {
+      // Attempt silent refresh — user should never notice
+      await refreshAccessToken();
+      // Refresh succeeded — retry original request with new token
+      res = await doFetch();
+    }
   }
 
   // ── Handle 429: rate limit with auto-retry ──

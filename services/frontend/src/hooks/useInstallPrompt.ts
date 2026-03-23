@@ -14,6 +14,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
 const DISMISS_KEY = 'frame-install-dismissed';
+const VISIT_KEY = 'frame-visit-count';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -23,7 +24,14 @@ interface BeforeInstallPromptEvent extends Event {
 function detectIsIOS(): boolean {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent;
-  return /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  // Explicit iPhone/iPad/iPod check
+  if (/iPhone|iPad|iPod/.test(ua)) return true;
+  // iPad OS 13+ identifies as MacIntel with touch — but exclude desktop Macs
+  // by also checking that the screen is portrait-capable (max dimension ≤ 1366)
+  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) {
+    return Math.min(screen.width, screen.height) <= 1024;
+  }
+  return false;
 }
 
 function detectIsStandalone(): boolean {
@@ -87,9 +95,21 @@ export function useInstallPrompt() {
     }
   }, []);
 
+  // Don't show on first visit — let users explore the landing page first.
+  // Show from the 2nd visit onward.
+  const [hasEnoughVisits] = useState(() => {
+    try {
+      const count = parseInt(localStorage.getItem(VISIT_KEY) || '0', 10);
+      localStorage.setItem(VISIT_KEY, String(count + 1));
+      return count >= 1;
+    } catch {
+      return false;
+    }
+  });
+
   // Show banner for Android (has deferred prompt) OR iOS (no prompt, but not yet installed)
   const showBanner =
-    (!dismissed && !installed && !isStandalone) &&
+    (!dismissed && !installed && !isStandalone && hasEnoughVisits) &&
     (!!deferredPrompt || (isIOS));
 
   return { showBanner, promptInstall, dismissBanner, isIOS };

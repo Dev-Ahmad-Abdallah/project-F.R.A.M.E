@@ -7,9 +7,11 @@
  *
  * If this is the user's first/only device, it is auto-verified — the gate
  * never appears.
+ *
+ * If the device is removed/deleted remotely, the gate forces a logout.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { listDevices, verifyDeviceOnServer } from '../api/devicesAPI';
 
@@ -45,6 +47,22 @@ export async function isDeviceVerified(deviceId: string, userId: string): Promis
     return device?.verified === true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Check if a device still exists on the server.
+ * Returns 'verified', 'unverified', or 'removed'.
+ */
+export async function getDeviceStatus(deviceId: string, userId: string): Promise<'verified' | 'unverified' | 'removed'> {
+  try {
+    const resp = await listDevices(userId);
+    const device = resp.devices?.find((d) => d.deviceId === deviceId);
+    if (!device) return 'removed';
+    return device.verified === true ? 'verified' : 'unverified';
+  } catch {
+    // On error, assume unverified (safe default) rather than removed
+    return 'unverified';
   }
 }
 
@@ -139,6 +157,8 @@ interface DeviceVerificationGateProps {
   onVerify: () => void;
   /** Called when polling detects that the device was verified remotely. */
   onRemoteVerified: () => void;
+  /** Called when polling detects the device was removed/deleted. Forces re-login. */
+  onDeviceRemoved?: () => void;
 }
 
 // ── Component ──
@@ -148,8 +168,12 @@ const DeviceVerificationGate: React.FC<DeviceVerificationGateProps> = ({
   userId,
   onVerify,
   onRemoteVerified,
+  onDeviceRemoved,
 }) => {
   useEffect(() => { injectKeyframes(); }, []);
+
+  // Track verification success for brief animation before gate dismisses
+  const [verificationSuccess, setVerificationSuccess] = useState(false);
 
   // Block scrolling on the body while the gate is shown
   useEffect(() => {
@@ -175,26 +199,47 @@ const DeviceVerificationGate: React.FC<DeviceVerificationGateProps> = ({
     return () => window.removeEventListener('keydown', handler, true);
   }, []);
 
-  // Poll the server every 5 seconds to detect remote verification
+  // Poll the server every 5 seconds to detect remote verification OR device removal
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!deviceId || !userId) return;
 
-    const checkRemoteVerification = async () => {
+    const checkRemoteStatus = async () => {
       try {
-        const verified = await isDeviceVerified(deviceId, userId);
-        if (verified) {
-          setLocalVerified(deviceId);
-          onRemoteVerified();
+        const resp = await listDevices(userId);
+        const device = resp.devices?.find((d) => d.deviceId === deviceId);
+
+        if (!device) {
+          // Device no longer exists — it was removed from another session
+          if (onDeviceRemoved) {
+            onDeviceRemoved();
+          }
+          return;
         }
-      } catch {
-        // Silently ignore polling errors
+
+        if (device.verified === true) {
+          setLocalVerified(deviceId);
+          // Show success animation briefly before dismissing
+          setVerificationSuccess(true);
+          setTimeout(() => {
+            onRemoteVerified();
+          }, 1500);
+        }
+      } catch (err) {
+        // Check if this is a device-removed API error (M_DEVICE_REMOVED)
+        if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'M_DEVICE_REMOVED') {
+          if (onDeviceRemoved) {
+            onDeviceRemoved();
+          }
+          return;
+        }
+        // Silently ignore other polling errors
       }
     };
 
     pollingRef.current = setInterval(() => {
-      void checkRemoteVerification();
+      void checkRemoteStatus();
     }, 5000);
 
     return () => {
@@ -203,7 +248,34 @@ const DeviceVerificationGate: React.FC<DeviceVerificationGateProps> = ({
         pollingRef.current = null;
       }
     };
-  }, [deviceId, userId, onRemoteVerified]);
+  }, [deviceId, userId, onRemoteVerified, onDeviceRemoved]);
+
+  // Format device ID as a fingerprint-style display
+  const formatFingerprint = (id: string): string => {
+    const clean = id.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    return clean.match(/.{1,4}/g)?.join(' ') ?? clean;
+  };
+
+  // Success animation overlay
+  if (verificationSuccess) {
+    return (
+      <div style={{ ...gateStyles.overlay, transition: 'opacity 0.5s ease-out' }} role="status" aria-label="Device verified">
+        <div style={{ ...gateStyles.modal, borderTopColor: '#3fb950', animation: 'frameGateEnter 0.3s ease-out' }}>
+          <div style={gateStyles.scanlineOverlay} />
+          <div style={{ ...gateStyles.iconContainer, marginBottom: 16 }}>
+            <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+              <circle cx="32" cy="32" r="28" fill="rgba(63,185,80,0.12)" stroke="#3fb950" strokeWidth="2.5" />
+              <path d="M22 32l7 7 13-14" stroke="#3fb950" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            </svg>
+          </div>
+          <h2 style={{ ...gateStyles.title, color: '#3fb950', letterSpacing: '0.12em' }}>DEVICE VERIFIED</h2>
+          <p style={{ ...gateStyles.description, color: '#8b949e' }}>
+            You can now send and receive messages securely.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={gateStyles.overlay} role="alertdialog" aria-modal="true" aria-labelledby="device-gate-title">
@@ -225,14 +297,32 @@ const DeviceVerificationGate: React.FC<DeviceVerificationGateProps> = ({
           This device must be verified before you can access your messages.
         </p>
 
-        <p style={gateStyles.subdescription}>
-          Verify with an existing device by scanning a QR code or comparing fingerprints.
-        </p>
-
-        {/* Device ID display */}
+        {/* Device fingerprint display */}
         <div style={gateStyles.deviceIdBox}>
-          <span style={gateStyles.deviceIdLabel}>DEVICE ID</span>
-          <code style={gateStyles.deviceIdValue}>{deviceId}</code>
+          <span style={gateStyles.deviceIdLabel}>DEVICE FINGERPRINT</span>
+          <code style={gateStyles.deviceIdValue}>{formatFingerprint(deviceId)}</code>
+        </div>
+
+        {/* Step-by-step verification instructions */}
+        <div style={gateStyles.stepsContainer}>
+          <div style={gateStyles.stepRow}>
+            <span style={gateStyles.stepNumber}>1</span>
+            <span style={gateStyles.stepText}>Open F.R.A.M.E. on your verified device</span>
+          </div>
+          <div style={gateStyles.stepRow}>
+            <span style={gateStyles.stepNumber}>2</span>
+            <span style={gateStyles.stepText}>Go to Settings &rarr; Linked Devices &rarr; Link a New Device</span>
+          </div>
+          <div style={gateStyles.stepRow}>
+            <span style={gateStyles.stepNumber}>3</span>
+            <span style={gateStyles.stepText}>Scan the QR code or enter the code manually</span>
+          </div>
+        </div>
+
+        {/* Verification status indicator */}
+        <div style={gateStyles.statusRow}>
+          <span style={gateStyles.statusDot} />
+          <span style={gateStyles.statusLabel}>Device not yet verified</span>
         </div>
 
         {/* Waiting for remote verification indicator */}
@@ -361,6 +451,67 @@ const gateStyles: Record<string, React.CSSProperties> = {
     color: '#3fb950',
     fontFamily: FONT_MONO,
     wordBreak: 'break-all' as const,
+  },
+  stepsContainer: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 10,
+    padding: '14px 16px',
+    backgroundColor: '#0d1117',
+    border: '1px solid #21262d',
+    borderRadius: 8,
+    marginBottom: 16,
+    position: 'relative' as const,
+    zIndex: 1,
+    textAlign: 'left' as const,
+  },
+  stepRow: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  stepNumber: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 22,
+    height: 22,
+    borderRadius: '50%',
+    backgroundColor: 'rgba(63,185,80,0.12)',
+    color: '#3fb950',
+    fontSize: 11,
+    fontWeight: 700,
+    flexShrink: 0,
+    border: '1px solid rgba(63,185,80,0.2)',
+  },
+  stepText: {
+    fontSize: 13,
+    color: '#c9d1d9',
+    lineHeight: 1.5,
+    paddingTop: 1,
+  },
+  statusRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+    position: 'relative' as const,
+    zIndex: 1,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    backgroundColor: '#d29922',
+    boxShadow: '0 0 6px rgba(210,153,34,0.5)',
+    animation: 'frameGatePulse 2s ease-in-out infinite',
+  },
+  statusLabel: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#d29922',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.06em',
   },
   pollingIndicator: {
     margin: '0 0 20px',

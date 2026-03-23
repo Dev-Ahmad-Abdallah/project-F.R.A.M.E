@@ -355,6 +355,20 @@ function ScrollReveal({ children, delay = 0, style }: { children: React.ReactNod
 // ── Component ──
 
 export default function LandingPage({ onGetStarted, onTryAsGuest }: LandingPageProps) {
+  // The global reset sets overflow:hidden on html/body/#root for the chat UI.
+  // The landing page needs to scroll, so temporarily override on mount.
+  useEffect(() => {
+    const root = document.getElementById('root');
+    document.documentElement.style.overflow = 'auto';
+    document.body.style.overflow = 'auto';
+    if (root) root.style.overflow = 'auto';
+    return () => {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+      if (root) root.style.overflow = '';
+    };
+  }, []);
+
   // Layout and sizing handled by fluid CSS classes (frame-hero-title,
   // frame-section-title, frame-feature-grid, etc.) — no JS breakpoint needed.
   // Hamburger menu visibility is handled by CSS media queries

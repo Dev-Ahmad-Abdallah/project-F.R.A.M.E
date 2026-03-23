@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { getConfig } from '../config';
 import { ApiError } from './errorHandler';
+import { findDevice } from '../db/queries/devices';
 
 export interface AuthPayload {
   sub: string;       // userId (@user:homeserver)
@@ -41,7 +42,22 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
     }
 
     req.auth = payload;
-    next();
+
+    // Verify the device still exists in the database.
+    // JWT tokens are stateless and remain valid until expiry even after
+    // a device is deleted. This check ensures removed devices are
+    // immediately rejected with a specific error code so the frontend
+    // can force re-login.
+    void findDevice(payload.deviceId).then((device) => {
+      if (!device) {
+        return next(new ApiError(401, 'M_DEVICE_REMOVED', 'This device has been removed. Please log in again.'));
+      }
+      next();
+    }).catch(() => {
+      // DB query failed — allow the request through rather than
+      // blocking all API calls on a transient DB hiccup.
+      next();
+    });
   } catch (err) {
     if (err instanceof ApiError) throw err;
     if (err instanceof jwt.TokenExpiredError) {
