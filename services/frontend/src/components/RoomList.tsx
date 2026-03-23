@@ -957,8 +957,18 @@ const RoomList: React.FC<RoomListProps> = ({
                       ...(isMobile ? { minHeight: 40, fontSize: 14 } : {}),
                     }}
                     onClick={() => {
-                      if (otherMember) {
-                        void blockAndLeaveRoom(room.roomId, otherMember.userId);
+                      // Prefer the other member's userId; fall back to the room
+                      // creator for pending DMs where the members list may not
+                      // include the sender (e.g. invite-only rooms).
+                      const userIdToBlock =
+                        otherMember?.userId ||
+                        (room.createdBy && room.createdBy !== currentUserId
+                          ? room.createdBy
+                          : null);
+                      if (userIdToBlock) {
+                        void blockAndLeaveRoom(room.roomId, userIdToBlock);
+                      } else {
+                        showToast?.('error', 'Unable to determine which user to block');
                       }
                     }}
                   >

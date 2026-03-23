@@ -134,6 +134,7 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
         setPreviewUrl(url);
       } catch (err) {
         console.error('[FileAttachment] Auto-decrypt image failed:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load image');
       }
     })();
   }, [isImage, isInline, fileData, fileId, fileKey, fileIv, mimeType]);
@@ -265,15 +266,56 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
     return (
       <div style={{
         display: 'flex',
+        flexDirection: 'column' as const,
         alignItems: 'center',
         justifyContent: 'center',
+        gap: 8,
         width: '100%',
         minHeight: 120,
         backgroundColor: isSent ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.15)',
         ...(isImageContent ? {} : { padding: '8px 12px' }),
       }}>
         {error ? (
-          <span style={{ fontSize: 12, color: '#f85149' }}>{error}</span>
+          <>
+            <span style={{ fontSize: 12, color: '#f85149' }}>{error}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                hasAutoDecrypted.current = false;
+                // Re-trigger auto-decrypt
+                void (async () => {
+                  try {
+                    let decryptedBytes: Uint8Array;
+                    if (isInline && fileData) {
+                      const decoded = atob(fileData);
+                      const encryptedBytes = Uint8Array.from(decoded, (c) => c.charCodeAt(0));
+                      decryptedBytes = await decryptFile(encryptedBytes, fileKey, fileIv);
+                    } else if (fileId) {
+                      const encryptedBuffer = await downloadFile(fileId);
+                      decryptedBytes = await decryptFile(new Uint8Array(encryptedBuffer), fileKey, fileIv);
+                    } else {
+                      return;
+                    }
+                    const blob = new Blob([decryptedBytes], { type: mimeType });
+                    const url = URL.createObjectURL(blob);
+                    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+                    objectUrlRef.current = url;
+                    setPreviewUrl(url);
+                  } catch (retryErr) {
+                    setError(retryErr instanceof Error ? retryErr.message : 'Failed to load image');
+                  }
+                })();
+              }}
+              style={{
+                fontSize: 11, color: '#58a6ff', background: 'rgba(88,166,255,0.1)',
+                border: '1px solid rgba(88,166,255,0.2)', borderRadius: 6,
+                padding: '4px 12px', cursor: 'pointer', fontFamily: 'inherit',
+              }}
+            >
+              Retry
+            </button>
+          </>
         ) : (
           <svg width="24" height="24" viewBox="0 0 16 16" fill="none" style={{ animation: 'frame-spin 1s linear infinite', opacity: 0.5 }}>
             <circle cx="8" cy="8" r="6" stroke="#8b949e" strokeWidth="2" strokeDasharray="10 20" />

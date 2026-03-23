@@ -305,7 +305,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
       style={{
         display: 'flex', alignItems: 'flex-end', gap: 8,
         alignSelf: isOwn ? 'flex-end' : 'flex-start',
-        maxWidth: isMobile ? '75%' : 'clamp(200px, 65%, 480px)',
+        maxWidth: isMobile ? '85%' : 'clamp(200px, 70%, 520px)',
         marginTop: isFirstInGroup ? 8 : 2,
         position: 'relative' as const,
         overflow: 'hidden' as const,

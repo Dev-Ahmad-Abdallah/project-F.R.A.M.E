@@ -372,7 +372,8 @@ button, label, [role="button"] {
 }
 
 .frame-chat-textarea {
-  flex: 1;
+  flex: 1 1 0%;
+  min-width: 0;
   padding: clamp(8px, 0.8vw, 10px) 4px;
   border: none;
   background-color: transparent;
@@ -746,12 +747,13 @@ button, label, [role="button"] {
 @media (max-width: 600px) {
 
   /* ── 1. Message bubbles: wider, better padding, min 14px font ── */
-  .frame-msg-bubble,
-  .frame-msg-row > div:not(.frame-msg-hover-actions) {
-    max-width: 85% !important;
-    padding: 10px 14px !important;
+  .frame-msg-bubble {
     font-size: clamp(14px, 3.8vw, 16px) !important;
     line-height: 1.45 !important;
+  }
+
+  .frame-msg-row {
+    max-width: 85% !important;
   }
 
   /* ── 2. Header: compact single-line ── */

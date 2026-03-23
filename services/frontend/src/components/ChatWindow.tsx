@@ -45,30 +45,96 @@ import { blockUser as blockUserAPI, unblockUser as unblockUserAPI } from '../api
 // ── Fullscreen Image Viewer ──
 
 function ImageViewer({ src, alt, onClose }: { src: string; alt?: string; onClose: () => void }) {
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const touchStartRef = useRef<{ y: number; time: number } | null>(null);
+
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handleEsc);
-    return () => document.removeEventListener('keydown', handleEsc);
+    // Prevent body scroll while viewer is open
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleEsc);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [onClose]);
 
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartRef.current = { y: e.touches[0].clientY, time: Date.now() };
+    setIsDragging(true);
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!touchStartRef.current) return;
+    const deltaY = e.touches[0].clientY - touchStartRef.current.y;
+    // Only allow dragging downward
+    setDragY(Math.max(0, deltaY));
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    setIsDragging(false);
+    const threshold = 120;
+    if (dragY > threshold) {
+      onClose();
+    } else {
+      setDragY(0);
+    }
+    touchStartRef.current = null;
+  }, [dragY, onClose]);
+
+  const opacity = dragY > 0 ? Math.max(0.3, 1 - dragY / 300) : 1;
+
   return (
-    <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.95)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 100000, cursor: 'zoom-out',
-      animation: 'frame-fade-in 0.2s ease-out',
-    }}>
-      <img src={src} alt={alt} onClick={e => e.stopPropagation()} style={{
-        maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain',
-        borderRadius: 4, cursor: 'default', touchAction: 'pinch-zoom',
-      }} />
-      <button onClick={onClose} style={{
-        position: 'absolute', top: 16, right: 16,
-        background: 'rgba(255,255,255,0.1)', border: 'none',
-        color: '#fff', fontSize: 24, cursor: 'pointer',
-        width: 40, height: 40, borderRadius: '50%',
+    <div
+      onClick={onClose}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      style={{
+        position: 'fixed', inset: 0,
+        backgroundColor: `rgba(0,0,0,${0.95 * opacity})`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 100000, cursor: 'zoom-out',
+        animation: isDragging ? 'none' : 'frame-fade-in 0.2s ease-out',
+        touchAction: 'none',
+      }}
+    >
+      <img
+        src={src}
+        alt={alt}
+        onClick={e => e.stopPropagation()}
+        style={{
+          maxWidth: '92vw', maxHeight: '90vh', objectFit: 'contain',
+          borderRadius: 4, cursor: 'default',
+          transform: dragY > 0 ? `translateY(${dragY}px) scale(${Math.max(0.85, 1 - dragY / 600)})` : 'none',
+          transition: isDragging ? 'none' : 'transform 0.25s ease-out',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+        }}
+        draggable={false}
+      />
+      <button onClick={(e) => { e.stopPropagation(); onClose(); }} style={{
+        position: 'absolute', top: 16, right: 16,
+        background: 'rgba(255,255,255,0.15)', border: 'none',
+        color: '#fff', fontSize: 24, cursor: 'pointer',
+        width: 44, height: 44, borderRadius: '50%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        opacity: opacity,
+        transition: isDragging ? 'none' : 'opacity 0.25s ease-out',
+        zIndex: 1,
       }}>{'\u00D7'}</button>
+      {/* Swipe hint for mobile */}
+      {dragY === 0 && (
+        <div style={{
+          position: 'absolute', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          fontSize: 12, color: 'rgba(255,255,255,0.4)', pointerEvents: 'none',
+          animation: 'frame-fade-in 0.5s ease-out 0.8s both',
+        }}>Swipe down to close</div>
+      )}
     </div>
   );
 }
@@ -322,7 +388,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const handleSend = async (retryText?: string) => {
     const text = retryText || inputValue.trim(); if (!text || isSending) return;
-    if (text.length > 5000) { showToast?.('error', 'Message too long (max 5000 characters)', { duration: 4000, dedupeKey: 'msg-too-long' }); return; }
+    if (text.length > 15000) { showToast?.('error', 'Message too long (max 15000 characters)', { duration: 4000, dedupeKey: 'msg-too-long' }); return; }
     const isVO = viewOnceMode; const cr = replyTo;
     const oid = `optimistic-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     setOptimisticMessages(p => [...p, { id: oid, body: text, timestamp: Date.now(), status: 'sending', viewOnce: isVO }]);
@@ -353,14 +419,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const handleSendFile = useCallback(async () => {
     if (!pendingFile || !roomId || isUploadingFile) return; const f = pendingFile.file; setIsUploadingFile(true); setUploadStatus('Encrypting...');
-    try { const ab = await f.arrayBuffer(); const { encryptedBytes, key: fk, iv: fi } = await encryptFile(new Uint8Array(ab)); setUploadStatus(`Uploading (${formatFileSize(f.size)})...`); const ur = await uploadFile(encryptedBytes, roomId, f.name, f.type || 'application/octet-stream'); setUploadStatus('Securing...'); const pt: Record<string, unknown> = { msgtype: f.type.startsWith('image/') ? 'm.image' : 'm.file', body: f.name, filename: f.name, fileId: ur.fileId, fileKey: fk, fileIv: fi, mimeType: f.type || 'application/octet-stream', fileSize: f.size }; if (viewOnceMode) pt.viewOnce = true; const enc = await encryptForRoom(roomId, 'm.room.message', pt, memberUserIds); await sendMessage(roomId, 'm.room.encrypted', enc); if (pendingFile.previewUrl) URL.revokeObjectURL(pendingFile.previewUrl); setPendingFile(null); playSendSound(); showToast?.('success', 'File sent securely', { duration: 2000 }); }
+    try { const ab = await f.arrayBuffer(); const { encryptedBytes, key: fk, iv: fi } = await encryptFile(new Uint8Array(ab)); setUploadStatus(`Uploading (${formatFileSize(f.size)})...`); const ur = await uploadFile(encryptedBytes, roomId, f.name, f.type || 'application/octet-stream'); setUploadStatus('Securing...'); const pt: Record<string, unknown> = { msgtype: f.type.startsWith('image/') ? 'm.image' : 'm.file', body: f.name, fileName: f.name, filename: f.name, fileId: ur.fileId, fileKey: fk, fileIv: fi, mimeType: f.type || 'application/octet-stream', fileSize: f.size }; if (viewOnceMode) pt.viewOnce = true; const enc = await encryptForRoom(roomId, 'm.room.message', pt, memberUserIds); await sendMessage(roomId, 'm.room.encrypted', enc); if (pendingFile.previewUrl) URL.revokeObjectURL(pendingFile.previewUrl); setPendingFile(null); playSendSound(); showToast?.('success', 'File sent securely', { duration: 2000 }); }
     catch (err) { console.error('[File] Failed:', err); playErrorSound(); showToast?.('error', `File send failed: ${err instanceof Error ? err.message : 'error'}`, { duration: 5000, dedupeKey: 'file-fail' }); }
     finally { setIsUploadingFile(false); setUploadStatus(null); }
   }, [pendingFile, roomId, isUploadingFile, memberUserIds, showToast, viewOnceMode]);
 
   const handleCameraCapture = useCallback(async (file: File) => {
     setShowCamera(false); setCameraStream(null); setIsUploadingFile(true); setUploadStatus('Encrypting...');
-    try { const { encryptedBytes, key: fk, iv: fi } = await encryptFile(new Uint8Array(await file.arrayBuffer())); setUploadStatus(`Uploading (${formatFileSize(file.size)})...`); const ur = await uploadFile(encryptedBytes, roomId, file.name, file.type || 'image/jpeg'); setUploadStatus('Securing...'); const pt: Record<string, unknown> = { msgtype: 'm.image', body: file.name, filename: file.name, fileId: ur.fileId, fileKey: fk, fileIv: fi, mimeType: file.type || 'image/jpeg', fileSize: file.size }; if (viewOnceMode) pt.viewOnce = true; const enc = await encryptForRoom(roomId, 'm.room.message', pt, memberUserIds); await sendMessage(roomId, 'm.room.encrypted', enc); playSendSound(); if (viewOnceMode) setViewOnceMode(false); showToast?.('success', 'Photo sent securely', { duration: 2000 }); }
+    try { const { encryptedBytes, key: fk, iv: fi } = await encryptFile(new Uint8Array(await file.arrayBuffer())); setUploadStatus(`Uploading (${formatFileSize(file.size)})...`); const ur = await uploadFile(encryptedBytes, roomId, file.name, file.type || 'image/jpeg'); setUploadStatus('Securing...'); const pt: Record<string, unknown> = { msgtype: 'm.image', body: file.name, fileName: file.name, filename: file.name, fileId: ur.fileId, fileKey: fk, fileIv: fi, mimeType: file.type || 'image/jpeg', fileSize: file.size }; if (viewOnceMode) pt.viewOnce = true; const enc = await encryptForRoom(roomId, 'm.room.message', pt, memberUserIds); await sendMessage(roomId, 'm.room.encrypted', enc); playSendSound(); if (viewOnceMode) setViewOnceMode(false); showToast?.('success', 'Photo sent securely', { duration: 2000 }); }
     catch (err) { console.error('[Camera] Failed:', err); playErrorSound(); showToast?.('error', `Photo send failed`, { duration: 5000, dedupeKey: 'camera-fail' }); }
     finally { setIsUploadingFile(false); setUploadStatus(null); }
   }, [roomId, memberUserIds, showToast, viewOnceMode]);
@@ -442,11 +508,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       const isNG = lastSid !== ev.senderId || gap > GROUP_GAP_MS;
       if (lastTs && gap > TIMESTAMP_GAP_MS && lastDt && !isDifferentDay(lastDt, md)) els.push(<div key={`g-${ev.eventId}`} style={styles.timeGap}><span style={styles.timeGapText}>{formatRelativeTime(md)}</span></div>);
 
-      if (isVO && isHO && !isOwn) { els.push(<div key={ev.eventId} style={{ ...styles.messageBubble, maxWidth: isMobile ? '75%' : 'clamp(200px,65%,480px)', ...styles.otherMessage, opacity: 0.5, alignSelf: 'flex-start' as const }}><div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#484f58', fontStyle: 'italic', fontSize: 12, padding: '8px 12px' }}><span>{'\uD83D\uDD12'}</span><span>Opened</span></div></div>); lastSid = ev.senderId; lastTs = md; lastDt = md; continue; }
+      if (isVO && isHO && !isOwn) { els.push(<div key={ev.eventId} style={{ ...styles.messageBubble, maxWidth: isMobile ? '85%' : 'clamp(200px,70%,520px)', ...styles.otherMessage, opacity: 0.5, alignSelf: 'flex-start' as const }}><div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#484f58', fontStyle: 'italic', fontSize: 12, padding: '8px 12px' }}><span>{'\uD83D\uDD12'}</span><span>Opened</span></div></div>); lastSid = ev.senderId; lastTs = md; lastDt = md; continue; }
 
       if (isVO && !isOwn && !viewedOnceIds.has(ev.eventId) && !isHO && dec.plaintext) {
         const vt = getViewOnceType(dec.plaintext), vp = dec.plaintext;
-        els.push(<div key={ev.eventId} ref={el => { messageRefs.current[ev.eventId] = el; }} className="frame-msg-row" style={{ display: 'flex', alignItems: 'flex-end', gap: 8, alignSelf: 'flex-start', maxWidth: isMobile ? '75%' : 'clamp(200px,65%,480px)', marginTop: isNG ? 8 : 2, position: 'relative' as const, overflow: 'hidden' as const }}>{!isOwn && <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: isNG ? (isAnonymous ? '#6e40aa' : getAvatarColor(ev.senderId)) : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0, visibility: isNG ? 'visible' as const : 'hidden' as const }}>{isNG ? (isAnonymous ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /><line x1="2" y1="2" x2="22" y2="22" /></svg> : formatDisplayName(ev.senderId).charAt(0).toUpperCase()) : ''}</div>}<div className="frame-msg-bubble" style={{ ...styles.messageBubble, ...(isMobile ? { padding: '10px 14px' } : {}), ...styles.otherMessage, borderRadius: 16, marginTop: 0, maxWidth: '100%' }}>{!isOwn && isNG && <div style={{ ...styles.senderName, color: isAnonymous ? '#bc8cff' : getAvatarColor(ev.senderId) }}>{DOMPurify.sanitize(resolveDisplayName(ev.senderId, ev.senderDisplayName), PURIFY_CONFIG)}</div>}<button onClick={() => revealViewOnce(ev.eventId, vp)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderRadius: 12, border: '1px dashed rgba(88,166,255,0.3)', cursor: 'pointer', color: '#58a6ff', fontStyle: 'italic', fontSize: 13, width: '100%', textAlign: 'left' as const, background: 'none' }}><span>{'\uD83D\uDC41'}</span><span>{vt}</span><span style={{ color: '#8b949e', fontSize: 11 }}>Tap to view</span></button></div></div>);
+        els.push(<div key={ev.eventId} ref={el => { messageRefs.current[ev.eventId] = el; }} className="frame-msg-row" style={{ display: 'flex', alignItems: 'flex-end', gap: 8, alignSelf: 'flex-start', maxWidth: isMobile ? '85%' : 'clamp(200px,70%,520px)', marginTop: isNG ? 8 : 2, position: 'relative' as const, overflow: 'hidden' as const }}>{!isOwn && <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: isNG ? (isAnonymous ? '#6e40aa' : getAvatarColor(ev.senderId)) : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: '#fff', flexShrink: 0, visibility: isNG ? 'visible' as const : 'hidden' as const }}>{isNG ? (isAnonymous ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /><line x1="2" y1="2" x2="22" y2="22" /></svg> : formatDisplayName(ev.senderId).charAt(0).toUpperCase()) : ''}</div>}<div className="frame-msg-bubble" style={{ ...styles.messageBubble, ...(isMobile ? { padding: '10px 14px' } : {}), ...styles.otherMessage, borderRadius: 16, marginTop: 0, maxWidth: '100%' }}>{!isOwn && isNG && <div style={{ ...styles.senderName, color: isAnonymous ? '#bc8cff' : getAvatarColor(ev.senderId) }}>{DOMPurify.sanitize(resolveDisplayName(ev.senderId, ev.senderDisplayName), PURIFY_CONFIG)}</div>}<button onClick={() => revealViewOnce(ev.eventId, vp)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderRadius: 12, border: '1px dashed rgba(88,166,255,0.3)', cursor: 'pointer', color: '#58a6ff', fontStyle: 'italic', fontSize: 13, width: '100%', textAlign: 'left' as const, background: 'none' }}><span>{'\uD83D\uDC41'}</span><span>{vt}</span><span style={{ color: '#8b949e', fontSize: 11 }}>Tap to view</span></button></div></div>);
         lastSid = ev.senderId; lastTs = md; lastDt = md; continue;
       }
 
@@ -494,7 +560,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         <div style={{ position: 'fixed' as const, bottom: 80, right: 24, pointerEvents: 'none' as const, opacity: 0.05, zIndex: 0, display: 'flex', alignItems: 'center', gap: 6 }} aria-hidden="true"><svg width="20" height="20" viewBox="0 0 64 64" fill="none"><path d="M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16L32 4z" stroke="#58a6ff" strokeWidth="4" fill="rgba(88,166,255,0.15)" /><path d="M26 32l4 4 8-8" stroke="#3fb950" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg><span style={{ fontSize: 12, fontWeight: 700, color: '#c9d1d9', letterSpacing: 1.5 }}>F.R.A.M.E.</span></div>
         {showRoomSkeleton && messages.length === 0 ? <>{Array.from({ length: 4 }).map((_, i) => <SkeletonMessageBubble key={i} align={i % 3 === 0 ? 'right' : 'left'} />)}</> : <>
           {renderWelcome()}{renderedMessages}
-          {optimisticMessages.map(om => <div key={om.id} style={{ display: 'flex', alignSelf: 'flex-end', maxWidth: isMobile ? '75%' : 'clamp(200px,65%,480px)', marginTop: 4, overflow: 'hidden' as const, ...(recentlySentIds.has(om.id) ? { animation: 'frame-msg-slide-up 0.3s cubic-bezier(0.34,1.56,0.64,1) forwards' } : {}) }}><div style={{ ...styles.messageBubble, ...styles.ownMessage, ...(om.status === 'failed' ? styles.optimisticFailed : styles.optimisticSending), borderRadius: 16, cursor: om.status === 'failed' ? 'pointer' : 'default' }} onClick={om.status === 'failed' ? () => handleRetry(om) : undefined}><div style={styles.messageBody}>{om.viewOnce && <span style={styles.viewOnceIcon}>&#128065;</span>}{om.body}</div><div style={styles.timestampRow}><span style={styles.timestamp} title={formatFullTimestamp(new Date(om.timestamp))}>{formatRelativeTime(new Date(om.timestamp))}</span>{om.status === 'sending' && <span style={styles.statusIcon} title="Sending">&#128337;</span>}{om.status === 'sent' && <span style={{ ...styles.statusIconSent, color: '#3fb950' }} title="Sent">&#10003;</span>}{om.status === 'failed' && <><span style={styles.statusIconFailed} title="Failed">&#10007;</span><button type="button" style={styles.retryInlineButton} onClick={() => handleRetry(om)} title="Retry">Retry</button></>}</div></div></div>)}
+          {optimisticMessages.map(om => <div key={om.id} style={{ display: 'flex', alignSelf: 'flex-end', maxWidth: isMobile ? '85%' : 'clamp(200px,70%,520px)', marginTop: 4, overflow: 'hidden' as const, ...(recentlySentIds.has(om.id) ? { animation: 'frame-msg-slide-up 0.3s cubic-bezier(0.34,1.56,0.64,1) forwards' } : {}) }}><div style={{ ...styles.messageBubble, ...styles.ownMessage, ...(om.status === 'failed' ? styles.optimisticFailed : styles.optimisticSending), borderRadius: 16, cursor: om.status === 'failed' ? 'pointer' : 'default' }} onClick={om.status === 'failed' ? () => handleRetry(om) : undefined}><div style={styles.messageBody}>{om.viewOnce && <span style={styles.viewOnceIcon}>&#128065;</span>}{om.body}</div><div style={styles.timestampRow}><span style={styles.timestamp} title={formatFullTimestamp(new Date(om.timestamp))}>{formatRelativeTime(new Date(om.timestamp))}</span>{om.status === 'sending' && <span style={styles.statusIcon} title="Sending">&#128337;</span>}{om.status === 'sent' && <span style={{ ...styles.statusIconSent, color: '#3fb950' }} title="Sent">&#10003;</span>}{om.status === 'failed' && <><span style={styles.statusIconFailed} title="Failed">&#10007;</span><button type="button" style={styles.retryInlineButton} onClick={() => handleRetry(om)} title="Retry">Retry</button></>}</div></div></div>)}
           {typingUsers.length > 0 && <div className={isMobile ? 'frame-typing-compact' : ''} style={{ ...styles.typingIndicator, display: 'flex', ...(isMobile ? { padding: '2px 6px', minHeight: 16 } : {}) }} aria-label="Typing">{typingUsers.map(u => <CipherTypingIndicator key={u} displayName={formatDisplayName(u)} />)}</div>}
           <div ref={messagesEndRef} />
         </>}
