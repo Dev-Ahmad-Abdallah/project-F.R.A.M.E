@@ -305,10 +305,11 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
       style={{
         display: 'flex', alignItems: 'flex-end', gap: 8,
         alignSelf: isOwn ? 'flex-end' : 'flex-start',
-        maxWidth: isMobile ? '85%' : 'clamp(200px, 65%, 480px)',
+        maxWidth: isMobile ? '75%' : 'clamp(200px, 65%, 480px)',
         marginTop: isFirstInGroup ? 8 : 2,
         position: 'relative' as const,
-        ...(isSelfDestructing ? { animation: 'frame-self-destruct 0.8s ease-in forwards', overflow: 'hidden' as const } : hasPopIn ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}),
+        overflow: 'hidden' as const,
+        ...(isSelfDestructing ? { animation: 'frame-self-destruct 0.8s ease-in forwards' } : hasPopIn ? { animation: 'frame-msg-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' } : {}),
         ...(isCurrentSearchMatch ? { outline: '2px solid rgba(210, 153, 34, 0.7)', outlineOffset: 2, borderRadius: 12 } : {}),
       }}
       onTouchStart={isMobile && onTouchStart ? () => onTouchStart(event.eventId, event.senderId) : undefined}

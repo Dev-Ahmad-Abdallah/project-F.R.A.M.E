@@ -15,7 +15,7 @@ export const styles: Record<string, React.CSSProperties> = {
   encryptionBadge: { fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 1, backgroundColor: 'rgba(63, 185, 80, 0.08)', color: '#3fb950', border: '2px solid rgba(63, 185, 80, 0.4)', textTransform: 'uppercase' as const, letterSpacing: '0.12em', boxShadow: '0 0 6px rgba(63,185,80,0.2), inset 0 0 4px rgba(63,185,80,0.08)', fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace' },
   roomLabel: { fontSize: 13, color: '#c9d1d9' },
   syncErrorIndicator: { display: 'flex', alignItems: 'center', gap: 6, padding: '4px 14px', backgroundColor: 'rgba(210, 153, 34, 0.08)', borderBottom: '1px solid rgba(210, 153, 34, 0.15)' },
-  messageList: { flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 2, scrollBehavior: 'smooth' as const, WebkitOverflowScrolling: 'touch' as const },
+  messageList: { flex: 1, overflowY: 'auto', overflowX: 'hidden' as const, padding: 12, display: 'flex', flexDirection: 'column', gap: 2, scrollBehavior: 'smooth' as const, WebkitOverflowScrolling: 'touch' as const },
   dateSeparator: { display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '16px 0 8px' },
   dateSeparatorLine: { display: 'none' as const },
   dateSeparatorText: { fontSize: 12, fontWeight: 600, color: '#8b949e', letterSpacing: '0.03em', flexShrink: 0, backgroundColor: 'rgba(33, 38, 45, 0.85)', padding: '4px 14px', borderRadius: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.2)' },

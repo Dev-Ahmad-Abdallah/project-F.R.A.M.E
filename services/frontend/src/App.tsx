@@ -861,7 +861,8 @@ function App() {
 
   const handleDeviceAlertIgnore = useCallback(() => {
     setDeviceAlertInfo(null);
-  }, []);
+    showToast('warning', 'Unverified device still on your account. Verify or remove it in Settings.', { duration: 6000 });
+  }, [showToast]);
 
   const handleKeyChangeAction = useCallback(
     (action: KeyChangeAction) => {

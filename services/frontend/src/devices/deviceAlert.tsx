@@ -2,7 +2,7 @@
  * DeviceAlert — Unknown device detection modal.
  *
  * Shown when an unrecognized device is detected on the user's account.
- * Displays device details and offers Verify / Remove / Ignore actions.
+ * Displays device details and offers Verify / Remove / Remind-Me-Later actions.
  *
  * Uses urgent red warning styling with dramatic entrance animation
  * and pulsing red border for urgency (Signal / WhatsApp inspired).
@@ -238,6 +238,7 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
           >
             Remove Device
           </button>
+          {/* Alert will reappear on next app load since the device stays unverified */}
           <button
             type="button"
             style={{
@@ -245,9 +246,9 @@ const DeviceAlert: React.FC<DeviceAlertProps> = ({
               ...(isMobile ? { minHeight: 48, width: '100%' } : {}),
             }}
             onClick={() => onIgnore(device.deviceId)}
-            aria-label="Ignore this device (not recommended)"
+            aria-label="Dismiss alert temporarily — reminder will reappear"
           >
-            Ignore (not recommended)
+            Remind Me Later
           </button>
         </div>
       </div>
