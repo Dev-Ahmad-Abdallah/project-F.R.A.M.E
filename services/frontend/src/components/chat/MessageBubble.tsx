@@ -235,6 +235,7 @@ export interface MessageBubbleProps {
   onContextMenu: (e: React.MouseEvent, eventId: string, senderId: string) => void;
   onClick: (e: React.MouseEvent, eventId: string) => void;
   onReply: (eventId: string) => void;
+  onForward?: (eventId: string) => void;
   onReact: (eventId: string, emoji: string) => void;
   onShowReactionPicker: (e: React.MouseEvent, eventId: string) => void;
   onScrollToMessage: (eventId: string) => void;
@@ -269,6 +270,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
   onContextMenu,
   onClick,
   onReply,
+  onForward,
   onReact,
   onShowReactionPicker,
   onScrollToMessage,
@@ -363,6 +365,15 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
             </div>
           );
         })()}
+        {decrypted.plaintext != null && decrypted.plaintext.forwarded === true && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#8b949e', fontStyle: 'italic', marginBottom: 2 }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 17 20 12 15 7"></polyline>
+              <path d="M4 18v-2a4 4 0 0 1 4-4h12"></path>
+            </svg>
+            Forwarded
+          </div>
+        )}
         {!isOwn && isFirstInGroup && (
           <div style={{ ...styles.senderName, color: isAnonymous ? '#bc8cff' : getAvatarColor(event.senderId) }}>
             {DOMPurify.sanitize(resolveDisplayName(event.senderId, event.senderDisplayName), PURIFY_CONFIG)}
@@ -554,6 +565,21 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
               <path d="M20 18v-2a4 4 0 0 0-4-4H4"></path>
             </svg>
           </button>
+          {onForward && (
+            <button
+              type="button"
+              className="frame-msg-hover-action"
+              style={styles.hoverActionButton}
+              onClick={() => onForward(event.eventId)}
+              title="Forward"
+              aria-label="Forward"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 17 20 12 15 7"></polyline>
+                <path d="M4 18v-2a4 4 0 0 1 4-4h12"></path>
+              </svg>
+            </button>
+          )}
           <button
             type="button"
             className="frame-msg-hover-action"

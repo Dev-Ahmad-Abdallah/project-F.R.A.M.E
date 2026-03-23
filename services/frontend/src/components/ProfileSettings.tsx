@@ -16,6 +16,8 @@ interface ProfileSettingsProps {
   onDisplayNameChange?: (name: string) => void;
   /** Called when the user successfully updates their status */
   onStatusChange?: (status: UserStatus) => void;
+  /** Called when the user updates their status message */
+  onStatusMessageChange?: (message: string) => void;
 }
 
 const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
@@ -25,7 +27,7 @@ const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
   { value: 'offline', label: 'Offline', color: '#484f58' },
 ];
 
-const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayNameChange, onStatusChange }) => {
+const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayNameChange, onStatusChange, onStatusMessageChange }) => {
   const isMobile = useIsMobile();
   const [displayName, setDisplayName] = useState('');
   const [editValue, setEditValue] = useState('');
@@ -46,17 +48,17 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
       try {
         const profile = await getProfile();
         if (!cancelled) {
+          const effectiveName = profile.displayName || (userId.startsWith('@') ? userId.slice(1).split(':')[0] : userId);
           setDisplayName(profile.displayName || '');
           setEditValue(profile.displayName || '');
-          if (profile.displayName) {
-            onDisplayNameChange?.(profile.displayName);
-          }
+          onDisplayNameChange?.(effectiveName);
           if (profile.status) {
             setCurrentStatus(profile.status);
             onStatusChange?.(profile.status);
           }
           if (profile.statusMessage) {
             setStatusMessage(profile.statusMessage);
+            onStatusMessageChange?.(profile.statusMessage);
           }
         }
       } catch {
@@ -70,7 +72,7 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
     })();
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, onDisplayNameChange, onStatusChange]);
+  }, [userId, onDisplayNameChange, onStatusChange, onStatusMessageChange]);
 
   const handleStatusChange = useCallback(async (newStatus: UserStatus) => {
     setIsSavingStatus(true);
@@ -89,12 +91,13 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
     setIsSavingStatus(true);
     try {
       await updateStatus(currentStatus, statusMessage || undefined);
+      onStatusMessageChange?.(statusMessage || '');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update status');
     } finally {
       setIsSavingStatus(false);
     }
-  }, [currentStatus, statusMessage]);
+  }, [currentStatus, statusMessage, onStatusMessageChange]);
 
   const handleSave = useCallback(async () => {
     const trimmed = editValue.trim();
@@ -221,7 +224,7 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
             ) : (
               <div style={styles.displayRow}>
                 <span style={styles.displayNameText}>
-                  {displayName || 'Not set'}
+                  {displayName || (userId.startsWith('@') ? userId.slice(1).split(':')[0] : userId) || 'Not set'}
                 </span>
                 <button
                   type="button"
@@ -237,10 +240,31 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
             )}
           </div>
 
-          {/* User ID (read-only) */}
+          {/* User ID (read-only, with copy button) */}
           <div style={styles.fieldRow}>
-            <label style={styles.fieldLabel}>User ID</label>
-            <span style={styles.userIdText}>{userId}</span>
+            <label style={styles.fieldLabel}>Your User ID</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={styles.userIdText}>{userId}</span>
+              <button
+                type="button"
+                style={{
+                  ...styles.editButton,
+                  ...(isMobile ? { minHeight: 44, minWidth: 44, padding: '6px 14px', fontSize: 13 } : {}),
+                }}
+                onClick={() => {
+                  navigator.clipboard.writeText(userId).then(() => {
+                    setSuccess(true);
+                    setTimeout(() => setSuccess(false), 2000);
+                  }).catch(() => {
+                    setError('Failed to copy User ID');
+                  });
+                }}
+                title="Copy User ID"
+                aria-label="Copy User ID"
+              >
+                Copy
+              </button>
+            </div>
           </div>
         </div>
       </div>

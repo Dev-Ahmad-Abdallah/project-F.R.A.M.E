@@ -79,6 +79,14 @@ function getRoomDisplayName(
   room: RoomSummary,
   currentUserId: string,
 ): string {
+  // Check for local nickname first (per-user rename)
+  try {
+    const nickname = localStorage.getItem(`frame-room-nickname:${room.roomId}`);
+    if (nickname) {
+      return DOMPurify.sanitize(nickname, PURIFY_CONFIG);
+    }
+  } catch { /* ignore localStorage errors */ }
+
   if (room.name) {
     return DOMPurify.sanitize(room.name, PURIFY_CONFIG);
   }

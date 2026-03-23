@@ -355,10 +355,10 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
           </button>
           {/* Textarea */}
           {/* eslint-disable-next-line security/detect-object-injection */}
-          <textarea ref={textareaRef} className="frame-chat-textarea" value={inputValue} onChange={onInputChange} onKeyDown={onKeyDown} onFocus={() => setIsTextareaFocused(true)} onBlur={() => setIsTextareaFocused(false)} placeholder={viewOnceMode ? 'View-once message...' : INPUT_PLACEHOLDERS[placeholderIndex]} disabled={isSending} autoFocus aria-label="Message input" rows={1} />
+          <textarea ref={textareaRef} className="frame-chat-textarea" value={inputValue} onChange={onInputChange} onKeyDown={onKeyDown} onFocus={() => setIsTextareaFocused(true)} onBlur={() => setIsTextareaFocused(false)} placeholder={viewOnceMode ? 'View-once message...' : INPUT_PLACEHOLDERS[placeholderIndex]} disabled={isSending} autoFocus aria-label="Message input" rows={1} maxLength={5000} />
           {/* Character count */}
-          {inputValue.length > 500 && (
-            <span style={{ position: 'absolute' as const, bottom: 6, right: inputValue.trim() ? 88 : 44, fontSize: 10, color: inputValue.length > 4500 ? '#f85149' : '#8b949e', fontFamily: 'inherit', pointerEvents: 'none' as const, transition: 'color 0.2s' }} aria-live="polite">{inputValue.length}/5000</span>
+          {inputValue.length > 4000 && (
+            <span style={{ position: 'absolute' as const, bottom: 6, right: inputValue.trim() ? 88 : 44, fontSize: 10, color: inputValue.length > 4800 ? '#f85149' : inputValue.length > 4500 ? '#d29922' : '#8b949e', fontWeight: inputValue.length > 4800 ? 700 : 400, fontFamily: 'inherit', pointerEvents: 'none' as const, transition: 'color 0.2s' }} aria-live="polite">{inputValue.length}/5000</span>
           )}
           {/* Emoji picker */}
           <div ref={emojiPickerRef} style={{ position: 'relative' as const, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 1 }}>
@@ -392,7 +392,7 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
           )}
           {/* Send button */}
           {inputValue.trim() && (
-            <button style={{ padding: 8, borderRadius: '50%', border: 'none', backgroundColor: '#238636', color: '#fff', cursor: isSending ? 'not-allowed' : 'pointer', transition: 'background-color 0.15s, opacity 0.15s, transform 0.15s', alignSelf: 'flex-end', flexShrink: 0, marginBottom: 1, opacity: isSending ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 44, minHeight: 44, boxShadow: '0 2px 8px rgba(35, 134, 54, 0.3)', ...(sendButtonAnimating ? { animation: 'frame-send-launch 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)' } : {}) }} onClick={handleSendClick} disabled={isSending} aria-label="Send message">
+            <button style={{ padding: 8, borderRadius: '50%', border: 'none', backgroundColor: inputValue.length > 5000 ? '#6e3630' : '#238636', color: '#fff', cursor: (isSending || inputValue.length > 5000) ? 'not-allowed' : 'pointer', transition: 'background-color 0.15s, opacity 0.15s, transform 0.15s', alignSelf: 'flex-end', flexShrink: 0, marginBottom: 1, opacity: (isSending || inputValue.length > 5000) ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 44, minHeight: 44, boxShadow: '0 2px 8px rgba(35, 134, 54, 0.3)', ...(sendButtonAnimating ? { animation: 'frame-send-launch 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)' } : {}) }} onClick={handleSendClick} disabled={isSending || inputValue.length > 5000} aria-label="Send message">
               {isSending ? (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ animation: 'frame-spin 1s linear infinite' }}><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 14" /></svg>) : (<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>)}
             </button>
           )}

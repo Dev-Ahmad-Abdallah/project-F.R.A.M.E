@@ -49,20 +49,26 @@ const VaultCalculator: React.FC<VaultCalculatorProps> = ({ onUnlock }) => {
   }, []);
 
   const handleButton = useCallback((val: string) => {
-    // Track the secret sequence
-    const newBuffer = secretBuffer + val;
+    // Track only digit presses in the secret buffer for PIN detection
+    const isDigit = /^[0-9]$/.test(val);
 
-    // Check if user typed PIN + "="
-    if (val === '=' && newBuffer.slice(0, -1) === PIN) {
-      onUnlock();
-      return;
+    if (val === '=') {
+      // Check if the accumulated digits match the PIN
+      if (secretBuffer === PIN) {
+        onUnlock();
+        return;
+      }
+      // Reset buffer on "=" so user can try again
+      setSecretBuffer('');
+    } else if (isDigit) {
+      const newBuffer = secretBuffer + val;
+      // Keep buffer trimmed to PIN length (drop oldest digits)
+      const trimmedBuffer = newBuffer.length > PIN.length
+        ? newBuffer.slice(-PIN.length)
+        : newBuffer;
+      setSecretBuffer(trimmedBuffer);
     }
-
-    // Keep buffer trimmed to PIN length + 1
-    const trimmedBuffer = newBuffer.length > PIN.length + 1
-      ? newBuffer.slice(-(PIN.length + 1))
-      : newBuffer;
-    setSecretBuffer(trimmedBuffer);
+    // Non-digit, non-"=" buttons (operators, C, ±, %, .) don't affect the secret buffer
 
     // Normal calculator logic
     if (val === 'C') {
@@ -70,7 +76,7 @@ const VaultCalculator: React.FC<VaultCalculatorProps> = ({ onUnlock }) => {
       setPreviousValue(null);
       setOperator(null);
       setWaitingForOperand(false);
-      setSecretBuffer('');
+      setSecretBuffer(''); // Also reset PIN buffer on clear
       return;
     }
 
@@ -237,12 +243,13 @@ const calcStyles: Record<string, React.CSSProperties> = {
     WebkitUserSelect: 'none',
   },
   displayContainer: {
-    flex: 1,
     display: 'flex',
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
     padding: '0 24px 12px',
-    minHeight: 120,
+    minHeight: 100,
+    maxHeight: '25vh',
+    flexShrink: 0,
   },
   displayText: {
     color: '#ffffff',
@@ -258,9 +265,13 @@ const calcStyles: Record<string, React.CSSProperties> = {
   buttonGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(4, 1fr)',
+    gridTemplateRows: 'repeat(5, 1fr)',
     gap: 12,
     padding: '0 12px 24px',
     paddingBottom: 'max(24px, env(safe-area-inset-bottom))',
+    flex: 1,
+    minHeight: 0,
+    overflow: 'visible',
   },
   button: {
     border: 'none',
@@ -272,10 +283,9 @@ const calcStyles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    aspectRatio: '1',
     transition: 'opacity 0.1s',
     WebkitTapHighlightColor: 'transparent',
-    minHeight: 0,
+    minHeight: 56,
     padding: 0,
   },
   functionButton: {
@@ -299,10 +309,9 @@ const calcStyles: Record<string, React.CSSProperties> = {
   zeroButton: {
     gridColumn: 'span 2',
     borderRadius: 40,
-    aspectRatio: 'auto',
     justifyContent: 'flex-start',
     paddingLeft: 28,
-    minHeight: 72,
+    minHeight: 56,
   },
 };
 

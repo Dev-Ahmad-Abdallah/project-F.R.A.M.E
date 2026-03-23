@@ -11,6 +11,15 @@ export const FONT_MONO = '"SF Mono", "Fira Code", "Cascadia Code", monospace';
 const GLOBAL_STYLE_ID = 'frame-global-styles';
 
 const GLOBAL_CSS = `
+/* ── Base reset: fill viewport, no whitespace ── */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 /* ── Base typography ── */
 body {
   font-size: 14px;

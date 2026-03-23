@@ -77,6 +77,7 @@ function friendlyErrorMessage(err: unknown, isGuest: boolean): string {
 interface NewChatDialogProps {
   currentUserId: string;
   isGuest?: boolean;
+  existingRooms?: RoomSummary[];
   onCreated: (room: RoomSummary) => void;
   onClose: () => void;
 }
@@ -168,6 +169,7 @@ function injectNewChatKeyframes(): void {
 const NewChatDialog: React.FC<NewChatDialogProps> = ({
   currentUserId,
   isGuest = false,
+  existingRooms = [],
   onCreated,
   onClose,
 }) => {
@@ -418,6 +420,18 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
 
     if (fullUserId === currentUserId) {
       setError('You cannot message yourself.');
+      return;
+    }
+
+    // Check if a DM room with this user already exists
+    const existingDM = existingRooms.find(
+      (r) =>
+        r.roomType === 'direct' &&
+        r.members?.some((m) => m.userId === fullUserId),
+    );
+    if (existingDM) {
+      onCreated(existingDM);
+      onClose();
       return;
     }
 

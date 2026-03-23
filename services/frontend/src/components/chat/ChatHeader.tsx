@@ -5,7 +5,7 @@ import { PURIFY_CONFIG } from '../../utils/purifyConfig';
 import { formatDisplayName } from '../../utils/displayName';
 import { getUserStatus } from '../../api/authAPI';
 import type { UserStatus } from '../../api/authAPI';
-import { renameRoom } from '../../api/roomsAPI';
+// Room rename is stored locally (per-user nickname) — not sent to server
 import { SyncIndicator } from '../Skeleton';
 import { styles } from './chatStyles';
 
@@ -125,28 +125,26 @@ const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
     setEditNameValue('');
   }, []);
 
-  const handleConfirmRename = useCallback(async () => {
+  const handleConfirmRename = useCallback(() => {
     const trimmed = editNameValue.trim();
     if (!trimmed || trimmed === roomDisplayName) {
       handleCancelRename();
       return;
     }
-    setIsRenaming(true);
+    // Save nickname locally (per-user) instead of updating the server
     try {
-      await renameRoom(roomId, trimmed);
-      onRoomRenamed?.(roomId, trimmed);
-      setIsEditingName(false);
+      localStorage.setItem(`frame-room-nickname:${roomId}`, trimmed);
     } catch (err) {
-      console.error('Failed to rename room:', err);
-    } finally {
-      setIsRenaming(false);
+      console.error('Failed to save room nickname:', err);
     }
+    onRoomRenamed?.(roomId, trimmed);
+    setIsEditingName(false);
   }, [editNameValue, roomDisplayName, roomId, onRoomRenamed, handleCancelRename]);
 
   const handleRenameKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      void handleConfirmRename();
+      handleConfirmRename();
     } else if (e.key === 'Escape') {
       handleCancelRename();
     }
@@ -297,12 +295,28 @@ const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={showSearch ? '#58a6ff' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
         </button>
         {!isMobile && <button type="button" style={{ ...styles.disappearingButton, ...(disappearingSettings?.enabled ? styles.disappearingButtonActive : {}) }} title="Disappearing messages" onClick={onToggleDisappearingMenu}>
-          {disappearingSettings?.enabled ? 'Auto-delete ON' : 'Auto-delete'}
+          {disappearingSettings?.enabled
+            ? `Auto-delete \u00B7 ${disappearingSettings.timeoutSeconds < 3600
+                ? String(Math.floor(disappearingSettings.timeoutSeconds / 60)) + 'm'
+                : disappearingSettings.timeoutSeconds < 86400
+                  ? String(Math.floor(disappearingSettings.timeoutSeconds / 3600)) + 'h'
+                  : disappearingSettings.timeoutSeconds < 604800
+                    ? String(Math.floor(disappearingSettings.timeoutSeconds / 86400)) + 'd'
+                    : String(Math.floor(disappearingSettings.timeoutSeconds / 604800)) + 'w'
+              }`
+            : 'Auto-delete'}
         </button>}
         {showDisappearingMenu && (
           <div style={styles.disappearingMenu}>
             <div style={styles.disappearingMenuTitle}>Disappearing Messages</div>
-            {[{ label: 'Off', seconds: 0 }, { label: '30 seconds', seconds: 30 }, { label: '5 minutes', seconds: 300 }, { label: '1 hour', seconds: 3600 }, { label: '24 hours', seconds: 86400 }].map((opt) => (
+            {[
+              { label: 'Off', seconds: 0 },
+              { label: '1 hour', seconds: 3600 },
+              { label: '4 hours', seconds: 14400 },
+              { label: '8 hours', seconds: 28800 },
+              { label: '24 hours', seconds: 86400 },
+              { label: '7 days', seconds: 604800 },
+            ].map((opt) => (
               <button key={opt.seconds} type="button" style={{ ...styles.disappearingMenuItem, ...(disappearingSettings?.enabled && disappearingSettings.timeoutSeconds === opt.seconds ? { color: '#58a6ff' } : {}), ...(!disappearingSettings?.enabled && opt.seconds === 0 ? { color: '#58a6ff' } : {}) }} onClick={() => onUpdateDisappearing(opt.seconds)}>
                 {opt.label}
               </button>

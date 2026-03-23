@@ -118,10 +118,10 @@ export function useScreenProtection(): ScreenProtectionState {
         e.preventDefault(); e.stopPropagation(); return;
       }
 
-      // Block Ctrl+C, Ctrl+A, Ctrl+X GLOBALLY (except in input/textarea)
-      if (ctrl && (key === 'c' || key === 'a' || key === 'x') && !isInputElement(e.target)) {
-        e.preventDefault(); e.stopPropagation(); return;
-      }
+      // Allow Ctrl+C (copy), Ctrl+A (select all), Ctrl+X (cut) everywhere.
+      // Blocking these breaks essential UX in a messaging app (copy messages,
+      // copy code blocks, copy user IDs, etc.).
+      // Ctrl+Shift+C is still blocked above (devtools).
 
       // Mac: Cmd+Shift+3/4/5 (screenshots)
       if (meta && shift && (key === '3' || key === '4' || key === '5')) {
@@ -187,97 +187,15 @@ export function useScreenProtection(): ScreenProtectionState {
     };
   }, []);
 
-  // ── 3. Block text selection (selectstart) EVERYWHERE ──
-  useEffect(() => {
-    const handleSelectStart = (e: Event) => {
-      if (isInputElement(e.target)) return; // allow selection in inputs
-      e.preventDefault();
-    };
+  // ── 3. Text selection: allowed everywhere ──
+  // Previously blocked globally, but this prevented users from selecting
+  // message text, code blocks, user IDs, etc. to copy them — essential
+  // UX in a messaging app. Selection is now permitted.
 
-    document.addEventListener('selectstart', handleSelectStart, true);
-    return () => {
-      document.removeEventListener('selectstart', handleSelectStart, true);
-    };
-  }, []);
-
-  // ── 4. Block copy/cut events + clipboard API overrides ──
-  useEffect(() => {
-    const handleCopy = (e: ClipboardEvent) => {
-      if (isInputElement(e.target)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      try {
-        e.clipboardData?.setData('text/plain', '');
-        e.clipboardData?.setData('text/html', '');
-      } catch {
-        // ignore
-      }
-    };
-
-    const handleCut = (e: ClipboardEvent) => {
-      if (isInputElement(e.target)) return;
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    document.addEventListener('copy', handleCopy, true);
-    document.addEventListener('cut', handleCut, true);
-
-    // Override navigator.clipboard.writeText to no-op
-    let savedWriteText: ((text: string) => Promise<void>) | null = null;
-    let savedWrite: ((data: ClipboardItem[]) => Promise<void>) | null = null;
-    let savedExecCommand: typeof document.execCommand | null = null;
-
-    try {
-      if (navigator.clipboard?.writeText) {
-        savedWriteText = navigator.clipboard.writeText.bind(navigator.clipboard);
-        const noopWriteText = (_t: string): Promise<void> => Promise.resolve();
-        Object.defineProperty(navigator.clipboard, 'writeText', {
-          value: noopWriteText, writable: true, configurable: true,
-        });
-      }
-    } catch {
-      // ignore
-    }
-
-    try {
-      if (navigator.clipboard?.write) {
-        savedWrite = navigator.clipboard.write.bind(navigator.clipboard);
-        const noopWrite = (_d: ClipboardItem[]): Promise<void> => Promise.resolve();
-        Object.defineProperty(navigator.clipboard, 'write', {
-          value: noopWrite, writable: true, configurable: true,
-        });
-      }
-    } catch {
-      // ignore
-    }
-
-    // Override document.execCommand('copy'/'cut')
-    try {
-      savedExecCommand = document.execCommand.bind(document);
-      const origCmd = savedExecCommand;
-      document.execCommand = function (cmd: string, showUI?: boolean, value?: string): boolean {
-        if (cmd === 'copy' || cmd === 'cut') return false;
-        return origCmd(cmd, showUI, value);
-      };
-    } catch {
-      // ignore
-    }
-
-    return () => {
-      document.removeEventListener('copy', handleCopy, true);
-      document.removeEventListener('cut', handleCut, true);
-      try {
-        if (savedWriteText) Object.defineProperty(navigator.clipboard, 'writeText', { value: savedWriteText, writable: true, configurable: true });
-      } catch { /* */ }
-      try {
-        if (savedWrite) Object.defineProperty(navigator.clipboard, 'write', { value: savedWrite, writable: true, configurable: true });
-      } catch { /* */ }
-      try {
-        if (savedExecCommand) document.execCommand = savedExecCommand;
-      } catch { /* */ }
-    };
-  }, []);
+  // ── 4. Clipboard: allow copy/cut everywhere ──
+  // Copy and cut are essential UX operations in a messaging app (copy messages,
+  // copy code blocks, copy user IDs, share invite codes, etc.).
+  // We no longer block clipboard operations or override navigator.clipboard APIs.
 
   // ── 5. Block drag and drop of all content ──
   useEffect(() => {

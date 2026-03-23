@@ -12,7 +12,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
-import { renameRoom, inviteToRoom, leaveRoom, getRoomCode, regenerateCode, updateRoomSettings, getRoomSettingsAPI } from '../api/roomsAPI';
+import { inviteToRoom, leaveRoom, getRoomCode, regenerateCode, updateRoomSettings, getRoomSettingsAPI } from '../api/roomsAPI';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { RoomSummary, RoomMember } from '../api/roomsAPI';
 
@@ -231,29 +231,27 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
     setIsEditingName(false);
   }, []);
 
-  const handleConfirmRename = useCallback(async () => {
+  const handleConfirmRename = useCallback(() => {
     const trimmed = editNameValue.trim();
     if (!trimmed || trimmed === displayName) {
       handleCancelRename();
       return;
     }
-    setIsRenaming(true);
+    // Save nickname locally (per-user) instead of updating the server
     try {
-      await renameRoom(room.roomId, trimmed);
-      onRoomRenamed?.(room.roomId, trimmed);
-      setIsEditingName(false);
-      showSuccess('Room renamed');
+      localStorage.setItem(`frame-room-nickname:${room.roomId}`, trimmed);
     } catch (err) {
-      console.error('Failed to rename room:', err);
-    } finally {
-      setIsRenaming(false);
+      console.error('Failed to save room nickname:', err);
     }
+    onRoomRenamed?.(room.roomId, trimmed);
+    setIsEditingName(false);
+    showSuccess('Room renamed (local only)');
   }, [editNameValue, displayName, room.roomId, onRoomRenamed, handleCancelRename, showSuccess]);
 
   const handleRenameKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      void handleConfirmRename();
+      handleConfirmRename();
     } else if (e.key === 'Escape') {
       handleCancelRename();
     }
@@ -502,7 +500,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                     maxLength={128}
                     aria-label="New room name"
                   />
-                  <button type="button" style={styles.saveButton} onClick={() => void handleConfirmRename()} disabled={isRenaming}>
+                  <button type="button" style={styles.saveButton} onClick={() => handleConfirmRename()} disabled={isRenaming}>
                     {isRenaming ? '...' : 'Save'}
                   </button>
                   <button type="button" style={styles.cancelButton} onClick={handleCancelRename} disabled={isRenaming}>

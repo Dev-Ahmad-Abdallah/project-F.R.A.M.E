@@ -117,6 +117,7 @@ function App() {
   // when the user updates them in ProfileSettings.
   const [userDisplayName, setUserDisplayName] = useState<string | null>(null);
   const [userStatus, setUserStatus] = useState<string>('online');
+  const [userStatusMessage, setUserStatusMessage] = useState<string>('');
 
   // Layout and view state
   const [activeView, setActiveView] = useState<ActiveView>('empty');
@@ -532,8 +533,9 @@ function App() {
         }
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Use capture phase to intercept shortcuts before browser defaults (e.g. Ctrl+N)
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, isMobile, sidebarOpen, rooms, focusedRoomIndex, showShortcutsHelp, showNewChatDialog, showRoomSettings, showLeaveConfirm, deviceAlertInfo, keyChangeInfo]);
 
@@ -1065,6 +1067,8 @@ function App() {
             </div>
           </>
         )}
+        {/* Toast notifications (needed for guest login errors on landing page) */}
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
@@ -1174,8 +1178,9 @@ function App() {
           return renderEmptyState();
         }
         {
-          // Derive display name for the room header
-          let chatDisplayName = selectedRoom?.name;
+          // Derive display name for the room header — check local nickname first
+          const localNickname = (() => { try { return localStorage.getItem(`frame-room-nickname:${selectedRoomId}`); } catch { return null; } })();
+          let chatDisplayName: string | undefined = localNickname || selectedRoom?.name;
           if (!chatDisplayName && selectedRoom?.roomType === 'direct') {
             const other = selectedRoom.members.find((m) => m.userId !== auth.userId);
             chatDisplayName = other?.displayName || (other ? formatDisplayName(other.userId) : undefined);
@@ -1218,7 +1223,7 @@ function App() {
                 <button type="button" onClick={() => setSettingsVerifyBannerDismissed(true)} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1 }} title="Dismiss" aria-label="Dismiss verification banner">&#215;</button>
               </div>
             )}
-            <ProfileSettings userId={auth.userId} onDisplayNameChange={setUserDisplayName} onStatusChange={setUserStatus} />
+            <ProfileSettings userId={auth.userId} onDisplayNameChange={setUserDisplayName} onStatusChange={setUserStatus} onStatusMessageChange={setUserStatusMessage} />
             <div style={{ borderTop: '1px solid rgba(48, 54, 61, 0.6)', width: '100%', maxWidth: 440, margin: '12px 0 24px' }} />
             <SessionSettings onActivateVault={activateVaultMode} />
             <div style={{ borderTop: '1px solid rgba(48, 54, 61, 0.6)', width: '100%', maxWidth: 440, margin: '12px 0 24px' }} />
@@ -1528,7 +1533,7 @@ function App() {
         <aside
           ref={sidebarRef}
           className={`frame-sidebar${isMobile && !sidebarOpen ? ' frame-sidebar-hidden' : ''}`}
-          style={{ flexShrink: 0, position: 'relative' as const, overflow: 'hidden' }}
+          style={{ flexShrink: isMobile ? undefined : 0, overflow: 'hidden' }}
         >
           {/* Tactical grid overlay for command console feel */}
           <div style={{
@@ -1623,6 +1628,11 @@ function App() {
                 }} aria-hidden="true" />
                 {connectionLost ? 'Reconnecting...' : (userStatus === 'online' ? 'Online' : userStatus === 'away' ? 'Away' : userStatus === 'busy' ? 'Busy' : userStatus === 'offline' ? 'Offline' : 'Online')}
               </span>
+              {userStatusMessage && (
+                <span style={{ fontSize: 11, color: '#8b949e', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, maxWidth: '100%', display: 'block', lineHeight: '14px' }} title={userStatusMessage}>
+                  {userStatusMessage}
+                </span>
+              )}
               <span className="frame-user-device" style={styles.userDevice}>
                 <svg width="11" height="11" viewBox="0 0 16 16" fill="none" style={{ marginRight: 4, verticalAlign: 'middle' }}>
                   <path d="M8 1L2 4v4.5c0 3.5 2.5 6.2 6 7.5 3.5-1.3 6-4 6-7.5V4L8 1z" stroke="#3fb950" strokeWidth="1.5" fill="rgba(63,185,80,0.1)" />
@@ -1841,6 +1851,7 @@ function App() {
         <NewChatDialog
           currentUserId={auth.userId}
           isGuest={auth.guest === true}
+          existingRooms={rooms}
           onCreated={handleNewChatCreated}
           onClose={() => setShowNewChatDialog(false)}
         />
