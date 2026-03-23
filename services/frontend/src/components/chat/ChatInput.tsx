@@ -91,6 +91,7 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
   onSetShowCamera,
   onSetCameraStream,
   onCancelReply,
+  onStageFile,
   onCancelPendingFile,
   onFileSelect,
   showToast,
@@ -157,11 +158,25 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
   }, [inputValue, textareaRef]);
 
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    // Check for pasted image files first
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]; // eslint-disable-line security/detect-object-injection
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        e.preventDefault();
+        const f = item.getAsFile();
+        if (f) {
+          onStageFile(new File([f], `pasted-${Date.now()}.${f.type.split('/')[1] || 'png'}`, { type: f.type }));
+        }
+        return;
+      }
+    }
+    // Text paste — warn if near limit
     const pastedText = e.clipboardData.getData('text');
     if (pastedText.length + inputValue.length > 5000) {
       showToast?.('warning', 'Pasted text was trimmed to fit the 5000 character limit', { duration: 4000 });
     }
-  }, [inputValue, showToast]);
+  }, [inputValue, showToast, onStageFile]);
 
   const handleSendClick = useCallback(() => {
     setSendButtonAnimating(true);
@@ -331,6 +346,10 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
             title="Take photo"
             aria-label="Take photo"
             onClick={() => { void (async () => {
+              if (!navigator.mediaDevices?.getUserMedia) {
+                showToast?.('error', 'Camera not available in this browser. Try using HTTPS or a different browser.', { duration: 5000 });
+                return;
+              }
               try {
                 (window as unknown as Record<string, unknown>).__framePermissionPending = true;
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: isMobile ? 'environment' : 'user' } });
@@ -393,6 +412,10 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
           {/* Mic button */}
           {!inputValue.trim() && (
             <button type="button" onClick={() => { void (async () => {
+              if (!navigator.mediaDevices?.getUserMedia) {
+                showToast?.('error', 'Microphone not available in this browser. Try using HTTPS or a different browser.', { duration: 5000 });
+                return;
+              }
               try {
                 (window as unknown as Record<string, unknown>).__framePermissionPending = true;
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });

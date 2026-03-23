@@ -246,6 +246,7 @@ export interface MessageBubbleProps {
   onTouchEnd?: () => void;
   onTouchMove?: () => void;
   onConsumedOnce?: (eventId: string) => void;
+  onImageClick?: (src: string, alt?: string) => void;
   messageRef: (el: HTMLDivElement | null) => void;
 }
 
@@ -281,6 +282,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
   onTouchEnd,
   onTouchMove,
   onConsumedOnce,
+  onImageClick,
   messageRef,
 }) => {
   const event = decrypted.event;
@@ -341,8 +343,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
           marginTop: 0,
           position: 'relative' as const,
           ...(isImageMessage ? { padding: 0, overflow: 'hidden' } : {}),
-          // Force overflow/word-break inline to prevent production CSS issues
-          maxWidth: 'clamp(200px, 65%, 480px)',
+          // Bubble fills the row; the outer .frame-msg-row controls maxWidth
+          maxWidth: '100%',
           overflow: 'hidden' as const,
           wordBreak: 'break-word' as const,
           overflowWrap: 'break-word' as const,
@@ -438,6 +440,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                         isImageContent={isImageMessage}
                         viewOnce={isViewOnce || undefined}
                         onConsumed={isViewOnce && onConsumedOnce ? () => onConsumedOnce(event.eventId) : undefined}
+                        onImageClick={onImageClick}
                       />
                     ) : null;
                   })()

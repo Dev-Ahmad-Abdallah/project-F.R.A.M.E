@@ -8,7 +8,8 @@
  *    Download, decrypt, then display/download.
  *
  * Images render edge-to-edge (WhatsApp style) with no card wrapper.
- * Non-image files render as compact file cards.
+ * Clicking an image opens the fullscreen ImageViewer (via onImageClick callback).
+ * Non-image files render as compact file cards with icon, name, size, and download.
  */
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
@@ -32,6 +33,8 @@ interface FileAttachmentProps {
   viewOnce?: boolean;
   /** Called after a view-once file has been downloaded. */
   onConsumed?: () => void;
+  /** Called when an image is clicked to open fullscreen viewer */
+  onImageClick?: (src: string, alt?: string) => void;
 }
 
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
@@ -41,8 +44,12 @@ function getFileIcon(mimeType: string): string {
   if (mimeType === 'application/pdf') return '\uD83D\uDCC4';
   if (mimeType === 'text/plain' || mimeType === 'text/csv') return '\uD83D\uDCC3';
   if (mimeType === 'application/json') return '{ }';
-  if (mimeType.includes('zip')) return '\uD83D\uDCE6';
+  if (mimeType.includes('zip') || mimeType.includes('tar') || mimeType.includes('rar') || mimeType.includes('7z')) return '\uD83D\uDCE6';
   if (mimeType.includes('word') || mimeType.includes('document')) return '\uD83D\uDCC4';
+  if (mimeType.includes('sheet') || mimeType.includes('excel') || mimeType.includes('csv')) return '\uD83D\uDCCA';
+  if (mimeType.startsWith('audio/')) return '\uD83C\uDFB5';
+  if (mimeType.startsWith('video/')) return '\uD83C\uDFAC';
+  if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '\uD83D\uDCCA';
   return '\uD83D\uDCC1';
 }
 
@@ -58,6 +65,7 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
   isImageContent,
   viewOnce,
   onConsumed,
+  onImageClick,
 }) => {
   const [downloading, setDownloading] = useState(false);
   const [consumed, setConsumed] = useState(false);
@@ -239,8 +247,15 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
           minWidth: 160,
           borderRadius: 0,
         }}
-        onClick={() => { void handleDownload(); }}
-        title={`${fileName} — click to download`}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (onImageClick) {
+            onImageClick(previewUrl, fileName);
+          } else {
+            void handleDownload();
+          }
+        }}
+        title={onImageClick ? `${fileName} — click to view fullscreen` : `${fileName} — click to download`}
       />
     );
   }
@@ -284,11 +299,16 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
     }}>
       {/* File icon */}
       <span style={{
-        fontSize: 20,
+        fontSize: 24,
         flexShrink: 0,
         lineHeight: 1,
-        width: 28,
-        textAlign: 'center' as const,
+        width: 36,
+        height: 36,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 8,
+        backgroundColor: isSent ? 'rgba(255,255,255,0.06)' : 'rgba(88,166,255,0.08)',
       }} aria-hidden="true">
         {getFileIcon(mimeType)}
       </span>
@@ -309,10 +329,22 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
         <div style={{
           fontSize: 11,
           color: '#8b949e',
-          marginTop: 1,
+          marginTop: 2,
           lineHeight: 1,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
         }}>
-          {formatFileSize(fileSize)}
+          <span>{formatFileSize(fileSize)}</span>
+          {mimeType && mimeType !== 'application/octet-stream' && (
+            <span style={{
+              fontSize: 10,
+              color: '#6e7681',
+              textTransform: 'uppercase' as const,
+            }}>
+              {mimeType.split('/').pop()?.split('.').pop()?.slice(0, 8)}
+            </span>
+          )}
         </div>
       </div>
 
@@ -326,8 +358,8 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
           border: 'none',
           borderRadius: '50%',
           padding: 4,
-          width: 28,
-          height: 28,
+          width: 32,
+          height: 32,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -345,7 +377,7 @@ const FileAttachment: React.FC<FileAttachmentProps> = ({
             <circle cx="8" cy="8" r="6" stroke="#8b949e" strokeWidth="2" strokeDasharray="10 20" />
           </svg>
         ) : (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#58a6ff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
             <polyline points="7 10 12 15 17 10" />
             <line x1="12" y1="15" x2="12" y2="3" />

@@ -65,7 +65,9 @@ export async function getEventsByUser(
   const result = await pool.query<EventRow>(
     `SELECT e.* FROM events e
      JOIN room_members rm ON e.room_id = rm.room_id
+     LEFT JOIN user_blocks ub ON ub.blocker_id = $1 AND ub.blocked_id = e.sender_id
      WHERE rm.user_id = $1 AND e.sequence_id > $2 AND e.deleted_at IS NULL
+       AND ub.blocker_id IS NULL
      ORDER BY e.sequence_id ASC
      LIMIT $3`,
     [userId, sinceSequenceId, limit]

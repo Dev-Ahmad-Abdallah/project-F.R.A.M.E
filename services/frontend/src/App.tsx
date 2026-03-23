@@ -1967,7 +1967,8 @@ const styles: Record<string, React.CSSProperties> = {
   appWrapper: {
     display: 'flex',
     flexDirection: 'column',
-    height: '100vh',
+    height: '100dvh',
+    maxHeight: '-webkit-fill-available',
     width: '100vw',
     overflow: 'hidden',
     backgroundColor: '#0d1117',
