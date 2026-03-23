@@ -29,7 +29,7 @@ function detectIsIOS(): boolean {
   // iPad OS 13+ identifies as MacIntel with touch — but exclude desktop Macs
   // by also checking that the screen is portrait-capable (max dimension ≤ 1366)
   if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) {
-    return Math.min(screen.width, screen.height) <= 1024;
+    return Math.min(window.screen.width, window.screen.height) <= 1024;
   }
   return false;
 }

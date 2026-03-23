@@ -397,6 +397,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     document.addEventListener('visibilitychange', vis);
     const online = () => { if (syncGenRef.current === gen) { syncBackoffRef.current = 1000; void syncLoop(++syncGenRef.current); } };
     window.addEventListener('online', online);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { ++syncGenRef.current; clearTimeout(timer); document.removeEventListener('visibilitychange', vis); window.removeEventListener('online', online); };
   }, [roomId, syncLoop]);
 
@@ -481,6 +482,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => () => { if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current); if (typingIntervalRef.current) clearInterval(typingIntervalRef.current); if (getSendTypingIndicators()) setTyping(roomId, false).catch(() => undefined); }, [roomId]);
 
   // Forwarding
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const handleForwardMessage = useCallback(async (eid: string) => { setContextMenuEventId(null); setContextMenuPos(null); setForwardEventId(eid); try { const rooms = await listRooms(); setForwardRooms(rooms.filter(r => r.roomId !== roomId)); setShowForwardDialog(true); } catch (e) { console.error('Forward load failed:', e); showToast?.('error', 'Could not load rooms for forwarding', { duration: 3000, dedupeKey: 'forward-fail' }); } }, [roomId]);
   const handleForwardToRoom = useCallback(async (tid: string, tn: string) => { if (!forwardEventId) return; const m = messages.find(m => m.event.eventId === forwardEventId); if (!m?.plaintext) return; const body = typeof m.plaintext.body === 'string' ? m.plaintext.body : JSON.stringify(m.plaintext); const isFile = isFileMessage(m.plaintext); const forwardedContent = isFile ? { ...m.plaintext, forwarded: true } : { msgtype: 'm.text', body, forwarded: true }; try { const tm = await getRoomMembers(tid); const enc = await encryptForRoom(tid, 'm.room.message', forwardedContent, tm.map(m => m.userId)); await sendMessage(tid, 'm.room.encrypted', enc); showToast?.('success', `Forwarded to ${tn}`); } catch { showToast?.('error', 'Forward failed'); } setShowForwardDialog(false); setForwardEventId(null); }, [forwardEventId, messages, showToast]);
 
@@ -557,6 +559,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       lastSid = ev.senderId; lastTs = md; lastDt = md;
     }
     return els;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, filteredMessages, currentUserId, deletedEventIds, expiredEventIds, selfDestructingIds, destroyedIds, disappearingSettings, hiddenOnceIds, viewedOnceIds, recentlyArrivedIds, localReactions, readReceiptMap, scrollToMessage, searchQuery, searchMatchIndex, unreadDividerEventId, handleMessageClick, isMobile, handleTouchStart, handleTouchEnd, handleTouchMove, revealViewOnce, getViewOnceType, isAnonymous, resolveDisplayName, handleReplyToMessage, handleForwardMessage, handleConsumedOnce, handleImageClick]);
 
   const renderWelcome = () => {

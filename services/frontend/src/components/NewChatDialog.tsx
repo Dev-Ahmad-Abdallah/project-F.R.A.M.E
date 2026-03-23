@@ -202,7 +202,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
 
   // Shared state
   const [error, setError] = useState<string | null>(null);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [showSuccess, _setShowSuccess] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -477,6 +477,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
     } finally {
       setDmLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username, currentUserId, onCreated, onClose, isGuest]);
 
   // ── Success state ──

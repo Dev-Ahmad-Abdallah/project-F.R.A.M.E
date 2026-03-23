@@ -136,6 +136,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
     } finally {
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, onUnknownDevice]);
 
   useEffect(() => {

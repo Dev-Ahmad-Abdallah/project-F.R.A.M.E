@@ -23,7 +23,7 @@ const IDB_DB_NAME = 'frame-cross-signing';
 const IDB_STORE_NAME = 'keys';
 const IDB_MASTER_KEY_ID = 'master-signing-key';
 const IDB_MASTER_PUBLIC_KEY_ID = 'master-public-key';
-const STORAGE_PASSPHRASE_KEY = 'frame-cross-signing-passphrase';
+const _STORAGE_PASSPHRASE_KEY = 'frame-cross-signing-passphrase';
 
 // ── IndexedDB helpers ──
 

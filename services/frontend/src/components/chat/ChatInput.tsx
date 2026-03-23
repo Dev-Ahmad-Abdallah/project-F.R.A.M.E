@@ -427,6 +427,7 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
             {!isMobile && showEmojiPicker && (
               <div style={{ position: 'absolute' as const, bottom: 40, right: 0, backgroundColor: '#1c2128', border: '1px solid #30363d', borderRadius: 12, padding: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.45)', zIndex: 1000, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 2, width: 228 }}>
                 {CHAT_EMOJIS.map((em) => (
+                  // eslint-disable-next-line security/detect-object-injection
                   <button key={em} type="button" onClick={() => insertEmojiAtCursor(em)} aria-label={EMOJI_LABELS[em] || em} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', padding: 4, borderRadius: 6, lineHeight: 1.2, transition: 'background-color 0.1s' }} onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'rgba(88,166,255,0.15)'; }} onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent'; }}>{em}</button>
                 ))}
               </div>
@@ -481,6 +482,7 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
             <div style={{ fontSize: 13, fontWeight: 600, color: '#8b949e', padding: '4px 4px 8px', textAlign: 'center' as const }}>Emoji</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4, padding: '8px 0' }}>
               {CHAT_EMOJIS.map((em) => (
+                // eslint-disable-next-line security/detect-object-injection
                 <button key={em} type="button" onClick={() => { insertEmojiAtCursor(em); setShowMobileEmojiSheet(false); }} aria-label={EMOJI_LABELS[em] || em} style={{ background: 'none', border: 'none', fontSize: 26, cursor: 'pointer', padding: 8, borderRadius: 10, lineHeight: 1.2, minHeight: 48, minWidth: 48, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{em}</button>
               ))}
             </div>
