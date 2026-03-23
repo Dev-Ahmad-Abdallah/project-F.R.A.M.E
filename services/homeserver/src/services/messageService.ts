@@ -371,6 +371,8 @@ export async function syncMessages(
 
 type EventRows = Awaited<ReturnType<typeof getEventsByUser>>;
 
+const MAX_LONG_POLL_TIMEOUT = 30_000; // 30 seconds max to prevent resource exhaustion
+
 async function waitForEvents(
   userId: string,
   deviceId: string,
@@ -378,6 +380,9 @@ async function waitForEvents(
   limit: number,
   timeout: number
 ): Promise<EventRows> {
+  // Cap timeout to prevent resource exhaustion (CodeQL: js/resource-exhaustion)
+  const safeTimeout = Math.min(Math.max(0, timeout), MAX_LONG_POLL_TIMEOUT);
+
   return new Promise((resolve) => {
     const channel = `device:${deviceId}`;
     let resolved = false;
@@ -398,7 +403,7 @@ async function waitForEvents(
     const timer = setTimeout(() => {
       cleanup();
       fetchAndResolve();
-    }, timeout);
+    }, safeTimeout);
 
     const onMessage = (ch: string, _msg: string) => {
       if (ch !== channel) return;

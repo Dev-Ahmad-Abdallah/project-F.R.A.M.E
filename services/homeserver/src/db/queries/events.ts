@@ -138,32 +138,33 @@ export async function addReaction(
     throw new Error('Event not found');
   }
 
-  const reactions: Record<string, { users: string[]; count: number }> = current.rows[0].reactions || {};
-  // eslint-disable-next-line security/detect-object-injection -- emoji is user input validated by route handler
-  const entry = reactions[emoji] || { users: [], count: 0 };
+  // Use a Map to avoid prototype pollution — emoji keys come from user input
+  const rawReactions = current.rows[0].reactions || {};
+  const reactions = new Map<string, { users: string[]; count: number }>(
+    Object.entries(rawReactions)
+  );
+  const entry = reactions.get(emoji) || { users: [], count: 0 };
 
   if (entry.users.includes(userId)) {
     // Remove reaction (toggle off)
     entry.users = entry.users.filter((u: string) => u !== userId);
     entry.count = entry.users.length;
     if (entry.count === 0) {
-      // eslint-disable-next-line security/detect-object-injection -- emoji validated above
-      delete reactions[emoji];
+      reactions.delete(emoji);
     } else {
-      // eslint-disable-next-line security/detect-object-injection -- emoji validated above
-      reactions[emoji] = entry;
+      reactions.set(emoji, entry);
     }
   } else {
     // Add reaction
     entry.users.push(userId);
     entry.count = entry.users.length;
-    // eslint-disable-next-line security/detect-object-injection -- emoji validated above
-    reactions[emoji] = entry;
+    reactions.set(emoji, entry);
   }
 
+  const reactionsObj = Object.fromEntries(reactions);
   const result = await pool.query<{ reactions: Record<string, { users: string[]; count: number }> }>(
     `UPDATE events SET reactions = $2::jsonb WHERE event_id = $1 RETURNING reactions`,
-    [eventId, JSON.stringify(reactions)]
+    [eventId, JSON.stringify(reactionsObj)]
   );
   return result.rows[0].reactions;
 }
@@ -215,10 +216,11 @@ export async function getReadReceiptsByEventIds(
     `SELECT event_id, user_id FROM read_receipts WHERE event_id = ANY($1::text[])`,
     [eventIds]
   );
-  const map: Record<string, string[]> = {};
+  // Use Object.create(null) to prevent prototype pollution from DB-sourced keys
+  const map: Record<string, string[]> = Object.create(null) as Record<string, string[]>;
   for (const row of result.rows) {
-    if (!map[row.event_id]) map[row.event_id] = [];
-    map[row.event_id].push(row.user_id);
+    if (!map[row.event_id]) map[row.event_id] = []; // eslint-disable-line security/detect-object-injection
+    map[row.event_id].push(row.user_id); // eslint-disable-line security/detect-object-injection
   }
   return map;
 }

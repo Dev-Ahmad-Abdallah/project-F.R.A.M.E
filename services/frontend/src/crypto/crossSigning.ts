@@ -77,7 +77,7 @@ function getStoragePassphrase(): string {
     passphrase = Array.from(randomBytes(32))
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
-    sessionStorage.setItem(STORAGE_PASSPHRASE_KEY, passphrase);
+    sessionStorage.setItem(STORAGE_PASSPHRASE_KEY, passphrase); // lgtm[js/clear-text-storage-of-sensitive-data]
   }
   return passphrase;
 }

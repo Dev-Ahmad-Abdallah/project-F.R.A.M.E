@@ -3,11 +3,12 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../db/pool';
 import { redisClient } from '../redis/client';
 import { getConfig } from '../config';
+import { apiLimiter } from '../middleware/rateLimit';
 
 export const healthRouter = Router();
 
 // eslint-disable-next-line @typescript-eslint/no-misused-promises
-healthRouter.get('/', async (req, res) => {
+healthRouter.get('/', apiLimiter, async (req, res) => {
   const checks: Record<string, string> = {};
 
   try {

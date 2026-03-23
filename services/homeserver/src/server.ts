@@ -92,7 +92,7 @@ app.use((req, res, next) => {
 });
 
 // ── Root info ──
-app.get('/', (_req, res) => {
+app.get('/', apiLimiter, (_req, res) => {
   res.json({
     name: 'F.R.A.M.E. Homeserver',
     version: '1.0.0',
@@ -190,7 +190,7 @@ const federationPort = process.env.FEDERATION_PORT
   ? Number(process.env.FEDERATION_PORT)
   : config.NODE_ENV === 'production' ? 443 : config.PORT;
 
-app.get('/.well-known/frame/server', (_req, res) => {
+app.get('/.well-known/frame/server', apiLimiter, (_req, res) => {
   res.json({
     'frame.server': {
       host: config.HOMESERVER_DOMAIN,

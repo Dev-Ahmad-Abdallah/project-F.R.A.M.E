@@ -246,8 +246,11 @@ filesRouter.get(
     }
 
     // Sanitize the file name for Content-Disposition header
-    // Replace any non-ASCII or control characters, and quote the name
+    // 1. Strip null bytes to prevent truncation attacks
+    // 2. Replace non-ASCII and control characters
+    // 3. Escape double quotes for safe quoting in the header
     const safeFileName = fileRow.file_name
+      .replace(/\0/g, '')           // strip null bytes first (incomplete sanitization fix)
       .replace(/[^\x20-\x7E]/g, '_')
       .replace(/"/g, '\\"');
 
