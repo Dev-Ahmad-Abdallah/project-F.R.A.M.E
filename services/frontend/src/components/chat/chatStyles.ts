@@ -3,14 +3,14 @@ import { FONT_BODY } from '../../globalStyles';
 
 export const styles: Record<string, React.CSSProperties> = {
   container: { display: 'flex', flexDirection: 'column', height: '100%', fontFamily: FONT_BODY, border: '1px solid #21262d', borderRadius: 0, overflow: 'hidden', backgroundColor: '#0d1117', position: 'relative' },
-  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 14px', borderBottom: '1px solid #30363d', backgroundColor: '#161b22' },
+  header: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '12px 16px', borderBottom: '1px solid #30363d', backgroundColor: '#161b22', minHeight: 56 },
   headerLeft: { display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 },
   headerNameRow: { display: 'flex', alignItems: 'center', gap: 6 },
-  headerName: { fontSize: 'clamp(12px, 1.3vw, 15px)', fontWeight: 600, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  headerName: { fontSize: 'clamp(14px, 1.5vw, 16px)', fontWeight: 600, color: '#e6edf3', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   verifiedBadge: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 16, height: 16, borderRadius: '50%', backgroundColor: 'rgba(35, 134, 54, 0.2)', color: '#3fb950', fontSize: 10, fontWeight: 700, flexShrink: 0 },
   headerSubRow: { display: 'flex', alignItems: 'center', gap: 8 },
   headerMemberCount: { fontSize: 12, color: '#8b949e' },
-  infoButton: { width: 28, height: 28, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#c9d1d9', fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'border-color 0.15s, color 0.15s' },
+  infoButton: { width: 36, height: 36, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'rgba(48,54,61,0.5)', color: '#c9d1d9', fontSize: 16, fontWeight: 600, fontStyle: 'italic', fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'border-color 0.15s, color 0.15s' },
   renameInput: { fontSize: 15, fontWeight: 600, color: '#e6edf3', backgroundColor: '#0d1117', border: '1px solid #58a6ff', borderRadius: 4, padding: '2px 6px', fontFamily: 'inherit', outline: 'none', width: '100%', maxWidth: 240 },
   encryptionBadge: { fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 1, backgroundColor: 'rgba(63, 185, 80, 0.08)', color: '#3fb950', border: '2px solid rgba(63, 185, 80, 0.4)', textTransform: 'uppercase' as const, letterSpacing: '0.12em', boxShadow: '0 0 6px rgba(63,185,80,0.2), inset 0 0 4px rgba(63,185,80,0.08)', fontFamily: '"SF Mono", "Fira Code", "Cascadia Code", monospace' },
   roomLabel: { fontSize: 13, color: '#c9d1d9' },

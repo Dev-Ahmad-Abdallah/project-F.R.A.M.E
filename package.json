@@ -26,6 +26,13 @@
     "watch": "bash scripts/watch-build.sh",
     "check": "npm run build:shared && npm run build:homeserver && cd services/frontend && npx tsc --noEmit"
   },
+  "overrides": {
+    "nth-check": ">=2.0.1",
+    "postcss": ">=8.4.31",
+    "serialize-javascript": ">=6.0.2",
+    "underscore": ">=1.13.7",
+    "@tootallnate/once": ">=2.0.0"
+  },
   "devDependencies": {
     "playwright": "^1.58.2",
     "puppeteer": "^24.40.0"
