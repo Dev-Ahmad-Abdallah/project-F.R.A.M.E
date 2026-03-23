@@ -136,9 +136,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
   const [codeCopied, setCodeCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
-  // Determine if current user is admin
-  const currentMember = room.members.find((m) => m.userId === currentUserId);
-  const isAdmin = !!(currentMember && 'role' in currentMember && (currentMember as RoomMember & { role?: string }).role === 'admin');
+  // Determine if current user is the room creator (admin)
+  const isAdmin = !!room.createdBy && room.createdBy === currentUserId;
 
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -272,18 +271,29 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
     if (!trimmed) return;
     setInviteError(null);
     setIsInviting(true);
+
+    // Auto-format plain username to full Matrix-style userId
+    // e.g. "abc" -> "@abc:project-frame-production.up.railway.app"
+    const homeserverDomain = (process.env.REACT_APP_HOMESERVER_URL || '')
+      .replace(/^https?:\/\//, '')
+      .replace(/\/+$/, '');
+    const fullUserId = trimmed.startsWith('@')
+      ? trimmed
+      : `@${trimmed}:${homeserverDomain}`;
+
     try {
-      await inviteToRoom(room.roomId, trimmed);
+      await inviteToRoom(room.roomId, fullUserId);
       setInviteUserId('');
       setShowInviteInput(false);
       onMemberInvited?.(room.roomId);
-      showSuccess('Invite sent');
+      showSuccess('Member invited');
+      showToast?.('success', `Invited ${fullUserId}`);
     } catch (err: unknown) {
       setInviteError(err instanceof Error ? err.message : 'Failed to invite user');
     } finally {
       setIsInviting(false);
     }
-  }, [inviteUserId, room.roomId, onMemberInvited, showSuccess]);
+  }, [inviteUserId, room.roomId, onMemberInvited, showSuccess, showToast]);
 
   const handleKickMember = useCallback(async (userId: string) => {
     setIsKicking(true);
@@ -778,7 +788,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                         ...styles.renameInput,
                         ...(isMobile ? { width: '100%', minHeight: 44, fontSize: 15, padding: '10px 12px' } : {}),
                       }}
-                      placeholder="@user:server"
+                      placeholder="username or @user:server"
                       value={inviteUserId}
                       onChange={(e) => setInviteUserId(e.target.value)}
                       onKeyDown={(e) => {

@@ -19,6 +19,7 @@ export interface RoomSummary {
   roomType: 'direct' | 'group';
   name?: string;
   members: RoomMember[];
+  createdBy?: string;
   lastMessage?: {
     senderId: string;
     body: string;
@@ -74,6 +75,8 @@ interface ServerMember {
 interface ServerLastMessage {
   content?: Record<string, unknown>;
   timestamp?: string;
+  senderId?: string;
+  sender_id?: string;
 }
 
 interface ServerRoom {
@@ -99,7 +102,7 @@ export async function listRooms(): Promise<RoomSummary[]> {
     const serverLastMsg = r.lastMessage ?? r.last_message ?? null;
     const lastMessage = serverLastMsg
       ? {
-          senderId: (serverLastMsg.content?.sender as string) ?? '',
+          senderId: serverLastMsg.senderId ?? serverLastMsg.sender_id ?? (serverLastMsg.content?.sender as string) ?? '',
           body: (serverLastMsg.content?.body as string) ?? '',
           timestamp: serverLastMsg.timestamp ?? '',
         }
@@ -113,6 +116,7 @@ export async function listRooms(): Promise<RoomSummary[]> {
         userId: m.userId ?? m.user_id ?? '',
         displayName: m.displayName ?? m.display_name,
       })),
+      createdBy: r.created_by,
       lastMessage,
       unreadCount: r.unreadCount ?? r.unread_count ?? 0,
       isAnonymous: r.settings?.isAnonymous === true || undefined,

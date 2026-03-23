@@ -462,6 +462,8 @@ const RoomList: React.FC<RoomListProps> = ({
   const isPendingRoom = (room: RoomSummary): boolean => {
     if (acceptedRoomIds.has(room.roomId)) return false;
     if (room.roomType !== 'direct') return false;
+    // If the current user created the room, it's not a message request
+    if (room.createdBy === currentUserId) return false;
     // If the current user sent the last message, they initiated — auto-accept
     if (room.lastMessage?.senderId === currentUserId) {
       return false;
