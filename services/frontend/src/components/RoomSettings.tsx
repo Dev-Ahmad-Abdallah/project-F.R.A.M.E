@@ -101,7 +101,7 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
   onMemberKicked,
   showToast,
 }) => {
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(600);
   // Rename state
   const [isEditingName, setIsEditingName] = useState(false);
   const [editNameValue, setEditNameValue] = useState(room.name || '');

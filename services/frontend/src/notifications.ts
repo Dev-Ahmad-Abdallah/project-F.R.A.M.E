@@ -12,6 +12,18 @@ import { playNotificationSound } from './sounds';
 
 let swRegistration: ServiceWorkerRegistration | null = null;
 
+/** Optional callback invoked when a new service worker version is detected. */
+let onUpdateAvailableCallback: (() => void) | null = null;
+
+/**
+ * Register a callback that fires when a new service worker version is
+ * installed and waiting to activate. Used by App.tsx to show a user-visible
+ * toast instead of only logging to the console.
+ */
+export function onServiceWorkerUpdateAvailable(cb: () => void): void {
+  onUpdateAvailableCallback = cb;
+}
+
 /**
  * Register the F.R.A.M.E. service worker.
  *
@@ -54,8 +66,10 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
           navigator.serviceWorker.controller
         ) {
           // A new version is available — it will activate on next navigation.
-          // In a real app we could prompt the user to refresh.
           console.info('New F.R.A.M.E. service worker available.');
+          if (onUpdateAvailableCallback) {
+            onUpdateAvailableCallback();
+          }
         }
       });
     });

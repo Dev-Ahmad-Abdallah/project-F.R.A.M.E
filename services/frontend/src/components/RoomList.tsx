@@ -243,7 +243,7 @@ const RoomList: React.FC<RoomListProps> = ({
   focusedRoomIndex,
   showToast,
 }) => {
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(600);
   const [hoveredRoomId, setHoveredRoomId] = useState<string | null>(null);
   const [starredIds, setStarredIds] = useState<Set<string>>(() => getStoredSet(STARRED_KEY));
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => getStoredSet(ARCHIVED_KEY));
@@ -457,8 +457,8 @@ const RoomList: React.FC<RoomListProps> = ({
   // A room is pending if:
   // 1. It's a DM (direct) room
   // 2. The current user has NOT accepted it yet (not in localStorage set)
-  // 3. The current user didn't send the last message (they didn't initiate)
-  // 4. The room has a last message (it's not empty / user-created)
+  // 3. The current user didn't create the room
+  // 4. The current user didn't send the last message (they didn't initiate)
   const isPendingRoom = (room: RoomSummary): boolean => {
     if (acceptedRoomIds.has(room.roomId)) return false;
     if (room.roomType !== 'direct') return false;
@@ -468,8 +468,13 @@ const RoomList: React.FC<RoomListProps> = ({
     if (room.lastMessage?.senderId === currentUserId) {
       return false;
     }
-    // If there's no last message, it's a fresh room the user may have created — not pending
-    if (!room.lastMessage) return false;
+    // If createdBy is unknown (legacy rooms with no creator info) and there
+    // is no last message, don't flag as pending to avoid false positives
+    // where both users would see a message request.
+    if (!room.createdBy && !room.lastMessage) return false;
+    // The room was created by someone else and the current user hasn't
+    // interacted yet — show as a message request regardless of whether
+    // a message has been sent.
     return true;
   };
 

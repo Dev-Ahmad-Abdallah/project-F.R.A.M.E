@@ -92,13 +92,13 @@ const rateLimitHandler: RateLimitExceededEventHandler = (_req, res) => {
 
 // ── Rate limiters ──
 
-// Login: 20 attempts per 15 minutes per IP+username combo
+// Login: 30 attempts per 15 minutes per IP+username combo
 // Using IP + username as key prevents credential stuffing against a single account
 // while still allowing multiple users behind the same IP
 const loginWindowMs = 15 * 60 * 1000;
 export const loginLimiter = rateLimit({
   windowMs: loginWindowMs,
-  max: 20,
+  max: 30,
   store: new RedisStore('ratelimit:login', loginWindowMs) as unknown as Store,
   keyGenerator: (req: Request) => {
     const username = (req.body as Record<string, unknown>)?.username;
@@ -110,24 +110,24 @@ export const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Registration: 15 attempts per hour per IP
+// Registration: 20 attempts per hour per IP
 const registerWindowMs = 60 * 60 * 1000;
 export const registerLimiter = rateLimit({
   windowMs: registerWindowMs,
-  max: 15,
+  max: 20,
   store: new RedisStore('ratelimit:register', registerWindowMs) as unknown as Store,
   handler: rateLimitHandler,
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// General API: 600 requests per minute per authenticated user (or IP for unauthenticated).
+// General API: 1200 requests per minute per authenticated user (or IP for unauthenticated).
 // This limiter covers user-facing operations like rooms, devices, profile, etc.
 // High-frequency endpoints (sync, key upload) have their own dedicated limiters.
 const apiWindowMs = 60 * 1000;
 export const apiLimiter = rateLimit({
   windowMs: apiWindowMs,
-  max: 600,
+  max: 1200,
   store: new RedisStore('ratelimit:api', apiWindowMs) as unknown as Store,
   keyGenerator: (req: Request) => {
     // Prefer per-user limiting so users behind shared IPs (NAT/VPN) aren't penalised
@@ -138,13 +138,13 @@ export const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Sync polling: 1200 requests per minute per user.
+// Sync polling: 2400 requests per minute per user.
 // Clients long-poll /messages/sync every 1-5 seconds — this must be very generous.
 // At 1 req/sec that's 60/min, but burst reconnects can spike much higher.
 const syncWindowMs = 60 * 1000;
 export const syncLimiter = rateLimit({
   windowMs: syncWindowMs,
-  max: 1200,
+  max: 2400,
   store: new RedisStore('ratelimit:sync', syncWindowMs) as unknown as Store,
   keyGenerator: (req: Request) => {
     return req.auth?.sub ?? String(req.ip);
@@ -154,13 +154,13 @@ export const syncLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Key upload: 600 requests per minute per user.
+// Key upload: 1200 requests per minute per user.
 // OlmMachine uploads device_keys and one_time_keys frequently, especially
 // after session creation and when OTK counts run low.
 const keyUploadWindowMs = 60 * 1000;
 export const keyUploadLimiter = rateLimit({
   windowMs: keyUploadWindowMs,
-  max: 600,
+  max: 1200,
   store: new RedisStore('ratelimit:keyupload', keyUploadWindowMs) as unknown as Store,
   keyGenerator: (req: Request) => {
     return req.auth?.sub ?? String(req.ip);
@@ -170,12 +170,12 @@ export const keyUploadLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Key query/claim: 300 requests per minute per user.
+// Key query/claim: 600 requests per minute per user.
 // Called during session setup and when verifying devices.
 const keyQueryWindowMs = 60 * 1000;
 export const keyQueryLimiter = rateLimit({
   windowMs: keyQueryWindowMs,
-  max: 300,
+  max: 600,
   store: new RedisStore('ratelimit:keyquery', keyQueryWindowMs) as unknown as Store,
   keyGenerator: (req: Request) => {
     return req.auth?.sub ?? String(req.ip);
@@ -185,23 +185,23 @@ export const keyQueryLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Token refresh: 30 requests per minute per IP
+// Token refresh: 60 requests per minute per IP
 const refreshWindowMs = 60 * 1000;
 export const refreshLimiter = rateLimit({
   windowMs: refreshWindowMs,
-  max: 30,
+  max: 60,
   store: new RedisStore('ratelimit:refresh', refreshWindowMs) as unknown as Store,
   handler: rateLimitHandler,
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// File upload: 30 uploads per hour per user.
+// File upload: 60 uploads per hour per user.
 // Generous enough for normal usage but prevents abuse/storage exhaustion.
 const fileUploadWindowMs = 60 * 60 * 1000;
 export const fileUploadLimiter = rateLimit({
   windowMs: fileUploadWindowMs,
-  max: 30,
+  max: 60,
   store: new RedisStore('ratelimit:fileupload', fileUploadWindowMs) as unknown as Store,
   keyGenerator: (req: Request) => {
     return req.auth?.sub ?? String(req.ip);
@@ -223,14 +223,14 @@ export const guestLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Message sending: 300 per minute per user PER ROOM.
+// Message sending: 600 per minute per user PER ROOM.
 // Keyed by userId:roomId so active participation in multiple rooms
 // doesn't exhaust a single global bucket. A user chatting in 10 rooms
-// gets 300 msg/min in EACH room — plenty for rapid group conversations.
+// gets 600 msg/min in EACH room — plenty for rapid group conversations.
 const messageWindowMs = 60 * 1000;
 export const messageLimiter = rateLimit({
   windowMs: messageWindowMs,
-  max: 300,
+  max: 600,
   store: new RedisStore('ratelimit:message', messageWindowMs) as unknown as Store,
   keyGenerator: (req: Request) => {
     const roomId = (req.body as Record<string, unknown>)?.roomId;

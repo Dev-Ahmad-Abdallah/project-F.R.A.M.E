@@ -17,6 +17,8 @@ export interface Toast {
   persistent: boolean;
   duration: number;
   createdAt: number;
+  /** Optional click handler — makes the entire toast body clickable. */
+  onClick?: () => void;
 }
 
 export interface ShowToastOptions {
@@ -29,6 +31,8 @@ export interface ShowToastOptions {
    * it will be replaced instead of stacking a duplicate.
    */
   dedupeKey?: string;
+  /** Optional click handler — makes the entire toast body clickable. */
+  onClick?: () => void;
 }
 
 let globalIdCounter = 0;
@@ -86,6 +90,7 @@ export function useToast() {
         persistent,
         duration,
         createdAt: Date.now(),
+        onClick: options?.onClick,
       };
 
       setToasts((prev) => [toast, ...prev]);

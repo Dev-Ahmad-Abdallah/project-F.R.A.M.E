@@ -152,7 +152,7 @@ export async function getUserRoomsWithMembers(userId: string, deviceId?: string)
        ORDER BY sequence_id DESC LIMIT 1
      ) last_msg ON true
      WHERE rm.user_id = $1
-     ORDER BY r.created_at DESC`,
+     ORDER BY COALESCE(last_msg.origin_ts, r.created_at) DESC`,
     [userId]
   );
 

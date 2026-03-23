@@ -174,7 +174,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
   onCreated,
   onClose,
 }) => {
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(600);
 
   // Tab state
   const [activeTab, setActiveTab] = useState<TabMode>('start');
@@ -382,10 +382,8 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       };
 
       playJoinSound();
-      setShowSuccess(true);
-      setTimeout(() => {
-        onCreated(newRoom);
-      }, 1000);
+      onCreated(newRoom);
+      onClose();
     } catch (err) {
       // If the error mentions a password or is a 403 Forbidden, reveal the password field
       const msg = err instanceof Error ? err.message.toLowerCase() : '';
@@ -401,7 +399,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
     } finally {
       setJoining(false);
     }
-  }, [joinSessionId, joinPassword, currentUserId, onCreated, isGuest]);
+  }, [joinSessionId, joinPassword, currentUserId, onCreated, onClose, isGuest]);
 
   // ── Direct Message ──
 
@@ -472,16 +470,14 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
         unreadCount: 0,
       };
 
-      setShowSuccess(true);
-      setTimeout(() => {
-        onCreated(newRoom);
-      }, 1000);
+      onCreated(newRoom);
+      onClose();
     } catch (err) {
       setError(friendlyErrorMessage(err, isGuest));
     } finally {
       setDmLoading(false);
     }
-  }, [username, currentUserId, onCreated, isGuest]);
+  }, [username, currentUserId, onCreated, onClose, isGuest]);
 
   // ── Success state ──
 

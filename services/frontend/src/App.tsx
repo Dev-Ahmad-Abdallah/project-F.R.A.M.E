@@ -46,7 +46,7 @@ import type { RoomSummary } from './api/roomsAPI';
 import { generateAndUploadKeys } from './crypto/keyManager';
 import { getIdentityKeys } from './crypto/olmMachine';
 import { invalidateRoomSession } from './crypto/sessionManager';
-import { registerServiceWorker } from './notifications';
+import { registerServiceWorker, onServiceWorkerUpdateAvailable } from './notifications';
 import { initStorage } from './storage/secureStorage';
 import { useNotifications } from './hooks/useNotifications';
 import { useToast } from './hooks/useToast';
@@ -227,6 +227,30 @@ function App() {
     });
   }, [showToast]);
 
+  // ── Auto-reload when a new version is deployed ──
+  // When Railway deploys a new build, the service worker detects the new
+  // version and fires `controllerchange`, which triggers a page reload.
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.location.reload();
+      });
+    }
+  }, []);
+
+  // ── Show a clickable toast when a new service worker version is available ──
+  useEffect(() => {
+    onServiceWorkerUpdateAvailable(() => {
+      showToast('info', 'A new version of F.R.A.M.E. is available. Click here to update.', {
+        persistent: true,
+        dedupeKey: 'sw-update-available',
+        onClick: () => {
+          window.location.reload();
+        },
+      });
+    });
+  }, [showToast]);
+
   // Settings: dismissible device verification banner
   const [settingsVerifyBannerDismissed, setSettingsVerifyBannerDismissed] = useState(false);
 
@@ -378,7 +402,12 @@ function App() {
           const timeB = b.lastMessage?.timestamp ? new Date(b.lastMessage.timestamp).getTime() : 0;
           return timeB - timeA;
         });
-        setRooms(roomList);
+        // Merge: keep optimistically-added rooms not yet returned by server
+        setRooms((prev) => {
+          const serverIds = new Set(roomList.map((r) => r.roomId));
+          const optimistic = prev.filter((r) => !serverIds.has(r.roomId));
+          return [...roomList, ...optimistic];
+        });
         setRoomFetchError(null);
 
         // Update unread counts from server data
@@ -458,15 +487,22 @@ function App() {
   );
 
   useEffect(() => {
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const handleResize = () => {
-      const mobile = window.innerWidth < 600;
-      setIsMobile(mobile);
-      if (!mobile) {
-        setSidebarOpen(true);
-      }
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        const mobile = window.innerWidth < 600;
+        setIsMobile(mobile);
+        if (!mobile) {
+          setSidebarOpen(true);
+        }
+      }, 100);
     };
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (resizeTimer) clearTimeout(resizeTimer);
+    };
   }, []);
 
   // ── Swipe-to-close gesture for mobile sidebar ──
@@ -1572,32 +1608,19 @@ function App() {
           className={`frame-sidebar${isMobile && !sidebarOpen ? ' frame-sidebar-hidden' : ''}`}
           style={{ flexShrink: isMobile ? undefined : 0, overflow: 'hidden' }}
         >
-          {/* Tactical grid overlay for command console feel */}
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            zIndex: 0,
+          {/* Tactical grid + scan-line overlays -- skip on mobile for perf */}
+          {!isMobile && <><div style={{
+            position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0,
             backgroundImage: 'linear-gradient(rgba(63,185,80,0.01) 1px, transparent 1px), linear-gradient(90deg, rgba(63,185,80,0.01) 1px, transparent 1px)',
             backgroundSize: '24px 24px',
-          }} />
-          {/* Refined scan-line sweep */}
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            zIndex: 0,
+          }} /><div style={{
+            position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0,
             background: 'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(63,185,80,0.008) 3px, rgba(63,185,80,0.008) 4px)',
-          }} />
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            pointerEvents: 'none',
-            zIndex: 0,
+          }} /><div style={{
+            position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 0,
             background: 'linear-gradient(180deg, rgba(63,185,80,0.02) 0%, transparent 8%, transparent 92%, rgba(63,185,80,0.02) 100%)',
-            animation: 'frame-scanline 10s linear infinite',
-            opacity: 0.4,
-          }} />
+            animation: 'frame-scanline 10s linear infinite', opacity: 0.4,
+          }} /></>}
           {/* F.R.A.M.E. sidebar header branding — triple-tap activates vault mode */}
           <div
             style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, borderBottom: '1px solid #21262d', cursor: 'default' }}

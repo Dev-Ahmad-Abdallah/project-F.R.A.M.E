@@ -939,12 +939,20 @@ body {
 }
 
 /* 12. Hardware acceleration — GPU compositing for animated elements */
-.frame-sidebar,
 .frame-bottom-sheet,
 [class*="frame-animate"] {
   transform: translateZ(0);
   will-change: transform, opacity;
   backface-visibility: hidden;
+}
+
+/* Sidebar: only promote to GPU layer on mobile where it slides */
+@media (max-width: 600px) {
+  .frame-sidebar {
+    transform: translateZ(0);
+    will-change: transform;
+    backface-visibility: hidden;
+  }
 }
 
 /* ══════════════════════════════════════════════════

@@ -101,10 +101,15 @@ function ToastItem({
 
   return (
     <div
+      role={toast.onClick ? 'button' : undefined}
+      tabIndex={toast.onClick ? 0 : undefined}
+      onClick={toast.onClick ? () => { toast.onClick!(); handleDismiss(); } : undefined}
+      onKeyDown={toast.onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { toast.onClick!(); handleDismiss(); } } : undefined}
       style={{
         ...toastStyles.toast,
         borderLeftColor: borderColors[toast.type],
         backgroundColor: bgColors[toast.type],
+        cursor: toast.onClick ? 'pointer' : undefined,
         animation: isExiting
           ? (isMobile ? 'frame-toast-slide-out-mobile 0.25s ease-in forwards' : 'frame-toast-slide-out 0.25s ease-in forwards')
           : (isMobile ? 'frame-toast-slide-in-mobile 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards' : 'frame-toast-slide-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards'),
@@ -171,7 +176,7 @@ function ToastItem({
 // ── Toast Container ──
 
 export default function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(600);
 
   // Inject keyframes on first render
   useEffect(() => {

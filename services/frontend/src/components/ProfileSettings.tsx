@@ -29,7 +29,7 @@ const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
 ];
 
 const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayNameChange, onStatusChange, onStatusMessageChange }) => {
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(600);
   const [displayName, setDisplayName] = useState('');
   const [editValue, setEditValue] = useState('');
   const [isEditing, setIsEditing] = useState(false);

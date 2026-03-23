@@ -17,7 +17,7 @@ import {
   RoomMemberWithDeviceCount,
   RoomWithMembers,
 } from '../db/queries/rooms';
-import { findUserById } from '../db/queries/users';
+import { findUserById, isBlocked } from '../db/queries/users';
 import { pool } from '../db/pool';
 import { ApiError } from '../middleware/errorHandler';
 
@@ -106,6 +106,11 @@ export async function createRoom(
     if (!invitee) {
       throw new ApiError(404, 'M_NOT_FOUND', `User not found: ${inviteeId}`);
     }
+    // Block check: prevent creating rooms with users who have blocked the creator
+    const blockedByInvitee = await isBlocked(inviteeId, userId);
+    if (blockedByInvitee) {
+      throw new ApiError(403, 'M_FORBIDDEN', 'Cannot create room with this user');
+    }
   }
 
   const room = await dbCreateRoom(roomType, userId, homeserver, options?.name, inviteUserIds);
@@ -179,6 +184,12 @@ export async function inviteToRoom(
   const targetUser = await findUserById(targetUserId);
   if (!targetUser) {
     throw new ApiError(404, 'M_NOT_FOUND', 'Target user does not exist');
+  }
+
+  // Check if target user has blocked the inviter — prevent invite harassment
+  const blockedByTarget = await isBlocked(targetUserId, requestingUserId);
+  if (blockedByTarget) {
+    throw new ApiError(403, 'M_FORBIDDEN', 'Cannot invite this user');
   }
 
   // Check for duplicate membership
