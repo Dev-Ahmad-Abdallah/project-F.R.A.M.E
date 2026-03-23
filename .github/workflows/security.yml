@@ -59,7 +59,7 @@ jobs:
   semgrep:
     name: Semgrep — Crypto & Injection Rules
     # Requires SEMGREP_APP_TOKEN secret — skip if not configured
-    if: ${{ secrets.SEMGREP_APP_TOKEN != '' }}
+    if: false  # Disabled — requires SEMGREP_APP_TOKEN secret (not configured)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     container:
