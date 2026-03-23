@@ -63,6 +63,8 @@ export interface ChatInputProps {
   showToast?: (type: 'success' | 'error' | 'info' | 'warning', message: string, options?: { persistent?: boolean; dedupeKey?: string; duration?: number }) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement>;
   getAvatarColor: (str: string) => string;
+  /** When true, the other user in this DM has blocked the current user */
+  isBlockedByUser?: boolean;
 }
 
 const ChatInput: React.FC<ChatInputProps> = React.memo(({
@@ -97,6 +99,7 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
   showToast,
   textareaRef,
   getAvatarColor,
+  isBlockedByUser,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
@@ -283,8 +286,28 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
         </div>
       )}
 
+      {/* Blocked by user — disabled input */}
+      {isBlockedByUser ? (
+        <div className="frame-chat-input-area" style={{ borderTop: '1px solid #30363d' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            flex: 1, backgroundColor: '#161b22', borderRadius: 24,
+            border: '1px solid #30363d', padding: '12px 16px',
+            opacity: 0.7,
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f85149" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <circle cx="12" cy="12" r="10" />
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+            </svg>
+            <span style={{ fontSize: 13, color: '#8b949e', fontWeight: 500, userSelect: 'none' }}>
+              You cannot message this user
+            </span>
+          </div>
+        </div>
+      ) : null}
+
       {/* Input area */}
-      {isRecordingVoice ? (
+      {isBlockedByUser ? null : isRecordingVoice ? (
         <div className="frame-chat-input-area" style={{ borderTop: '1px solid rgba(248,81,73,0.3)', backgroundColor: 'rgba(248,81,73,0.04)' }}>
           <div style={{ display: 'flex', alignItems: 'center', flex: 1, backgroundColor: '#0d1117', borderRadius: 24, border: '1px solid rgba(248,81,73,0.4)', padding: '4px 6px 4px 12px', gap: 4 }}>
             <VoiceRecorder
@@ -375,8 +398,8 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
               marginBottom: 1,
               borderRadius: '50%',
               transition: 'opacity 0.15s, background-color 0.15s',
-              minWidth: isMobile ? 36 : 32,
-              minHeight: isMobile ? 36 : 32,
+              minWidth: isMobile ? 44 : 32,
+              minHeight: isMobile ? 44 : 32,
             }}
           >
             <svg width={isMobile ? '18' : '16'} height={isMobile ? '18' : '16'} viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

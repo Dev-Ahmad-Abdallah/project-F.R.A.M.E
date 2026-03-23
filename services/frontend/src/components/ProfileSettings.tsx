@@ -21,6 +21,8 @@ interface ProfileSettingsProps {
   onStatusMessageChange?: (message: string) => void;
   /** Called when the user blocks or unblocks someone, so parent can refresh blocked list and rooms */
   onBlockStatusChanged?: () => void;
+  /** Toast notification callback */
+  showToast?: (type: 'success' | 'error' | 'info' | 'warning', message: string, options?: { persistent?: boolean; dedupeKey?: string; duration?: number }) => void;
 }
 
 const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
@@ -30,15 +32,13 @@ const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
   { value: 'offline', label: 'Offline', color: '#484f58' },
 ];
 
-const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayNameChange, onStatusChange, onStatusMessageChange, onBlockStatusChanged }) => {
+const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayNameChange, onStatusChange, onStatusMessageChange, onBlockStatusChanged, showToast }) => {
   const isMobile = useIsMobile(600);
   const [displayName, setDisplayName] = useState('');
   const [editValue, setEditValue] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('Updated successfully');
 
   // Status state
   const [currentStatus, setCurrentStatus] = useState<UserStatus>('online');
@@ -99,13 +99,11 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
     try {
       await unblockUser(blockedUserId);
       setBlockedUsers((prev) => prev.filter((id) => id !== blockedUserId));
-      setSuccessMessage('User unblocked');
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 2000);
+      showToast?.('success', 'User unblocked', { duration: 3000 });
       // Notify parent to refresh blocked users list and room list
       onBlockStatusChanged?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to unblock user');
+      showToast?.('error', err instanceof Error ? err.message : 'Failed to unblock user', { duration: 5000 });
     } finally {
       setUnblockingId(null);
     }
@@ -117,8 +115,9 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
       await updateStatus(newStatus, statusMessage || undefined);
       setCurrentStatus(newStatus);
       onStatusChange?.(newStatus);
+      showToast?.('success', `Status changed to ${newStatus}`, { duration: 3000, dedupeKey: 'status-change' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update status');
+      showToast?.('error', err instanceof Error ? err.message : 'Failed to update status', { duration: 5000 });
     } finally {
       setIsSavingStatus(false);
     }
@@ -129,8 +128,9 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
     try {
       await updateStatus(currentStatus, statusMessage || undefined);
       onStatusMessageChange?.(statusMessage || '');
+      showToast?.('success', 'Status message updated', { duration: 3000, dedupeKey: 'status-msg-save' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update status');
+      showToast?.('error', err instanceof Error ? err.message : 'Failed to update status', { duration: 5000 });
     } finally {
       setIsSavingStatus(false);
     }
@@ -154,12 +154,10 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
       setDisplayName(result.displayName);
       setEditValue(result.displayName);
       setIsEditing(false);
-      setSuccessMessage('Updated successfully');
-      setSuccess(true);
       onDisplayNameChange?.(result.displayName);
-      setTimeout(() => setSuccess(false), 2000);
+      showToast?.('success', 'Display name saved', { duration: 3000 });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update profile');
+      showToast?.('error', err instanceof Error ? err.message : 'Failed to update profile', { duration: 5000 });
     } finally {
       setIsSaving(false);
     }
@@ -291,10 +289,9 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
                 }}
                 onClick={() => {
                   navigator.clipboard.writeText(userId).then(() => {
-                    setSuccess(true);
-                    setTimeout(() => setSuccess(false), 2000);
+                    showToast?.('success', 'User ID copied', { duration: 3000 });
                   }).catch(() => {
-                    setError('Failed to copy User ID');
+                    showToast?.('error', 'Failed to copy User ID', { duration: 5000 });
                   });
                 }}
                 title="Copy User ID"
@@ -444,7 +441,6 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
       </div>
 
       {error && <div style={styles.errorBanner}>{error}</div>}
-      {success && <div style={styles.successBanner}>{successMessage}</div>}
     </div>
   );
 };
@@ -580,15 +576,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 6,
     fontSize: 12,
     color: '#f85149',
-  },
-  successBanner: {
-    marginTop: 8,
-    padding: '6px 12px',
-    backgroundColor: 'rgba(35, 134, 54, 0.1)',
-    border: '1px solid rgba(35, 134, 54, 0.3)',
-    borderRadius: 6,
-    fontSize: 12,
-    color: '#3fb950',
   },
 };
 

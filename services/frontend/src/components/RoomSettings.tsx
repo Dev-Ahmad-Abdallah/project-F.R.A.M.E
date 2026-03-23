@@ -126,9 +126,6 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
   const [kickConfirmUserId, setKickConfirmUserId] = useState<string | null>(null);
   const [isKicking, setIsKicking] = useState(false);
 
-  // Success flash state
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
   // Invite code state
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [loadingCode, setLoadingCode] = useState(false);
@@ -210,9 +207,8 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
   }, [onClose]);
 
   const showSuccess = useCallback((msg: string) => {
-    setSuccessMessage(msg);
-    setTimeout(() => setSuccessMessage(null), 2000);
-  }, []);
+    showToast?.('success', msg, { duration: 3000 });
+  }, [showToast]);
 
   // Derive display name
   const displayName = room.name
@@ -317,10 +313,11 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
       onLeaveRoom?.(room.roomId);
     } catch (err) {
       console.error('Failed to leave room:', err);
+      showToast?.('error', 'Failed to leave room', { duration: 5000 });
       setIsLeaving(false);
       setShowLeaveConfirm(false);
     }
-  }, [room.roomId, onLeaveRoom]);
+  }, [room.roomId, onLeaveRoom, showToast]);
 
   const createdDate = room.roomId
     ? new Date().toLocaleDateString(undefined, {
@@ -362,18 +359,6 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
           </button>
         </div>
 
-        {/* Success flash banner */}
-        {successMessage && (
-          <div style={styles.successBanner}>
-            <svg width="16" height="16" viewBox="0 0 24 24" style={{
-              animation: 'frameRoomSuccessCheck 0.4s ease-out',
-            }}>
-              <circle cx="12" cy="12" r="11" fill="#238636" />
-              <path d="M7 13l3 3 7-7" stroke="#fff" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>{successMessage}</span>
-          </div>
-        )}
 
         <div style={styles.panelBody}>
           {/* ═══ Share Room (prominent, at the top) ═══ */}
@@ -940,18 +925,6 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'center',
     fontFamily: 'inherit',
     transition: 'border-color 0.15s, color 0.15s',
-  },
-  successBanner: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '10px 20px',
-    backgroundColor: 'rgba(35, 134, 54, 0.1)',
-    borderBottom: '1px solid rgba(35, 134, 54, 0.3)',
-    color: '#3fb950',
-    fontSize: 13,
-    fontWeight: 500,
-    animation: 'frameRoomSuccessFade 2s ease-out forwards',
   },
   panelBody: {
     flex: 1,

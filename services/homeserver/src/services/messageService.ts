@@ -99,7 +99,7 @@ export async function sendMessage(params: SendMessageParams) {
       }
       const recipientBlockedSender = await isBlocked(otherUser.user_id, senderId);
       if (recipientBlockedSender) {
-        throw new ApiError(403, 'M_FORBIDDEN', 'You have been blocked by this user');
+        throw new ApiError(403, 'M_BLOCKED', 'You cannot send messages to this user');
       }
     }
   }

@@ -161,7 +161,7 @@ function App() {
     if (!existingPin) {
       const pin = prompt('Set your vault unlock code (numbers only, e.g. 1337):');
       if (!pin || !/^\d{3,8}$/.test(pin.trim())) {
-        alert('PIN must be 3-8 digits. Vault not activated.');
+        showToast('warning', 'PIN must be 3-8 digits. Vault not activated.', { duration: 4000 });
         return;
       }
       localStorage.setItem('frame-vault-pin', pin.trim());
@@ -1306,7 +1306,7 @@ function App() {
                 <button type="button" onClick={() => setSettingsVerifyBannerDismissed(true)} style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1 }} title="Dismiss" aria-label="Dismiss verification banner">&#215;</button>
               </div>
             )}
-            <ProfileSettings userId={auth.userId} onDisplayNameChange={setUserDisplayName} onStatusChange={setUserStatus} onStatusMessageChange={setUserStatusMessage} onBlockStatusChanged={refreshBlockedUsers} />
+            <ProfileSettings userId={auth.userId} onDisplayNameChange={setUserDisplayName} onStatusChange={setUserStatus} onStatusMessageChange={setUserStatusMessage} onBlockStatusChanged={refreshBlockedUsers} showToast={showToast} />
             <div style={{ borderTop: '1px solid rgba(48, 54, 61, 0.6)', width: '100%', maxWidth: 440, margin: '12px 0 24px' }} />
             <SessionSettings onActivateVault={activateVaultMode} />
             <div style={{ borderTop: '1px solid rgba(48, 54, 61, 0.6)', width: '100%', maxWidth: 440, margin: '12px 0 24px' }} />
@@ -2276,6 +2276,7 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     textAlign: 'left',
     fontFamily: 'inherit',
+    minHeight: 44,
   },
 
   // ── Empty state ──

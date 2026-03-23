@@ -1049,7 +1049,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     padding: '7px 12px',
     borderRadius: 8,
-    border: '1px solid #21262d',
+    border: '1px solid #30363d',
     backgroundColor: '#0d1117',
     transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
   },

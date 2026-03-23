@@ -22,6 +22,14 @@ export async function unblockUser(userId: string): Promise<void> {
 }
 
 /**
+ * Check if a specific user has blocked the current user.
+ */
+export async function isBlockedBy(userId: string): Promise<boolean> {
+  const resp = await apiRequest<{ blocked: boolean }>(`/blocks/check/${encodeURIComponent(userId)}`);
+  return resp.blocked;
+}
+
+/**
  * Get the list of user IDs that the current user has blocked.
  */
 export async function getBlockedUsers(): Promise<string[]> {

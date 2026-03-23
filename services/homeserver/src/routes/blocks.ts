@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { apiLimiter } from '../middleware/rateLimit';
 import { asyncHandler, ApiError } from '../middleware/errorHandler';
-import { blockUser, unblockUser, getBlockedUsers } from '../db/queries/users';
+import { blockUser, unblockUser, getBlockedUsers, isBlocked } from '../db/queries/users';
 
 export const blocksRouter = Router();
 
@@ -45,6 +45,22 @@ blocksRouter.delete(
     }
 
     res.json({ success: true });
+  }),
+);
+
+// GET /blocks/check/:userId — Check if a user has blocked the current user
+blocksRouter.get(
+  '/check/:userId',
+  requireAuth,
+  apiLimiter,
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+
+    const targetUserId = req.params.userId;
+    const blocked = await isBlocked(targetUserId, req.auth.sub);
+    res.json({ blocked });
   }),
 );
 

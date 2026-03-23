@@ -130,7 +130,9 @@ const DeviceList: React.FC<DeviceListProps> = ({
       }
       setDevices(Array.from(seen.values()));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load devices');
+      const msg = err instanceof Error ? err.message : 'Failed to load devices';
+      setError(msg);
+      showToast?.('error', msg, { duration: 5000, dedupeKey: 'device-load-fail' });
     } finally {
       setLoading(false);
     }
@@ -158,7 +160,7 @@ const DeviceList: React.FC<DeviceListProps> = ({
       setDevices((prev) => prev.filter((d) => d.deviceId !== deviceId));
       showToast?.('info', 'A device was removed from your account.', { dedupeKey: 'device-removed-action' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove device');
+      showToast?.('error', err instanceof Error ? err.message : 'Failed to remove device', { duration: 5000, dedupeKey: 'device-remove-fail' });
     } finally {
       setRemovingId(null);
     }

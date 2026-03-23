@@ -40,7 +40,8 @@ import MessageBubble, {
 import {
   isFileMessage,
 } from '../utils/messageFormatting';
-import { blockUser as blockUserAPI, unblockUser as unblockUserAPI } from '../api/blocksAPI';
+import { blockUser as blockUserAPI, unblockUser as unblockUserAPI, isBlockedBy } from '../api/blocksAPI';
+import { FrameApiError } from '../api/client';
 
 // ── Fullscreen Image Viewer ──
 
@@ -207,6 +208,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const [showDestructFlash, setShowDestructFlash] = useState(false);
   const [disappearingSettings, setDisappearingSettings] = useState<{ enabled: boolean; timeoutSeconds: number } | null>(null);
   const [showDisappearingMenu, setShowDisappearingMenu] = useState(false);
+  const [isBlockedByOther, setIsBlockedByOther] = useState(false);
   const [reactionPickerEventId, setReactionPickerEventId] = useState<string | null>(null);
   const [reactionPickerPos, setReactionPickerPos] = useState<{ x: number; y: number } | null>(null);
   const [localReactions, setLocalReactions] = useState<Record<string, Record<string, ReactionData>>>({});
@@ -278,6 +280,16 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   // Room settings
   useEffect(() => { let c = false; void (async () => { try { const { getRoomSettingsAPI } = await import('../api/roomsAPI'); const r = await getRoomSettingsAPI(roomId); if (!c) { if (r.settings?.disappearingMessages) setDisappearingSettings(r.settings.disappearingMessages as { enabled: boolean; timeoutSeconds: number }); if (r.settings?.pinnedEventIds && Array.isArray(r.settings.pinnedEventIds)) setPinnedEventIds(r.settings.pinnedEventIds as string[]); } } catch { /* settings not available */ } })(); return () => { c = true; }; }, [roomId]);
+
+  // Check if other user in DM has blocked current user
+  useEffect(() => {
+    if (roomType !== 'direct') { setIsBlockedByOther(false); return; }
+    const otherUid = memberUserIds.find((id) => id !== currentUserId);
+    if (!otherUid) return;
+    let cancelled = false;
+    void isBlockedBy(otherUid).then((blocked) => { if (!cancelled) setIsBlockedByOther(blocked); }).catch(() => { /* ignore */ });
+    return () => { cancelled = true; };
+  }, [roomId, roomType, memberUserIds, currentUserId]);
 
   // Expire messages
   useEffect(() => {
@@ -364,6 +376,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     }
   }, [decryptEvents, roomId, currentUserId]);
 
+  // Show toast when sync connection is lost or restored
+  const prevSyncErrorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (syncError && !prevSyncErrorRef.current) {
+      showToast?.('warning', 'Reconnecting to server...', { dedupeKey: 'sync-reconnect', persistent: true });
+    } else if (!syncError && prevSyncErrorRef.current) {
+      showToast?.('success', 'Connection restored', { dedupeKey: 'sync-reconnect', duration: 3000 });
+    }
+    prevSyncErrorRef.current = syncError;
+  }, [syncError, showToast]);
+
   useEffect(() => { setShowRoomSkeleton(true); const t = setTimeout(() => setShowRoomSkeleton(false), 200); return () => clearTimeout(t); }, [roomId]);
   useEffect(() => { if (messages.length > 0 && showRoomSkeleton) setShowRoomSkeleton(false); }, [messages.length, showRoomSkeleton]);
 
@@ -402,14 +425,24 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       const enc = await encryptForRoom(roomId, 'm.room.message', pt, memberUserIds);
       await sendMessage(roomId, 'm.room.encrypted', enc); playSendSound(); unlockRank('recruit');
       setOptimisticMessages(p => p.map(o => o.id === oid ? { ...o, status: 'sent' as const } : o));
-    } catch (err) { console.error('Send failed:', err); playErrorSound(); setOptimisticMessages(p => p.map(o => o.id === oid ? { ...o, status: 'failed' as const } : o)); showToast?.('error', 'Failed to send. Tap to retry.', { dedupeKey: 'send-fail', duration: 4000 }); }
+    } catch (err) {
+      console.error('Send failed:', err); playErrorSound();
+      if (err instanceof FrameApiError && err.code === 'M_BLOCKED') {
+        // Remove optimistic message entirely — no retry possible
+        setOptimisticMessages(p => p.filter(o => o.id !== oid));
+        setIsBlockedByOther(true);
+        showToast?.('error', 'You are blocked by this user', { dedupeKey: 'blocked', duration: 5000 });
+      } else {
+        setOptimisticMessages(p => p.map(o => o.id === oid ? { ...o, status: 'failed' as const } : o)); showToast?.('error', 'Failed to send. Tap to retry.', { dedupeKey: 'send-fail', duration: 4000 });
+      }
+    }
     finally { setIsSending(false); }
   };
 
   const handleVoiceSend = useCallback(async (audio: string, dur: number, mime?: string) => {
     setIsRecordingVoice(false); if (!roomId) return;
     try { const vc: Record<string, unknown> = { msgtype: 'm.audio', body: 'Voice message', audioData: audio, duration: dur }; if (mime) vc.audioMimeType = mime; if (viewOnceMode) vc.viewOnce = true; const enc = await encryptForRoom(roomId, 'm.room.message', vc, memberUserIds); await sendMessage(roomId, 'm.room.encrypted', enc); playSendSound(); }
-    catch (err) { console.error('[Voice] Failed:', err); playErrorSound(); showToast?.('error', 'Voice send failed', { duration: 4000, dedupeKey: 'voice-fail' }); }
+    catch (err) { console.error('[Voice] Failed:', err); playErrorSound(); if (err instanceof FrameApiError && err.code === 'M_BLOCKED') { setIsBlockedByOther(true); showToast?.('error', 'You are blocked by this user', { dedupeKey: 'blocked', duration: 5000 }); } else { showToast?.('error', 'Voice send failed', { duration: 4000, dedupeKey: 'voice-fail' }); } }
   }, [roomId, memberUserIds, showToast, viewOnceMode]);
 
   // File attachment
@@ -420,7 +453,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleSendFile = useCallback(async () => {
     if (!pendingFile || !roomId || isUploadingFile) return; const f = pendingFile.file; setIsUploadingFile(true); setUploadStatus('Encrypting...');
     try { const ab = await f.arrayBuffer(); const { encryptedBytes, key: fk, iv: fi } = await encryptFile(new Uint8Array(ab)); setUploadStatus(`Uploading (${formatFileSize(f.size)})...`); const ur = await uploadFile(encryptedBytes, roomId, f.name, f.type || 'application/octet-stream'); setUploadStatus('Securing...'); const pt: Record<string, unknown> = { msgtype: f.type.startsWith('image/') ? 'm.image' : 'm.file', body: f.name, fileName: f.name, filename: f.name, fileId: ur.fileId, fileKey: fk, fileIv: fi, mimeType: f.type || 'application/octet-stream', fileSize: f.size }; if (viewOnceMode) pt.viewOnce = true; const enc = await encryptForRoom(roomId, 'm.room.message', pt, memberUserIds); await sendMessage(roomId, 'm.room.encrypted', enc); if (pendingFile.previewUrl) URL.revokeObjectURL(pendingFile.previewUrl); setPendingFile(null); playSendSound(); showToast?.('success', 'File sent securely', { duration: 2000 }); }
-    catch (err) { console.error('[File] Failed:', err); playErrorSound(); showToast?.('error', `File send failed: ${err instanceof Error ? err.message : 'error'}`, { duration: 5000, dedupeKey: 'file-fail' }); }
+    catch (err) { console.error('[File] Failed:', err); playErrorSound(); if (err instanceof FrameApiError && err.code === 'M_BLOCKED') { setIsBlockedByOther(true); showToast?.('error', 'You are blocked by this user', { dedupeKey: 'blocked', duration: 5000 }); } else { showToast?.('error', `File send failed: ${err instanceof Error ? err.message : 'error'}`, { duration: 5000, dedupeKey: 'file-fail' }); } }
     finally { setIsUploadingFile(false); setUploadStatus(null); }
   }, [pendingFile, roomId, isUploadingFile, memberUserIds, showToast, viewOnceMode]);
 
@@ -470,7 +503,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   useEffect(() => { const h = () => { setContextMenuEventId(null); setContextMenuPos(null); setShowDisappearingMenu(false); setReactionPickerEventId(null); setReactionPickerPos(null); }; if (contextMenuEventId || showDisappearingMenu || reactionPickerEventId) { window.addEventListener('click', h); return () => window.removeEventListener('click', h); } }, [contextMenuEventId, showDisappearingMenu, reactionPickerEventId]);
 
   const handleMessageContextMenu = (e: React.MouseEvent, eid: string, _sid: string) => { if (deletedEventIds.has(eid)) return; e.preventDefault(); setContextMenuEventId(eid); setContextMenuPos({ x: e.clientX, y: e.clientY }); };
-  const handleDeleteMessage = async (eid: string) => { setContextMenuEventId(null); setContextMenuPos(null); try { await deleteMessage(eid); setDeletedEventIds(p => new Set(p).add(eid)); } catch (e) { console.error('Delete failed:', e); showToast?.('error', 'Failed to delete message', { duration: 3000, dedupeKey: 'delete-fail' }); } };
+  const handleDeleteMessage = async (eid: string) => { setContextMenuEventId(null); setContextMenuPos(null); try { await deleteMessage(eid); setDeletedEventIds(p => new Set(p).add(eid)); showToast?.('info', 'Message deleted', { duration: 3000, dedupeKey: 'msg-deleted' }); } catch (e) { console.error('Delete failed:', e); showToast?.('error', 'Failed to delete message', { duration: 3000, dedupeKey: 'delete-fail' }); } };
 
   const headerName = roomDisplayName ? DOMPurify.sanitize(roomDisplayName, PURIFY_CONFIG) : DOMPurify.sanitize(roomId, PURIFY_CONFIG);
   const resolveDisplayName = useCallback((sid: string, sdn?: string): string => isAnonymous ? generateCodename(sid + roomId) : sdn || formatDisplayName(sid), [isAnonymous, roomId]);
@@ -535,7 +568,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   // Header callbacks
   const handleToggleSearch = useCallback(() => { setShowSearch(v => { if (!v) setTimeout(() => searchInputRef.current?.focus(), 0); return !v; }); if (showSearch) setSearchQuery(''); }, [showSearch]);
   const handleToggleDisappearingMenu = useCallback(() => setShowDisappearingMenu(v => !v), []);
-  const handleUpdateDisappearing = useCallback(async (secs: number) => { try { const { updateRoomSettings } = await import('../api/roomsAPI'); await updateRoomSettings(roomId, secs === 0 ? { disappearingMessages: { enabled: false, timeoutSeconds: 0 } } : { disappearingMessages: { enabled: true, timeoutSeconds: secs } }); setDisappearingSettings(secs === 0 ? null : { enabled: true, timeoutSeconds: secs }); } catch (e) { console.error('Disappearing update failed:', e); } setShowDisappearingMenu(false); }, [roomId]);
+  const handleUpdateDisappearing = useCallback(async (secs: number) => { try { const { updateRoomSettings } = await import('../api/roomsAPI'); await updateRoomSettings(roomId, secs === 0 ? { disappearingMessages: { enabled: false, timeoutSeconds: 0 } } : { disappearingMessages: { enabled: true, timeoutSeconds: secs } }); setDisappearingSettings(secs === 0 ? null : { enabled: true, timeoutSeconds: secs }); showToast?.('success', secs === 0 ? 'Auto-delete disabled' : 'Auto-delete updated', { duration: 3000, dedupeKey: 'disappearing-update' }); } catch (e) { console.error('Disappearing update failed:', e); showToast?.('error', 'Failed to update auto-delete settings', { duration: 5000, dedupeKey: 'disappearing-fail' }); } setShowDisappearingMenu(false); }, [roomId, showToast]);
 
   return (
     <div style={styles.container} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
@@ -549,7 +582,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {pinnedEventIds.length > 0 && showPinnedBar && !showSearch && (() => { const id = pinnedEventIds[pinnedEventIds.length - 1]; const m = messages.find(m => m.event.eventId === id); if (!m) return null; const b = m.plaintext && typeof m.plaintext.body === 'string' ? m.plaintext.body : 'Pinned message'; return <div style={styles.pinnedBar} onClick={() => scrollToMessage(id)}><div style={styles.pinnedBarLeft}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d29922" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><line x1="12" y1="17" x2="12" y2="22" /><path d="M5 17h14v-1.76a2 2 0 00-1.11-1.79l-1.78-.9A2 2 0 0115 10.76V6h1a2 2 0 000-4H8a2 2 0 000 4h1v4.76a2 2 0 01-1.11 1.79l-1.78.9A2 2 0 005 15.24V17z" /></svg><div style={{ overflow: 'hidden', flex: 1 }}><div style={{ fontSize: 10, fontWeight: 600, color: '#d29922', marginBottom: 1 }}>Pinned</div><div style={{ fontSize: 12, color: '#c9d1d9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{DOMPurify.sanitize(b.length > 80 ? b.slice(0, 80) + '...' : b, PURIFY_CONFIG)}</div></div></div><button type="button" style={styles.pinnedBarClose} onClick={e => { e.stopPropagation(); setShowPinnedBar(false); }} aria-label="Dismiss">&#10005;</button></div>; })()}
 
-      {syncError && <div style={styles.syncErrorIndicator}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, animation: 'frame-spin 1.5s linear infinite' }}><circle cx="7" cy="7" r="5.5" stroke="#d29922" strokeWidth="1.2" strokeDasharray="20 12" fill="none" /></svg><span style={{ fontSize: 11, color: '#d29922' }}>Reconnecting...</span><button type="button" onClick={() => { syncBackoffRef.current = 1000; void syncLoop(++syncGenRef.current); }} style={{ marginLeft: 'auto', padding: '2px 10px', fontSize: 10, fontWeight: 600, backgroundColor: 'rgba(210,153,34,0.15)', color: '#d29922', border: '1px solid rgba(210,153,34,0.3)', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit' }}>Retry Now</button></div>}
 
       <div style={{ position: 'absolute' as const, top: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(180deg,rgba(13,17,23,0.7) 0%,transparent 100%)', pointerEvents: 'none' as const, zIndex: 2 }} />
       <div style={{ position: 'absolute' as const, bottom: 0, left: 0, right: 0, height: 40, background: 'linear-gradient(0deg,rgba(13,17,23,0.7) 0%,transparent 100%)', pointerEvents: 'none' as const, zIndex: 2 }} />
@@ -582,7 +614,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             );
           }
         }
-        return <ChatInput isMobile={isMobile} isSending={isSending} inputValue={inputValue} viewOnceMode={viewOnceMode} isUploadingFile={isUploadingFile} uploadStatus={uploadStatus} replyTo={replyTo} isAnonymous={isAnonymous} pendingFile={pendingFile} isRecordingVoice={isRecordingVoice} voiceStream={voiceStream} showCamera={showCamera} cameraStream={cameraStream} onInputChange={handleTextareaChange} onKeyDown={handleKeyDown} onSend={() => void handleSend()} onSendFile={() => void handleSendFile()} onVoiceSend={(a, d, m) => void handleVoiceSend(a, d, m)} onCameraCapture={f => void handleCameraCapture(f)} onSetViewOnceMode={setViewOnceMode} onSetRecordingVoice={setIsRecordingVoice} onSetVoiceStream={setVoiceStream} onSetShowCamera={setShowCamera} onSetCameraStream={setCameraStream} onCancelReply={handleCancelReply} onStageFile={stageFile} onCancelPendingFile={cancelPendingFile} onFileSelect={handleFileSelect} showToast={showToast} textareaRef={textareaRef as React.RefObject<HTMLTextAreaElement>} getAvatarColor={getAvatarColor} />;
+        return <ChatInput isMobile={isMobile} isSending={isSending} inputValue={inputValue} viewOnceMode={viewOnceMode} isUploadingFile={isUploadingFile} uploadStatus={uploadStatus} replyTo={replyTo} isAnonymous={isAnonymous} pendingFile={pendingFile} isRecordingVoice={isRecordingVoice} voiceStream={voiceStream} showCamera={showCamera} cameraStream={cameraStream} onInputChange={handleTextareaChange} onKeyDown={handleKeyDown} onSend={() => void handleSend()} onSendFile={() => void handleSendFile()} onVoiceSend={(a, d, m) => void handleVoiceSend(a, d, m)} onCameraCapture={f => void handleCameraCapture(f)} onSetViewOnceMode={setViewOnceMode} onSetRecordingVoice={setIsRecordingVoice} onSetVoiceStream={setVoiceStream} onSetShowCamera={setShowCamera} onSetCameraStream={setCameraStream} onCancelReply={handleCancelReply} onStageFile={stageFile} onCancelPendingFile={cancelPendingFile} onFileSelect={handleFileSelect} showToast={showToast} textareaRef={textareaRef as React.RefObject<HTMLTextAreaElement>} getAvatarColor={getAvatarColor} isBlockedByUser={isBlockedByOther} />;
       })()}
 
       {contextMenuEventId && contextMenuPos && (isMobile ? <><div style={{ position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9998, animation: 'frame-overlay-fade-in 0.2s ease-out' }} onClick={() => { setContextMenuEventId(null); setContextMenuPos(null); }} /><div style={{ position: 'fixed' as const, bottom: 0, left: 0, right: 0, backgroundColor: '#21262d', borderTop: '1px solid #30363d', borderRadius: '16px 16px 0 0', padding: '8px 0', paddingBottom: 'env(safe-area-inset-bottom,8px)', zIndex: 9999, animation: 'frame-bottom-sheet-slide-up 0.25s cubic-bezier(0.32,0.72,0,1)', boxShadow: '0 -4px 24px rgba(0,0,0,0.4)' }}><div style={{ width: 36, height: 4, backgroundColor: '#484f58', borderRadius: 2, margin: '4px auto 12px' }} />{[{ label: 'Reply', fn: () => handleReplyToMessage(contextMenuEventId), color: '#c9d1d9' }, { label: 'Forward', fn: () => void handleForwardMessage(contextMenuEventId), color: '#c9d1d9' }, { label: 'Copy Text', fn: () => handleCopyText(contextMenuEventId), color: '#c9d1d9' }, { label: pinnedEventIds.includes(contextMenuEventId) ? 'Unpin' : 'Pin', fn: () => void handleTogglePin(contextMenuEventId), color: '#d29922' }].map(a => <button key={a.label} type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: a.color, backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={a.fn}>{a.label}</button>)}{messages.find(m => m.event.eventId === contextMenuEventId)?.event.senderId === currentUserId && <button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: '#f85149', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => void handleDeleteMessage(contextMenuEventId)}>Delete</button>}</div></> : <div style={{ ...styles.contextMenu, top: contextMenuPos.y, left: contextMenuPos.x }}>{[{ label: 'Reply', fn: () => handleReplyToMessage(contextMenuEventId), color: '#c9d1d9' }, { label: 'Forward', fn: () => void handleForwardMessage(contextMenuEventId), color: '#c9d1d9' }, { label: 'Copy Text', fn: () => handleCopyText(contextMenuEventId), color: '#c9d1d9' }, { label: pinnedEventIds.includes(contextMenuEventId) ? 'Unpin' : 'Pin', fn: () => void handleTogglePin(contextMenuEventId), color: '#d29922' }].map(a => <button key={a.label} type="button" className="frame-context-menu-item" style={{ ...styles.contextMenuItem, color: a.color }} onClick={a.fn}>{a.label}</button>)}{messages.find(m => m.event.eventId === contextMenuEventId)?.event.senderId === currentUserId && <button type="button" className="frame-context-menu-item" style={styles.contextMenuItem} onClick={() => void handleDeleteMessage(contextMenuEventId)}>Delete</button>}</div>)}
