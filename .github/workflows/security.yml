@@ -48,7 +48,7 @@ jobs:
           npm ci
           npm run build:shared
           npm run build:homeserver
-          npm run build:frontend
+          CI=false npm run build:frontend
 
       - name: Analyze
         uses: github/codeql-action/analyze@v4
