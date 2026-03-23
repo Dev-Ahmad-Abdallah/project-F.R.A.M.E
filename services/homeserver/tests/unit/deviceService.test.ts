@@ -13,6 +13,7 @@ const mockFindDevice = jest.fn();
 const mockDeleteDevice = jest.fn();
 const mockUpdateLastSeen = jest.fn();
 const mockCountDevicesByUser = jest.fn();
+const mockSetDeviceVerified = jest.fn();
 
 jest.mock('../../src/db/queries/devices', () => ({
   createDevice: (...args: any[]) => mockCreateDevice(...args),
@@ -21,6 +22,7 @@ jest.mock('../../src/db/queries/devices', () => ({
   deleteDevice: (...args: any[]) => mockDeleteDevice(...args),
   updateLastSeen: (...args: any[]) => mockUpdateLastSeen(...args),
   countDevicesByUser: (...args: any[]) => mockCountDevicesByUser(...args),
+  setDeviceVerified: (...args: any[]) => mockSetDeviceVerified(...args),
 }));
 
 const mockGetUserRooms = jest.fn();
