@@ -37,8 +37,11 @@ jest.mock('../../src/db/pool', () => ({
   },
 }));
 
+const mockIsBlocked = jest.fn().mockResolvedValue(false);
+
 jest.mock('../../src/db/queries/users', () => ({
   findUserById: (...args: any[]) => mockFindUserById(...args),
+  isBlocked: (...args: any[]) => mockIsBlocked(...args),
 }));
 
 jest.mock('../../src/config', () => ({

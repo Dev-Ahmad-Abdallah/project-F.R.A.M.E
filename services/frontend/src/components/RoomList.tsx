@@ -22,7 +22,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import type { RoomSummary } from '../api/roomsAPI';
-import { leaveRoom } from '../api/roomsAPI';
+import { leaveRoom, joinRoom } from '../api/roomsAPI';
 import { getUserStatus } from '../api/authAPI';
 import type { UserStatus } from '../api/authAPI';
 import { blockUser } from '../api/blocksAPI';
@@ -52,6 +52,12 @@ interface RoomListProps {
   focusedRoomIndex?: number;
   /** Toast notification callback */
   showToast?: (type: 'success' | 'error' | 'info' | 'warning', message: string, options?: { persistent?: boolean; dedupeKey?: string; duration?: number }) => void;
+  /** Set of blocked user IDs — rooms with only blocked users are hidden from requests */
+  blockedUserIds?: Set<string>;
+  /** Callback to notify parent that the rooms list should be refreshed (after accept/block) */
+  onRoomsChanged?: () => void;
+  /** Callback to notify parent that the blocked users list should be refreshed */
+  onBlockStatusChanged?: () => void;
 }
 
 // ── localStorage helpers ──
@@ -242,6 +248,9 @@ const RoomList: React.FC<RoomListProps> = ({
   searchInputRef: externalSearchRef,
   focusedRoomIndex,
   showToast,
+  blockedUserIds,
+  onRoomsChanged,
+  onBlockStatusChanged,
 }) => {
   const isMobile = useIsMobile(600);
   const [hoveredRoomId, setHoveredRoomId] = useState<string | null>(null);
@@ -317,24 +326,44 @@ const RoomList: React.FC<RoomListProps> = ({
     });
   }, []);
 
-  const acceptRoom = useCallback((roomId: string) => {
+  const acceptRoom = useCallback(async (roomId: string) => {
+    // Immediately mark as accepted in local state so it disappears from requests
     setAcceptedRoomIds((prev) => {
       const next = new Set(prev);
       next.add(roomId);
       saveStoredSet(ACCEPTED_KEY, next);
       return next;
     });
-  }, []);
+    try {
+      // Join the room on the server so the user becomes a full member
+      await joinRoom(roomId);
+      showToast?.('success', 'Message request accepted');
+      // Notify parent to refresh the room list
+      onRoomsChanged?.();
+    } catch (err) {
+      showToast?.('error', err instanceof Error ? err.message : 'Failed to accept message request');
+    }
+  }, [showToast, onRoomsChanged]);
 
   const blockAndLeaveRoom = useCallback(async (roomId: string, otherUserId: string) => {
     try {
       await blockUser(otherUserId);
       await leaveRoom(roomId);
+      // Mark as accepted so it won't reappear as a pending request
+      setAcceptedRoomIds((prev) => {
+        const next = new Set(prev);
+        next.add(roomId);
+        saveStoredSet(ACCEPTED_KEY, next);
+        return next;
+      });
       showToast?.('success', 'User blocked');
+      // Notify parent to refresh both blocked users and rooms lists
+      onBlockStatusChanged?.();
+      onRoomsChanged?.();
     } catch (err) {
       showToast?.('error', err instanceof Error ? err.message : 'Failed to block user');
     }
-  }, [showToast]);
+  }, [showToast, onRoomsChanged, onBlockStatusChanged]);
 
   const toggleArchive = useCallback((roomId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -462,6 +491,11 @@ const RoomList: React.FC<RoomListProps> = ({
   const isPendingRoom = (room: RoomSummary): boolean => {
     if (acceptedRoomIds.has(room.roomId)) return false;
     if (room.roomType !== 'direct') return false;
+    // If the other user is blocked, never show as a message request
+    if (blockedUserIds && blockedUserIds.size > 0) {
+      const otherMember = room.members.find((m) => m.userId !== currentUserId);
+      if (otherMember && blockedUserIds.has(otherMember.userId)) return false;
+    }
     // If the current user created the room, it's not a message request
     if (room.createdBy === currentUserId) return false;
     // If the current user sent the last message, they initiated — auto-accept
@@ -901,7 +935,7 @@ const RoomList: React.FC<RoomListProps> = ({
                       ...(isMobile ? { minHeight: 40, fontSize: 14 } : {}),
                     }}
                     onClick={() => {
-                      acceptRoom(room.roomId);
+                      void void acceptRoom(room.roomId);
                       onSelectRoom(room.roomId);
                     }}
                   >

@@ -174,23 +174,19 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    subgraph Railway["Railway Production — 7 Services"]
+    subgraph Railway["Railway Production — 5 Services"]
         subgraph HS_A["Homeserver A"]
             HSA["project-F.R.A.M.E<br/>project-frame-production.up.railway.app"]
-        end
-        subgraph HS_B["Homeserver B — Federation Peer"]
-            HSB["homeserver-b<br/>homeserver-b-production.up.railway.app"]
         end
         subgraph FE["Frontend"]
             Frontend["React SPA + nginx<br/>frame.up.railway.app"]
         end
-        subgraph Data_A["Data Layer A"]
+        subgraph Data_A["Data Layer"]
             PG_A[("PostgreSQL<br/>postgres-volume")]
             Redis_A[("Redis<br/>redis-volume")]
         end
-        subgraph Data_B["Data Layer B — Federation"]
-            PG_B[("PostgreSQL inst2<br/>precious-volume")]
-            Redis_B[("Redis inst2<br/>robust-volume")]
+        subgraph HS_B["Homeserver B — Federation Peer (optional)"]
+            HSB["homeserver-b<br/>homeserver-b-production.up.railway.app"]
         end
     end
 
@@ -198,18 +194,22 @@ flowchart TB
     Frontend -->|API| HSA
     HSA --> PG_A
     HSA --> Redis_A
-    HSB --> PG_B
-    HSB --> Redis_B
     HSA <-->|"Federation — Ed25519 signed events"| HSB
 ```
 
 <!-- Save your Railway dashboard screenshot as docs/railway-infrastructure.png -->
 <p align="center">
-  <img src="docs/railway-infrastructure.png" alt="Railway Production Dashboard — 7 services all online" width="700" />
+  <img src="docs/railway-infrastructure.png" alt="Railway Production Dashboard" width="700" />
 </p>
 
-- **7 services** all online with persistent volumes for data durability
-- **2 homeservers** demonstrating real federation (separate databases, separate Redis)
+**Deployed services:**
+- **1 homeserver** — `project-frame-production.up.railway.app` (primary API)
+- **1 frontend** — `frame.up.railway.app` (React SPA served via nginx)
+- **1 PostgreSQL** — persistent volume for users, rooms, encrypted events, key bundles
+- **1 Redis** — pub/sub delivery notifications and rate limiting
+- **1 homeserver-b** — federation peer (may not be active; used to demonstrate cross-server delivery)
+
+**Infrastructure notes:**
 - **Auto-TLS** via Railway — HTTPS enforced on all public endpoints
 - **CI/CD**: GitHub Actions build + test + security scan, then auto-deploy on merge to `main`
 - **Health monitoring**: `/health` endpoint checks PostgreSQL + Redis connectivity

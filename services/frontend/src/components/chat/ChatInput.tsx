@@ -308,15 +308,15 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
           {uploadStatus && (
             <span style={{ fontSize: 10, color: '#58a6ff', alignSelf: 'flex-end', marginBottom: 6, whiteSpace: 'nowrap' as const }}>{uploadStatus}</span>
           )}
-          {/* Camera capture — mobile only */}
-          {isMobile && (<button
+          {/* Camera capture — available on all devices (desktop webcams + mobile cameras) */}
+          <button
             type="button"
             title="Take photo"
             aria-label="Take photo"
             onClick={() => { void (async () => {
               try {
                 (window as unknown as Record<string, unknown>).__framePermissionPending = true;
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: isMobile ? 'environment' : 'user' } });
                 (window as unknown as Record<string, unknown>).__framePermissionPending = false;
                 onSetCameraStream(stream);
                 onSetShowCamera(true);
@@ -329,7 +329,7 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
               background: 'none',
               border: 'none',
               cursor: 'pointer',
-              padding: 8,
+              padding: isMobile ? 8 : 6,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -339,15 +339,15 @@ const ChatInput: React.FC<ChatInputProps> = React.memo(({
               marginBottom: 1,
               borderRadius: '50%',
               transition: 'opacity 0.15s, background-color 0.15s',
-              minWidth: 36,
-              minHeight: 36,
+              minWidth: isMobile ? 36 : 32,
+              minHeight: isMobile ? 36 : 32,
             }}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width={isMobile ? '18' : '16'} height={isMobile ? '18' : '16'} viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
               <circle cx="12" cy="13" r="4" />
             </svg>
-          </button>)}
+          </button>
           {/* View-once toggle */}
           <button type="button" onClick={() => onSetViewOnceMode(!viewOnceMode)} title={viewOnceMode ? 'View-once enabled' : 'Enable view-once mode'} aria-label="Toggle view-once mode" style={{ background: viewOnceMode ? 'rgba(217,158,36,0.2)' : 'none', border: 'none', cursor: 'pointer', padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 2 : 4, flexShrink: 0, alignSelf: 'flex-end', marginBottom: 1, borderRadius: '50%', transition: 'background-color 0.15s', minWidth: 36, minHeight: 36 }}>
             <svg width={isMobile ? '14' : '16'} height={isMobile ? '14' : '16'} viewBox="0 0 24 24" fill="none" stroke={viewOnceMode ? '#d99e24' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>

@@ -12,6 +12,7 @@ import {
   ensureSessionsForRoom,
   DecryptedEvent,
 } from '../crypto/sessionManager';
+import { checkAndReplenishPrekeys } from '../crypto/olmMachine';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { SkeletonMessageBubble } from './Skeleton';
 import { playMessageSound, playSendSound, playErrorSound, playDestructSound } from '../sounds';
@@ -259,6 +260,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           setOptimisticMessages(p => p.filter(o => o.status === 'failed'));
         }
         setSyncError(null); syncBackoffRef.current = 1000;
+        // Check OTK count after each successful sync and replenish if low
+        void checkAndReplenishPrekeys();
       } catch { if (syncGenRef.current !== gen) break; setSyncError('reconnecting'); const d = syncBackoffRef.current; syncBackoffRef.current = Math.min(d * 2, 30000); await new Promise(r => setTimeout(r, d)); }
     }
   }, [decryptEvents, roomId, currentUserId]);

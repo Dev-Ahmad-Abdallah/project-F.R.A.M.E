@@ -1752,6 +1752,9 @@ function App() {
               searchInputRef={searchInputRef}
               focusedRoomIndex={focusedRoomIndex ?? undefined}
               showToast={showToast}
+              blockedUserIds={blockedUserIds}
+              onRoomsChanged={() => { void listRooms().then((roomList) => { setRooms(roomList); }).catch(() => { /* retry on next periodic refresh */ }); }}
+              onBlockStatusChanged={refreshBlockedUsers}
             />
             {/* Gradient overlay at the bottom indicating scrollability */}
             <div style={styles.scrollFadeOverlay} />
@@ -1873,17 +1876,21 @@ function App() {
         </main>
       )}
 
-      {/* Device verification gate — blocks new device access */}
-      {showDeviceGate && auth && (
+      {/* Device verification gate — blocks new device access.
+          The "VERIFY DEVICE" button navigates to the link-device view
+          where the user must complete actual QR/fingerprint verification.
+          The gate hides while link-device is active (so the verification UI
+          is visible) but is NOT dismissed — it returns if the user rejects.
+          Only DeviceLinking's onApprove handler truly dismisses the gate. */}
+      {showDeviceGate && activeView !== 'link-device' && auth && (
         <DeviceVerificationGate
           deviceId={auth.deviceId}
           onVerify={() => {
-            // Mark device as verified on server + localStorage, then dismiss gate
-            void setDeviceVerified(auth.deviceId);
-            try {
-              localStorage.setItem(`frame-device-verified:${auth.deviceId}`, 'true');
-            } catch { /* localStorage may be unavailable */ }
-            setShowDeviceGate(false);
+            // Navigate to the device linking/verification view — do NOT
+            // auto-verify here. The gate is hidden (activeView === 'link-device')
+            // but showDeviceGate stays true. If the user rejects verification,
+            // activeView reverts to 'empty' and the gate reappears.
+            setActiveView('link-device');
           }}
         />
       )}
