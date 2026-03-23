@@ -172,7 +172,7 @@ export function checkAchievements(): Record<string, AchievementProgress> {
   try {
     const raw = localStorage.getItem('frame-consumed-once');
     if (raw) {
-      const parsed = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
       if (Array.isArray(parsed)) consumedOnceCount = parsed.length;
     }
   } catch { /* ignore */ }
