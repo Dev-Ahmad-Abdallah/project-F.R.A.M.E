@@ -8,6 +8,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { markPrivacyModeUsed } from '../utils/rankSystem';
 
 interface PrivacyShieldProps {
   /** Whether the document is hidden (visibility change) */
@@ -29,6 +30,13 @@ const PrivacyShield: React.FC<PrivacyShieldProps> = ({
   // Fade-in animation for returning from hidden state
   const [fadeIn, setFadeIn] = useState(false);
   const [wasHidden, setWasHidden] = useState(false);
+
+  // Mark privacy mode as used when shield activates
+  useEffect(() => {
+    if (isHidden || isBlurred) {
+      markPrivacyModeUsed();
+    }
+  }, [isHidden, isBlurred]);
 
   useEffect(() => {
     if (isHidden) {

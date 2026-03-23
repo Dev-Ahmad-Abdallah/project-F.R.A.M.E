@@ -17,6 +17,7 @@ import {
   importRoomKeys,
   type KeyImportResult,
 } from '../crypto/olmMachine';
+import { unlockRank } from '../utils/rankSystem';
 
 // ── Local storage key for tracking whether user has ever exported ──
 
@@ -106,6 +107,7 @@ const BackupSettings: React.FC = () => {
       URL.revokeObjectURL(url);
 
       markExported();
+      unlockRank('cipher');
       setExportSuccess(true);
       setExportPassphrase('');
       setExportConfirmPassphrase('');

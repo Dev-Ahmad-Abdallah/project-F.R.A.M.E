@@ -1,6 +1,6 @@
 # ── Stage 1: Builder ─────────────────────────────────────────
 # Pinned to exact patch version — never :latest or :20-alpine (floating)
-FROM node:20.14.0-alpine3.20 AS builder
+FROM node:22-alpine3.21 AS builder
 WORKDIR /app
 
 # Copy package manifests first for better layer caching
@@ -28,7 +28,10 @@ RUN npm run build --workspace=@frame/homeserver
 RUN npm prune --omit=dev
 
 # ── Stage 2: Production runtime ──────────────────────────────
-FROM node:20.14.0-alpine3.20
+FROM node:22-alpine3.21
+
+# Pull latest security patches
+RUN apk update && apk upgrade --no-cache
 
 # Non-root user — never run Node.js as root in production
 RUN addgroup -g 1001 -S appgroup \

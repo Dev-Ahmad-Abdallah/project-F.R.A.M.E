@@ -1,6 +1,6 @@
 # ── Stage 1: Build React app ─────────────────────────────────
 # Pinned to exact patch version — never :latest or floating tags
-FROM node:20.14.0-alpine3.20 AS builder
+FROM node:22-alpine3.21 AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -30,7 +30,10 @@ RUN cd services/frontend && npm run build
 
 # ── Stage 2: nginx static server ─────────────────────────────
 # nginx:alpine — not `serve` — so we can set all security headers
-FROM nginx:1.27.0-alpine
+FROM nginx:1.27-alpine3.21
+
+# Pull latest security patches
+RUN apk update && apk upgrade --no-cache
 
 # Remove default config
 RUN rm /etc/nginx/conf.d/default.conf

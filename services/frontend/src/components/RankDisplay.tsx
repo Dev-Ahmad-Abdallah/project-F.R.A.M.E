@@ -6,13 +6,16 @@
  * other settings panels.
  */
 
-import React from 'react';
-import { RANKS, getUnlockedRanks, getProgress } from '../utils/rankSystem';
-import type { Rank } from '../utils/rankSystem';
+import React, { useMemo } from 'react';
+import { RANKS, getUnlockedRanks, getProgress, checkAchievements } from '../utils/rankSystem';
+import type { Rank, AchievementProgress } from '../utils/rankSystem';
 import { useIsMobile } from '../hooks/useIsMobile';
 
 const RankDisplay: React.FC = () => {
   const isMobile = useIsMobile();
+
+  // Check achievements and auto-unlock on mount
+  const achievementProgress = useMemo<Record<string, AchievementProgress>>(() => checkAchievements(), []);
   const unlockedIds = getUnlockedRanks();
   const progress = getProgress();
   const progressPercent = progress.total > 0 ? (progress.unlocked / progress.total) * 100 : 0;
@@ -87,6 +90,9 @@ const RankDisplay: React.FC = () => {
       }}>
         {RANKS.map((rank: Rank) => {
           const isUnlocked = unlockedIds.includes(rank.id);
+          // eslint-disable-next-line security/detect-object-injection
+          const ap = achievementProgress[rank.id];
+          const progressPct = ap && ap.target > 0 ? Math.min(100, (ap.current / ap.target) * 100) : 0;
 
           return (
             <div
@@ -99,7 +105,7 @@ const RankDisplay: React.FC = () => {
                 backgroundColor: isUnlocked ? 'rgba(210, 153, 34, 0.06)' : '#0d1117',
                 border: `1px solid ${isUnlocked ? 'rgba(210, 153, 34, 0.3)' : '#30363d'}`,
                 borderRadius: 8,
-                opacity: isUnlocked ? 1 : 0.5,
+                opacity: isUnlocked ? 1 : 0.6,
                 transition: 'opacity 0.2s, border-color 0.2s',
               }}
             >
@@ -151,7 +157,9 @@ const RankDisplay: React.FC = () => {
                   color: '#8b949e',
                   lineHeight: 1.3,
                 }}>
-                  {rank.description}
+                  {rank.id === 'cipher'
+                    ? 'Export your encryption keys from Settings \u2192 Key Backup \u2192 Export Keys. This creates a backup you can import on another device.'
+                    : rank.description}
                 </p>
                 <p style={{
                   margin: '2px 0 0',
@@ -161,6 +169,43 @@ const RankDisplay: React.FC = () => {
                 }}>
                   {rank.requirement}
                 </p>
+                {/* Progress bar for unfinished achievements */}
+                {ap && !isUnlocked && (
+                  <div style={{ marginTop: 4 }}>
+                    <div style={{
+                      height: 3,
+                      backgroundColor: '#21262d',
+                      borderRadius: 2,
+                      overflow: 'hidden',
+                    }}>
+                      <div style={{
+                        height: '100%',
+                        width: `${progressPct}%`,
+                        backgroundColor: progressPct > 0 ? '#d29922' : 'transparent',
+                        borderRadius: 2,
+                        transition: 'width 0.3s ease',
+                      }} />
+                    </div>
+                    <span style={{
+                      fontSize: 9,
+                      color: '#6e7681',
+                      marginTop: 2,
+                      display: 'block',
+                    }}>
+                      {ap.label}
+                    </span>
+                  </div>
+                )}
+                {ap && isUnlocked && (
+                  <span style={{
+                    fontSize: 9,
+                    color: '#3fb950',
+                    marginTop: 2,
+                    display: 'block',
+                  }}>
+                    {ap.label}
+                  </span>
+                )}
               </div>
             </div>
           );
