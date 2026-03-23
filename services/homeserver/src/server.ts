@@ -19,7 +19,9 @@ import { healthRouter } from './routes/health';
 import { roomsRouter } from './routes/rooms';
 import { pushRouter } from './routes/push';
 import { filesRouter } from './routes/files';
+import { blocksRouter } from './routes/blocks';
 import { stopDisappearingCleanup } from './services/messageService';
+import { stopGuestCleanup } from './services/authService';
 
 const config = getConfig();
 const app = express();
@@ -110,6 +112,7 @@ app.use('/federation', federationRouter);
 app.use('/rooms', roomsRouter);
 app.use('/push', pushRouter);
 app.use('/files', filesRouter);
+app.use('/blocks', blocksRouter);
 
 // ── Zod schema for sendToDevice body ──
 const sendToDeviceSchema = z.object({
@@ -233,8 +236,9 @@ startServer().catch((err: unknown) => {
 function shutdown(signal: string) {
   logger.info('Shutting down gracefully', { signal });
 
-  // Stop the disappearing-messages cleanup timer so it doesn't fire during teardown
+  // Stop cleanup timers so they don't fire during teardown
   stopDisappearingCleanup();
+  stopGuestCleanup();
 
   server.close(() => {
     logger.info('HTTP server closed');

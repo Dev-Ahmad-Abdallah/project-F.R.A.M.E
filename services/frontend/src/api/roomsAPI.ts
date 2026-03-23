@@ -272,3 +272,20 @@ export async function regenerateCode(
     { method: 'POST' },
   );
 }
+
+/**
+ * Remove (kick) a member from a room.
+ * Only the room creator/admin can perform this action.
+ *
+ * @param roomId  The room to remove the member from
+ * @param userId  The user ID to remove
+ */
+export async function kickMember(
+  roomId: string,
+  userId: string,
+): Promise<void> {
+  await apiRequest(
+    `/rooms/${encodeURIComponent(roomId)}/members/${encodeURIComponent(userId)}`,
+    { method: 'DELETE' },
+  );
+}

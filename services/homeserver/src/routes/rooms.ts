@@ -17,6 +17,7 @@ import {
   joinRoomByCode,
   getRoomCode,
   regenerateRoomCode,
+  kickMember,
 } from '../services/roomService';
 
 export const roomsRouter = Router();
@@ -264,5 +265,23 @@ roomsRouter.get(
     }
     const members = await getRoomMemberList(req.params.roomId, req.auth.sub);
     res.json({ members });
+  }),
+);
+
+// DELETE /rooms/:roomId/members/:userId — Remove (kick) a member from a room
+roomsRouter.delete(
+  '/:roomId/members/:userId',
+  requireAuth,
+  apiLimiter,
+  asyncHandler(async (req, res) => {
+    if (!req.auth) {
+      throw new ApiError(401, 'M_UNAUTHORIZED', 'Not authenticated');
+    }
+    const result = await kickMember(
+      req.params.roomId,
+      req.auth.sub,
+      req.params.userId,
+    );
+    res.json(result);
   }),
 );

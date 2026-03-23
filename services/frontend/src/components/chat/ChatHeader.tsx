@@ -5,6 +5,7 @@ import { PURIFY_CONFIG } from '../../utils/purifyConfig';
 import { formatDisplayName } from '../../utils/displayName';
 import { getUserStatus } from '../../api/authAPI';
 import type { UserStatus } from '../../api/authAPI';
+import { blockUser, unblockUser } from '../../api/blocksAPI';
 // Room rename is stored locally (per-user nickname) — not sent to server
 import { SyncIndicator } from '../Skeleton';
 import { styles } from './chatStyles';
@@ -55,6 +56,10 @@ export interface ChatHeaderProps {
   onRoomRenamed?: (roomId: string, newName: string) => void;
   onShowMobileMoreMenu: () => void;
   showToast?: (type: 'success' | 'error' | 'info' | 'warning', message: string, options?: { persistent?: boolean; dedupeKey?: string; duration?: number }) => void;
+  /** Set of user IDs the current user has blocked */
+  blockedUserIds?: Set<string>;
+  /** Callback when a user is blocked or unblocked */
+  onBlockStatusChanged?: () => void;
 }
 
 const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
@@ -77,12 +82,19 @@ const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
   onOpenSettings,
   onRoomRenamed,
   onShowMobileMoreMenu,
+  showToast,
+  blockedUserIds,
+  onBlockStatusChanged,
 }) => {
   // Inline rename state
   const [isEditingName, setIsEditingName] = useState(false);
   const [editNameValue, setEditNameValue] = useState('');
   const [isRenaming, setIsRenaming] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
+
+  // Block/unblock state
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+  const [isBlockBusy, setIsBlockBusy] = useState(false);
 
   // Contact status for DM header
   const [contactStatus, setContactStatus] = useState<UserStatus>('offline');
@@ -149,6 +161,32 @@ const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
       handleCancelRename();
     }
   }, [handleConfirmRename, handleCancelRename]);
+
+  // Derive the other user for DM block/unblock
+  const otherUserId = roomType === 'direct'
+    ? memberUserIds.find((id) => id !== currentUserId) ?? null
+    : null;
+  const isOtherBlocked = otherUserId ? (blockedUserIds?.has(otherUserId) ?? false) : false;
+
+  const handleToggleBlock = useCallback(async () => {
+    if (!otherUserId) return;
+    setIsBlockBusy(true);
+    try {
+      if (isOtherBlocked) {
+        await unblockUser(otherUserId);
+        showToast?.('success', 'User unblocked');
+      } else {
+        await blockUser(otherUserId);
+        showToast?.('success', 'User blocked');
+      }
+      onBlockStatusChanged?.();
+    } catch (err) {
+      showToast?.('error', err instanceof Error ? err.message : 'Failed to update block status');
+    } finally {
+      setIsBlockBusy(false);
+      setShowBlockConfirm(false);
+    }
+  }, [otherUserId, isOtherBlocked, showToast, onBlockStatusChanged]);
 
   const headerName = roomDisplayName
     ? DOMPurify.sanitize(roomDisplayName, PURIFY_CONFIG)
@@ -325,6 +363,42 @@ const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
         )}
         {!isMobile && onLeave && (
           <button type="button" style={styles.leaveButton} title="Leave conversation" onClick={onLeave}>Leave</button>
+        )}
+        {!isMobile && roomType === 'direct' && otherUserId && (
+          showBlockConfirm ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 11, color: '#f85149', whiteSpace: 'nowrap' as const }}>
+                {isOtherBlocked ? 'Unblock?' : 'Block?'}
+              </span>
+              <button type="button" style={{ padding: '2px 8px', fontSize: 11, fontWeight: 600, backgroundColor: isOtherBlocked ? '#238636' : '#da3633', color: '#fff', border: 'none', borderRadius: 4, cursor: isBlockBusy ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: isBlockBusy ? 0.6 : 1 }} disabled={isBlockBusy} onClick={() => void handleToggleBlock()}>
+                {isBlockBusy ? '...' : 'Yes'}
+              </button>
+              <button type="button" style={{ padding: '2px 8px', fontSize: 11, fontWeight: 600, backgroundColor: 'transparent', color: '#8b949e', border: '1px solid #30363d', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit' }} onClick={() => setShowBlockConfirm(false)}>
+                No
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              style={{
+                padding: '4px 10px',
+                fontSize: 11,
+                fontWeight: 600,
+                backgroundColor: isOtherBlocked ? 'rgba(35, 134, 54, 0.1)' : 'rgba(248, 81, 73, 0.1)',
+                color: isOtherBlocked ? '#3fb950' : '#f85149',
+                border: `1px solid ${isOtherBlocked ? 'rgba(35, 134, 54, 0.4)' : 'rgba(248, 81, 73, 0.4)'}`,
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                transition: 'all 0.15s',
+                flexShrink: 0,
+              }}
+              title={isOtherBlocked ? 'Unblock this user' : 'Block this user'}
+              onClick={() => setShowBlockConfirm(true)}
+            >
+              {isOtherBlocked ? 'Unblock' : 'Block'}
+            </button>
+          )
         )}
         {isMobile && (
           <button type="button" style={{ width: 32, height: 32, borderRadius: '50%', border: '1px solid #30363d', backgroundColor: 'transparent', color: '#8b949e', fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', flexShrink: 0, minWidth: 44, minHeight: 44 }} title="More options" onClick={onShowMobileMoreMenu} aria-label="More options">

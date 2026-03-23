@@ -23,7 +23,7 @@ import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { generateCodename, generateSessionName } from '../utils/codenames';
 import { playJoinSound, playErrorSound } from '../sounds';
-import { incrementRoomsCreated } from '../utils/rankSystem';
+import { incrementRoomsCreated, checkAchievements } from '../utils/rankSystem';
 
 // ── Friendly error mapping ──
 
@@ -305,6 +305,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
       const code = codeResult.inviteCode ?? '';
 
       incrementRoomsCreated();
+      checkAchievements();
       setSessionCodename(codename);
       setSessionRoomId(result.roomId);
       setSessionId(code);
@@ -459,6 +460,7 @@ const NewChatDialog: React.FC<NewChatDialogProps> = ({
 
       const result = await createRoom('direct', [fullUserId]);
       incrementRoomsCreated();
+      checkAchievements();
       const newRoom: RoomSummary = {
         roomId: result.roomId,
         roomType: 'direct',

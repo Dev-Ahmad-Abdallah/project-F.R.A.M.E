@@ -268,8 +268,9 @@ export async function createGuestSession(): Promise<GuestResult> {
   // Create a placeholder password hash (guest cannot log in with a password)
   const placeholderHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 4);
 
-  // Create the guest user in the database
+  // Create the guest user in the database and mark as guest
   await createUser(userId, username, placeholderHash, config.HOMESERVER_DOMAIN);
+  await pool.query('UPDATE users SET is_guest = true WHERE user_id = $1', [userId]);
 
   // Generate a device for the guest
   const deviceId = generateDeviceId();
@@ -303,21 +304,51 @@ export async function createGuestSession(): Promise<GuestResult> {
 }
 
 /**
+ * Clean up a single guest user by removing all their associated data.
+ *
+ * Removes room memberships, delivery state, key bundles, to-device messages,
+ * refresh tokens, and devices. The user record itself is kept (with data cleared)
+ * to preserve message history references.
+ */
+export async function cleanupGuestUser(userId: string): Promise<void> {
+  // Remove from all rooms
+  await pool.query('DELETE FROM room_members WHERE user_id = $1', [userId]);
+  // Delete delivery state for user's devices
+  await pool.query(
+    'DELETE FROM delivery_state WHERE device_id IN (SELECT device_id FROM devices WHERE user_id = $1)',
+    [userId],
+  );
+  // Delete key bundles for user's devices
+  await pool.query(
+    'DELETE FROM key_bundles WHERE device_id IN (SELECT device_id FROM devices WHERE user_id = $1)',
+    [userId],
+  );
+  // Delete refresh tokens
+  await pool.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
+  // Delete to-device messages
+  await pool.query('DELETE FROM to_device_messages WHERE recipient_user_id = $1', [userId]);
+  // Delete devices
+  await pool.query('DELETE FROM devices WHERE user_id = $1', [userId]);
+  // Mark user as inactive (don't delete — preserve message history)
+}
+
+/**
  * Clean up expired guest accounts.
  *
- * Finds guest users (username starts with "guest_") that are older than 24 hours
- * and no longer tracked in Redis (TTL expired). Deletes their devices, key bundles,
- * room memberships, and user records so stale key material does not persist.
+ * Finds guest users (is_guest = true OR username starts with "guest_") that are
+ * older than 24 hours and no longer tracked in Redis (TTL expired). Cleans up
+ * their devices, key bundles, room memberships, and delivery state so stale
+ * key material does not persist.
  *
  * Should be called periodically (e.g. every hour).
  */
 export async function cleanupExpiredGuests(): Promise<number> {
   const { redisClient } = await import('../redis/client');
 
-  // Find guest users older than 24 hours
+  // Find guest users older than 24 hours (using both is_guest flag and username pattern)
   const guestResult = await pool.query<{ user_id: string }>(
     `SELECT user_id FROM users
-     WHERE username LIKE 'guest_%'
+     WHERE (is_guest = true OR username LIKE 'guest_%')
        AND created_at < NOW() - INTERVAL '24 hours'`,
   );
 
@@ -328,13 +359,7 @@ export async function cleanupExpiredGuests(): Promise<number> {
     const tracked = await redisClient.exists(`guest:${row.user_id}`);
     if (tracked) continue;
 
-    // Delete in dependency order: keys, devices, room memberships, then user
-    await pool.query('DELETE FROM key_bundles WHERE user_id = $1', [row.user_id]);
-    await pool.query('DELETE FROM to_device_messages WHERE recipient_user_id = $1', [row.user_id]);
-    await pool.query('DELETE FROM devices WHERE user_id = $1', [row.user_id]);
-    await pool.query('DELETE FROM room_members WHERE user_id = $1', [row.user_id]);
-    await pool.query('DELETE FROM refresh_tokens WHERE user_id = $1', [row.user_id]);
-    await pool.query('DELETE FROM users WHERE user_id = $1', [row.user_id]);
+    await cleanupGuestUser(row.user_id);
     cleanedCount++;
   }
 

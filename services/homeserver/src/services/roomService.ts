@@ -528,6 +528,55 @@ export async function leaveRoom(
 }
 
 /**
+ * Remove (kick) a member from a room.
+ * Only the room creator (created_by) can kick members.
+ */
+export async function kickMember(
+  roomId: string,
+  requestingUserId: string,
+  targetUserId: string,
+): Promise<{ success: boolean }> {
+  // Verify room exists and get created_by
+  const roomResult = await pool.query<{ created_by: string }>(
+    'SELECT created_by FROM rooms WHERE room_id = $1',
+    [roomId],
+  );
+  if (roomResult.rows.length === 0) {
+    throw new ApiError(404, 'M_NOT_FOUND', 'Room not found');
+  }
+
+  // Only room creator can kick members
+  if (roomResult.rows[0].created_by !== requestingUserId) {
+    throw new ApiError(403, 'M_FORBIDDEN', 'Only the room creator can remove members');
+  }
+
+  // Cannot kick yourself
+  if (targetUserId === requestingUserId) {
+    throw new ApiError(400, 'M_BAD_JSON', 'Cannot kick yourself. Use leave instead.');
+  }
+
+  // Verify target is a member
+  const isMember = await isRoomMember(roomId, targetUserId);
+  if (!isMember) {
+    throw new ApiError(404, 'M_NOT_FOUND', 'User is not a member of this room');
+  }
+
+  const removed = await removeRoomMember(roomId, targetUserId);
+  if (!removed) {
+    throw new ApiError(404, 'M_NOT_FOUND', 'Membership not found');
+  }
+
+  // Emit membership change so remaining clients can invalidate Megolm sessions
+  roomEvents.emit('membershipChange', {
+    roomId,
+    userId: targetUserId,
+    action: 'leave',
+  } as MembershipChangeEvent);
+
+  return { success: true };
+}
+
+/**
  * Join a room by invite code. Optionally accepts a password for
  * password-protected rooms.
  */

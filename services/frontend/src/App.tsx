@@ -56,8 +56,10 @@ import { useInstallPrompt } from './hooks/useInstallPrompt';
 import { playNotificationSound } from './sounds';
 import { useScreenProtection } from './hooks/useScreenProtection';
 import PrivacyShield from './components/PrivacyShield';
+import RankBadge from './components/RankBadge';
 import RankDisplay from './components/RankDisplay';
 import VaultCalculator from './components/VaultCalculator';
+import { unlockRank } from './utils/rankSystem';
 
 // Lazy-load components not needed on initial render — reduces main bundle size
 const LandingPage = React.lazy(() => import('./pages/LandingPage'));
@@ -1309,17 +1311,26 @@ function App() {
                     if (matched) {
                       await verifyDevice(auth.userId, matched.deviceId);
                     }
-                    // Mark current device as verified on the server
+                    // Mark current device as verified on the server and locally
                     await setDeviceVerified(auth.deviceId);
+                    try {
+                      localStorage.setItem(`frame-device-verified:${auth.deviceId}`, 'true');
+                    } catch { /* localStorage may be unavailable */ }
                     setShowDeviceGate(false);
+                    unlockRank('operator');
                   } catch (err) {
                     console.error('Failed to verify linked device:', err);
                   }
-                  setActiveView('settings');
+                  setActiveView('chat');
                 })();
               }}
               onReject={() => {
-                setActiveView('settings');
+                // If the gate is active, don't allow bypassing to settings
+                if (showDeviceGate) {
+                  setActiveView('empty');
+                } else {
+                  setActiveView('settings');
+                }
               }}
             />
             </React.Suspense>
@@ -1625,6 +1636,7 @@ function App() {
             <div style={styles.userDetails}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span className="frame-user-name" style={styles.userName}>{DOMPurify.sanitize(userDisplayName || formatDisplayName(auth.userId), PURIFY_CONFIG)}</span>
+                <RankBadge />
               </div>
               <span className="frame-user-status" style={{ ...styles.userStatus, color: connectionLost ? '#d29922' : (userStatus === 'online' ? '#3fb950' : userStatus === 'away' ? '#d29922' : userStatus === 'busy' ? '#f85149' : '#484f58') }} role="status" aria-live="polite">
                 <span style={{
@@ -1826,13 +1838,10 @@ function App() {
         <DeviceVerificationGate
           deviceId={auth.deviceId}
           onVerify={() => {
-            // Persist verification to server AND localStorage so gate doesn't reappear
-            void setDeviceVerified(auth.deviceId);
-            try {
-              localStorage.setItem(`frame-device-verified:${auth.deviceId}`, 'true');
-            } catch { /* localStorage may be unavailable */ }
-            setShowDeviceGate(false);
-            // Stay on current view — don't navigate away from chat
+            // Navigate to the device-linking flow for actual QR/fingerprint verification.
+            // The gate stays visible until verification completes in the link-device view.
+            setActiveView('link-device');
+            if (isMobile) setSidebarOpen(false);
           }}
         />
       )}

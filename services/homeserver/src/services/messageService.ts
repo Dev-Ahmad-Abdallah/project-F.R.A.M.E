@@ -8,6 +8,18 @@ import { ApiError } from '../middleware/errorHandler';
 import { relayEventToPeers } from './federationService';
 import type { FederationEvent } from '@frame/shared/federation';
 
+/**
+ * Get the set of user IDs that have blocked a given user.
+ * Used to skip delivery entries for blocking users' devices.
+ */
+async function getUsersWhoBlocked(userId: string): Promise<Set<string>> {
+  const result = await pool.query<{ blocker_id: string }>(
+    'SELECT blocker_id FROM user_blocks WHERE blocked_id = $1',
+    [userId],
+  );
+  return new Set(result.rows.map((r) => r.blocker_id));
+}
+
 const config = getConfig();
 
 export interface SendMessageParams {
@@ -90,9 +102,13 @@ export async function sendMessage(params: SendMessageParams) {
   const members = await getRoomMembers(roomId);
   const memberIds = members.map((m) => m.user_id);
 
-  const deviceResult = await pool.query<{ device_id: string }>(
-    'SELECT device_id FROM devices WHERE user_id = ANY($1::text[])',
-    [memberIds]
+  // Check which members have blocked the sender — skip delivery for their devices
+  const blockingUsers = await getUsersWhoBlocked(senderId);
+  const nonBlockingMemberIds = memberIds.filter((id) => !blockingUsers.has(id));
+
+  const deviceResult = await pool.query<{ device_id: string; user_id: string }>(
+    'SELECT device_id, user_id FROM devices WHERE user_id = ANY($1::text[])',
+    [nonBlockingMemberIds]
   );
 
   const allDeviceIds = deviceResult.rows

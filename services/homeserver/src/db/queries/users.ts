@@ -66,6 +66,52 @@ export async function getMasterSigningKey(userId: string): Promise<string | null
   return result.rows[0].master_signing_key;
 }
 
+/**
+ * Check if blockerUserId has blocked blockedUserId.
+ */
+export async function isBlocked(blockerId: string, blockedId: string): Promise<boolean> {
+  const result = await pool.query(
+    'SELECT 1 FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2',
+    [blockerId, blockedId],
+  );
+  return result.rows.length > 0;
+}
+
+/**
+ * Get all user IDs blocked by a given user.
+ */
+export async function getBlockedUsers(blockerId: string): Promise<string[]> {
+  const result = await pool.query<{ blocked_id: string }>(
+    'SELECT blocked_id FROM user_blocks WHERE blocker_id = $1 ORDER BY created_at DESC',
+    [blockerId],
+  );
+  return result.rows.map((r) => r.blocked_id);
+}
+
+/**
+ * Block a user. Returns true if the block was newly created, false if already existed.
+ */
+export async function blockUser(blockerId: string, blockedId: string): Promise<boolean> {
+  const result = await pool.query(
+    `INSERT INTO user_blocks (blocker_id, blocked_id)
+     VALUES ($1, $2)
+     ON CONFLICT (blocker_id, blocked_id) DO NOTHING`,
+    [blockerId, blockedId],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/**
+ * Unblock a user. Returns true if a block was removed, false if none existed.
+ */
+export async function unblockUser(blockerId: string, blockedId: string): Promise<boolean> {
+  const result = await pool.query(
+    'DELETE FROM user_blocks WHERE blocker_id = $1 AND blocked_id = $2',
+    [blockerId, blockedId],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
 export async function updateDisplayName(userId: string, displayName: string): Promise<UserRow> {
   const result = await pool.query<UserRow>(
     `UPDATE users SET display_name = $2, updated_at = NOW()
