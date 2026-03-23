@@ -8,6 +8,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { getProfile, updateProfile, updateStatus } from '../api/authAPI';
 import type { UserStatus } from '../api/authAPI';
+import { getBlockedUsers, unblockUser } from '../api/blocksAPI';
 import { useIsMobile } from '../hooks/useIsMobile';
 
 interface ProfileSettingsProps {
@@ -41,6 +42,11 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
   const [statusMessage, setStatusMessage] = useState('');
   const [isSavingStatus, setIsSavingStatus] = useState(false);
 
+  // Blocked users state
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([]);
+  const [loadingBlocked, setLoadingBlocked] = useState(false);
+  const [unblockingId, setUnblockingId] = useState<string | null>(null);
+
   // Load profile on mount
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +79,31 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, onDisplayNameChange, onStatusChange, onStatusMessageChange]);
+
+  // Load blocked users on mount
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingBlocked(true);
+    getBlockedUsers()
+      .then((users) => { if (!cancelled) setBlockedUsers(users); })
+      .catch(() => { /* ignore — may not be supported */ })
+      .finally(() => { if (!cancelled) setLoadingBlocked(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleUnblock = useCallback(async (blockedUserId: string) => {
+    setUnblockingId(blockedUserId);
+    try {
+      await unblockUser(blockedUserId);
+      setBlockedUsers((prev) => prev.filter((id) => id !== blockedUserId));
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to unblock user');
+    } finally {
+      setUnblockingId(null);
+    }
+  }, []);
 
   const handleStatusChange = useCallback(async (newStatus: UserStatus) => {
     setIsSavingStatus(true);
@@ -355,8 +386,58 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userId, onDisplayName
         </div>
       </div>
 
+      {/* Blocked Users section */}
+      <div style={{
+        ...styles.profileCard,
+        marginTop: 12,
+        ...(isMobile ? { padding: '16px 14px' } : {}),
+      }}>
+        <div style={{
+          ...styles.infoColumn,
+          ...(isMobile ? { width: '100%' } : {}),
+        }}>
+          <div style={styles.fieldRow}>
+            <label style={styles.fieldLabel}>Blocked Users</label>
+            {loadingBlocked ? (
+              <span style={{ fontSize: 12, color: '#8b949e' }}>Loading...</span>
+            ) : blockedUsers.length === 0 ? (
+              <span style={{ fontSize: 12, color: '#6e7681', fontStyle: 'italic' }}>No blocked users</span>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+                {blockedUsers.map((uid) => (
+                  <div key={uid} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '4px 0' }}>
+                    <span style={{ fontSize: 13, color: '#c9d1d9', fontFamily: '"SF Mono", "Fira Code", monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, flex: 1 }}>{uid}</span>
+                    <button
+                      type="button"
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        backgroundColor: 'rgba(35, 134, 54, 0.1)',
+                        color: '#3fb950',
+                        border: '1px solid rgba(35, 134, 54, 0.3)',
+                        borderRadius: 4,
+                        cursor: unblockingId === uid ? 'not-allowed' : 'pointer',
+                        fontFamily: 'inherit',
+                        flexShrink: 0,
+                        opacity: unblockingId === uid ? 0.6 : 1,
+                        ...(isMobile ? { minHeight: 36, padding: '6px 14px', fontSize: 13 } : {}),
+                      }}
+                      disabled={unblockingId === uid}
+                      onClick={() => void handleUnblock(uid)}
+                    >
+                      {unblockingId === uid ? 'Unblocking...' : 'Unblock'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
       {error && <div style={styles.errorBanner}>{error}</div>}
-      {success && <div style={styles.successBanner}>Display name updated</div>}
+      {success && <div style={styles.successBanner}>Updated successfully</div>}
     </div>
   );
 };

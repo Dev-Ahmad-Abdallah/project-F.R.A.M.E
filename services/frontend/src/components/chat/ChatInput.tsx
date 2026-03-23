@@ -2,7 +2,7 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import VoiceRecorder from '../VoiceRecorder';
 import CameraCapture from '../CameraCapture';
-import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE, FRIENDLY_FILE_TYPES, FILE_ACCEPT_STRING } from '../../api/filesAPI';
+import { FILE_ACCEPT_STRING } from '../../api/filesAPI';
 import { formatFileSize } from '../../crypto/fileEncryption';
 
 // ── Emoji grid for picker ──

@@ -22,8 +22,10 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import type { RoomSummary } from '../api/roomsAPI';
+import { leaveRoom } from '../api/roomsAPI';
 import { getUserStatus } from '../api/authAPI';
 import type { UserStatus } from '../api/authAPI';
+import { blockUser } from '../api/blocksAPI';
 import { formatDisplayName } from '../utils/displayName';
 import { generateCodename } from '../utils/codenames';
 import { SkeletonRoomItem } from './Skeleton';
@@ -48,12 +50,15 @@ interface RoomListProps {
   searchInputRef?: React.RefObject<HTMLInputElement | null>;
   /** Index of the room currently focused via keyboard navigation (arrow keys). */
   focusedRoomIndex?: number;
+  /** Toast notification callback */
+  showToast?: (type: 'success' | 'error' | 'info' | 'warning', message: string, options?: { persistent?: boolean; dedupeKey?: string; duration?: number }) => void;
 }
 
 // ── localStorage helpers ──
 
 const STARRED_KEY = 'frame:starred-rooms';
 const ARCHIVED_KEY = 'frame:archived-rooms';
+const ACCEPTED_KEY = 'frame-accepted-rooms';
 
 function getStoredSet(key: string): Set<string> {
   try {
@@ -236,6 +241,7 @@ const RoomList: React.FC<RoomListProps> = ({
   loading,
   searchInputRef: externalSearchRef,
   focusedRoomIndex,
+  showToast,
 }) => {
   const isMobile = useIsMobile();
   const [hoveredRoomId, setHoveredRoomId] = useState<string | null>(null);
@@ -246,6 +252,7 @@ const RoomList: React.FC<RoomListProps> = ({
   const [searchFocused, setSearchFocused] = useState(false);
   const [starAnimatingId, setStarAnimatingId] = useState<string | null>(null);
   const [userStatuses, setUserStatuses] = useState<Record<string, UserStatus>>({});
+  const [acceptedRoomIds, setAcceptedRoomIds] = useState<Set<string>>(() => getStoredSet(ACCEPTED_KEY));
   const internalSearchRef = useRef<HTMLInputElement>(null);
   const searchInputRef = externalSearchRef || internalSearchRef;
   const roomItemRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
@@ -309,6 +316,25 @@ const RoomList: React.FC<RoomListProps> = ({
       return next;
     });
   }, []);
+
+  const acceptRoom = useCallback((roomId: string) => {
+    setAcceptedRoomIds((prev) => {
+      const next = new Set(prev);
+      next.add(roomId);
+      saveStoredSet(ACCEPTED_KEY, next);
+      return next;
+    });
+  }, []);
+
+  const blockAndLeaveRoom = useCallback(async (roomId: string, otherUserId: string) => {
+    try {
+      await blockUser(otherUserId);
+      await leaveRoom(roomId);
+      showToast?.('success', 'User blocked');
+    } catch (err) {
+      showToast?.('error', err instanceof Error ? err.message : 'Failed to block user');
+    }
+  }, [showToast]);
 
   const toggleArchive = useCallback((roomId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -427,13 +453,34 @@ const RoomList: React.FC<RoomListProps> = ({
     }
   }
 
+  // Identify pending (not-yet-accepted) rooms
+  // A room is pending if:
+  // 1. It's a DM (direct) room
+  // 2. The current user has NOT accepted it yet (not in localStorage set)
+  // 3. The current user didn't send the last message (they didn't initiate)
+  // 4. The room has a last message (it's not empty / user-created)
+  const isPendingRoom = (room: RoomSummary): boolean => {
+    if (acceptedRoomIds.has(room.roomId)) return false;
+    if (room.roomType !== 'direct') return false;
+    // If the current user sent the last message, they initiated — auto-accept
+    if (room.lastMessage?.senderId === currentUserId) {
+      return false;
+    }
+    // If there's no last message, it's a fresh room the user may have created — not pending
+    if (!room.lastMessage) return false;
+    return true;
+  };
+
   // Partition rooms into sections
+  const pendingRooms: RoomSummary[] = [];
   const starredRooms: RoomSummary[] = [];
   const normalRooms: RoomSummary[] = [];
   const archivedRooms: RoomSummary[] = [];
 
   for (const room of filteredRooms) {
-    if (archivedIds.has(room.roomId)) {
+    if (isPendingRoom(room)) {
+      pendingRooms.push(room);
+    } else if (archivedIds.has(room.roomId)) {
       archivedRooms.push(room);
     } else if (starredIds.has(room.roomId)) {
       starredRooms.push(room);
@@ -784,6 +831,103 @@ const RoomList: React.FC<RoomListProps> = ({
       {/* No results */}
       {searchQuery.trim() && filteredRooms.length === 0 && (
         <div style={styles.noResults}>No conversations match &ldquo;{searchQuery.trim()}&rdquo;</div>
+      )}
+
+      {/* Pending (accept/block) section */}
+      {pendingRooms.length > 0 && (
+        <>
+          <div style={{
+            ...styles.sectionHeader,
+            color: '#d29922',
+            ...(isMobile ? { fontSize: 10, padding: '8px 12px 3px', letterSpacing: '0.08em' } : {}),
+          }}>
+            <span style={{ marginRight: 4, fontSize: isMobile ? 9 : 10 }}>&#9888;</span>
+            Message Requests ({pendingRooms.length})
+          </div>
+          {pendingRooms.map((room) => {
+            const otherMember = room.members.find((m) => m.userId !== currentUserId);
+            const senderName = otherMember
+              ? DOMPurify.sanitize(otherMember.displayName || formatDisplayName(otherMember.userId), PURIFY_CONFIG)
+              : 'Someone';
+            const isGuest = otherMember?.userId.startsWith('@guest_') ?? false;
+            return (
+              <div
+                key={room.roomId}
+                style={{
+                  padding: isMobile ? '10px 12px' : '8px 16px',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+                  backgroundColor: 'rgba(210, 153, 34, 0.04)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#e6edf3', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                    {senderName}
+                    {isGuest && (
+                      <span style={{
+                        fontSize: 9,
+                        fontWeight: 600,
+                        color: '#8b949e',
+                        backgroundColor: 'rgba(139, 148, 158, 0.1)',
+                        border: '1px solid rgba(139, 148, 158, 0.25)',
+                        borderRadius: 3,
+                        padding: '0px 4px',
+                        marginLeft: 4,
+                      }}>Guest</span>
+                    )}
+                    <span style={{ fontSize: 12, fontWeight: 400, color: '#8b949e', marginLeft: 4 }}>wants to message you</span>
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    type="button"
+                    style={{
+                      flex: 1,
+                      padding: '6px 12px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      backgroundColor: '#238636',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      ...(isMobile ? { minHeight: 40, fontSize: 14 } : {}),
+                    }}
+                    onClick={() => {
+                      acceptRoom(room.roomId);
+                      onSelectRoom(room.roomId);
+                    }}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      flex: 1,
+                      padding: '6px 12px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      backgroundColor: 'rgba(248, 81, 73, 0.1)',
+                      color: '#f85149',
+                      border: '1px solid rgba(248, 81, 73, 0.3)',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                      ...(isMobile ? { minHeight: 40, fontSize: 14 } : {}),
+                    }}
+                    onClick={() => {
+                      if (otherMember) {
+                        void blockAndLeaveRoom(room.roomId, otherMember.userId);
+                      }
+                    }}
+                  >
+                    Block
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </>
       )}
 
       {/* Starred section */}

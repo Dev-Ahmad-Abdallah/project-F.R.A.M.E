@@ -38,8 +38,8 @@ import MessageBubble, {
 } from './chat/MessageBubble';
 import {
   isFileMessage,
-  isAudioMessage,
 } from '../utils/messageFormatting';
+import { blockUser as blockUserAPI, unblockUser as unblockUserAPI } from '../api/blocksAPI';
 
 // ── Constants ──
 
@@ -199,7 +199,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const revealViewOnce = useCallback((eid: string, pt: Record<string, unknown>) => {
     setViewedOnceIds(p => { const n = new Set(p); n.add(eid); try { localStorage.setItem('frame-viewed-once', JSON.stringify([...n])); } catch { /* ignore */ } return n; });
     const dur = getViewOnceDuration(pt);
+    // eslint-disable-next-line security/detect-object-injection
     const timer = setTimeout(() => { setHiddenOnceIds(p => { const n = new Set(p); n.add(eid); try { localStorage.setItem('frame-hidden-once', JSON.stringify([...n])); } catch { /* ignore */ } return n; }); setMessages(p => p.map(m => m.event.eventId === eid ? { ...m, plaintext: null, decryptionError: 'View-once message already viewed' } : m)); deleteMessage(eid).catch(e => console.error('[ViewOnce] Delete failed:', e)); delete viewOnceTimersRef.current[eid]; }, dur);
+    // eslint-disable-next-line security/detect-object-injection
     viewOnceTimersRef.current[eid] = timer;
   }, [getViewOnceDuration]);
 
@@ -207,6 +209,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleScroll = useCallback(() => { const el = messageListRef.current; if (!el) return; isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; if (isNearBottomRef.current) setShowNewMessagesPill(false); }, []);
   useEffect(() => { if (isNearBottomRef.current) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); else if (messages.length > 0) setShowNewMessagesPill(true); }, [messages, optimisticMessages]);
   const scrollToBottom = useCallback(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); setShowNewMessagesPill(false); }, []);
+  // eslint-disable-next-line security/detect-object-injection
   const scrollToMessage = useCallback((eid: string) => { const el = messageRefs.current[eid]; if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.style.transition = 'background-color 0.3s'; el.style.backgroundColor = 'rgba(88,166,255,0.15)'; setTimeout(() => { el.style.backgroundColor = ''; }, 1200); } }, []);
 
   // Sync
@@ -328,6 +331,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   }, [roomId, memberUserIds, showToast, viewOnceMode]);
 
   // Paste and drag-drop
+  // eslint-disable-next-line security/detect-object-injection
   useEffect(() => { const h = (e: ClipboardEvent) => { if (!e.clipboardData) return; for (let i = 0; i < e.clipboardData.items.length; i++) { const it = e.clipboardData.items[i]; if (it.kind === 'file' && it.type.startsWith('image/')) { e.preventDefault(); const f = it.getAsFile(); if (f) stageFile(new File([f], `pasted-${Date.now()}.${f.type.split('/')[1] || 'png'}`, { type: f.type })); return; } } }; document.addEventListener('paste', h); return () => document.removeEventListener('paste', h); }, [stageFile]);
   const handleDragEnter = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); dragCounterRef.current++; if (e.dataTransfer.types.includes('Files')) setIsDragOver(true); }, []);
   const handleDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); if (--dragCounterRef.current === 0) setIsDragOver(false); }, []);
@@ -350,6 +354,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleShowReactionPicker = (e: React.MouseEvent, eid: string) => { e.preventDefault(); e.stopPropagation(); const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setReactionPickerEventId(eid); setReactionPickerPos({ x: r.left, y: r.top - 44 }); };
   const handleReact = async (eid: string, emoji: string) => { setReactionPickerEventId(null); setReactionPickerPos(null); try { const r = await reactToMessage(eid, emoji); setLocalReactions(p => ({ ...p, [eid]: r.reactions })); } catch (e) { console.error('React failed:', e); } };
   handleReactRef.current = handleReact;
+  // eslint-disable-next-line security/detect-object-injection
   const handleMessageClick = useCallback((e: React.MouseEvent, eid: string) => { const now = Date.now(); const last = lastClickTimeRef.current[eid] || 0; if (now - last < 350) { void handleReactRef.current?.(eid, '\u2764\uFE0F'); lastClickTimeRef.current[eid] = 0; } else lastClickTimeRef.current[eid] = now; }, []);
 
   // Long-press
@@ -370,6 +375,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const resolveDisplayName = useCallback((sid: string, sdn?: string): string => isAnonymous ? generateCodename(sid + roomId) : sdn || formatDisplayName(sid), [isAnonymous, roomId]);
 
   const filteredMessages = useMemo(() => { if (!searchQuery.trim()) return messages; const q = searchQuery.toLowerCase(); return messages.filter(m => m.plaintext && typeof m.plaintext.body === 'string' && m.plaintext.body.toLowerCase().includes(q)); }, [messages, searchQuery]);
+  // eslint-disable-next-line security/detect-object-injection
   useEffect(() => { if (!searchQuery.trim() || filteredMessages.length === 0) return; const idx = Math.min(searchMatchIndex, filteredMessages.length - 1); const t = filteredMessages[idx]; if (t) messageRefs.current[t.event.eventId]?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, [searchMatchIndex, searchQuery, filteredMessages]);
 
   const handleConsumedOnce = useCallback((eid: string) => { setConsumedOnceIds(p => { const n = new Set(p); n.add(eid); try { localStorage.setItem('frame-consumed-once', JSON.stringify([...n])); } catch { /* ignore */ } return n; }); }, []);
@@ -379,6 +385,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     const src = searchQuery.trim() ? filteredMessages : messages; const els: React.ReactNode[] = [];
     let lastSid: string | null = null, lastTs: Date | null = null, lastDt: Date | null = null;
     const runStarts = new Set<number>(); const runLens: Record<number, number> = {}; const skip = new Set<number>();
+    // eslint-disable-next-line security/detect-object-injection
     { let rs = -1, rc = 0; for (let j = 0; j <= src.length; j++) { const m = j < src.length ? src[j] : null; const und = m !== null && m.decryptionError !== null && !deletedEventIds.has(m.event.eventId) && !expiredEventIds.has(m.event.eventId); if (und) { if (rs === -1) { rs = j; rc = 1; } else rc++; } else { if (rs !== -1 && rc > 1) { runStarts.add(rs); runLens[rs] = rc; for (let k = rs + 1; k < rs + rc; k++) skip.add(k); } rs = -1; rc = 0; } } }
 
     for (const [i, dec] of src.entries()) {
@@ -387,6 +394,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       const md = new Date(ev.originServerTs), isDel = deletedEventIds.has(ev.eventId), isExp = expiredEventIds.has(ev.eventId);
       const isSD = selfDestructingIds.has(ev.eventId), isDest = destroyedIds.has(ev.eventId);
       const isVO = dec.plaintext && dec.plaintext.viewOnce === true, isHO = hiddenOnceIds.has(ev.eventId);
+      // eslint-disable-next-line security/detect-object-injection
       const cc = runStarts.has(i) ? runLens[i] : 0;
 
       if (isDest) { els.push(<div key={ev.eventId} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: isOwn ? 'flex-end' : 'flex-start', padding: '8px 16px', marginTop: 4, animation: 'frame-destruct-text-fade 2s ease-out forwards' }}><span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: '#f85149', letterSpacing: '0.1em', textTransform: 'uppercase' as const }}>{'\u{1F4A3}'} MESSAGE DESTROYED</span></div>); lastSid = ev.senderId; lastTs = md; lastDt = md; continue; }
@@ -408,6 +416,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       if (cc > 1) { els.push(<div key={`ps-${ev.eventId}`} style={styles.previousSessionBlock}><div style={styles.previousSessionBlockInner}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0 }}><circle cx="7" cy="7" r="6" stroke="#8b949e" strokeWidth="1.2" fill="rgba(139,148,158,0.08)" /><rect x="5" y="6.5" width="4" height="3.2" rx="0.6" stroke="#8b949e" strokeWidth="0.9" fill="none" /><path d="M6 6.5V5.2a1 1 0 0 1 2 0V6.5" stroke="#8b949e" strokeWidth="0.9" strokeLinecap="round" fill="none" /></svg><span style={styles.previousSessionBlockText}>{cc} messages from a previous session</span><span style={styles.previousSessionInfoIcon} title="Forward secrecy: keys are unique per session">i</span></div><span style={styles.previousSessionLearnMore}>End-to-end encryption uses unique keys per session for forward secrecy</span></div>); const lr = messages[i + cc - 1]; lastSid = lr.event.senderId; lastTs = new Date(lr.event.originServerTs); lastDt = lastTs; continue; }
 
       const isFG = isNG, nm = messages[i + 1], isLG = !nm || nm.event.senderId !== ev.senderId || (new Date(nm.event.originServerTs).getTime() - md.getTime()) > GROUP_GAP_MS;
+      // eslint-disable-next-line security/detect-object-injection
       els.push(<MessageBubble key={ev.eventId} decrypted={dec} isOwn={isOwn} isFirstInGroup={isFG} isLastInGroup={isLG} isDeleted={isDel} isExpired={isExp} isSelfDestructing={isSD} isViewOnce={!!isVO} hasPopIn={recentlyArrivedIds.has(ev.eventId)} hasError={hasErr} isMobile={isMobile} isAnonymous={isAnonymous} currentUserId={currentUserId} resolveDisplayName={resolveDisplayName} disappearingSettings={disappearingSettings} readReceiptMap={readReceiptMap} localReactions={localReactions} searchQuery={searchQuery} searchMatchIndex={searchMatchIndex} filteredMessages={filteredMessages} onContextMenu={handleMessageContextMenu} onClick={handleMessageClick} onReply={handleReplyToMessage} onForward={(eid) => void handleForwardMessage(eid)} onReact={(eid, emoji) => { void handleReact(eid, emoji); }} onShowReactionPicker={handleShowReactionPicker} onScrollToMessage={scrollToMessage} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onTouchMove={handleTouchMove} onConsumedOnce={handleConsumedOnce} messageRef={el => { messageRefs.current[ev.eventId] = el; }} />);
       lastSid = ev.senderId; lastTs = md; lastDt = md;
     }
@@ -464,7 +473,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
       {reactionPickerEventId && reactionPickerPos && <div style={{ ...styles.reactionPicker, top: reactionPickerPos.y, left: reactionPickerPos.x }} onClick={e => e.stopPropagation()}>{QUICK_REACTIONS.map(em => <button key={em} type="button" style={styles.reactionPickerEmoji} onClick={() => void handleReact(reactionPickerEventId, em)}>{em}</button>)}</div>}
 
-      {isMobile && showMobileMoreMenu && <><div style={{ position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9998, animation: 'frame-overlay-fade-in 0.2s ease-out' }} onClick={() => setShowMobileMoreMenu(false)} /><div style={{ position: 'fixed' as const, bottom: 0, left: 0, right: 0, backgroundColor: '#21262d', borderTop: '1px solid #30363d', borderRadius: '16px 16px 0 0', padding: '8px 0', paddingBottom: 'env(safe-area-inset-bottom,8px)', zIndex: 9999, animation: 'frame-bottom-sheet-slide-up 0.25s cubic-bezier(0.32,0.72,0,1)', boxShadow: '0 -4px 24px rgba(0,0,0,0.4)' }}><div style={{ width: 36, height: 4, backgroundColor: '#484f58', borderRadius: 2, margin: '4px auto 12px' }} /><button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: disappearingSettings?.enabled ? '#d29922' : '#c9d1d9', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => { setShowMobileMoreMenu(false); setShowDisappearingMenu(v => !v); }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={disappearingSettings?.enabled ? '#d29922' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>{disappearingSettings?.enabled ? `Auto-delete \u00B7 ${disappearingSettings.timeoutSeconds < 3600 ? String(Math.floor(disappearingSettings.timeoutSeconds / 60)) + 'm' : disappearingSettings.timeoutSeconds < 86400 ? String(Math.floor(disappearingSettings.timeoutSeconds / 3600)) + 'h' : disappearingSettings.timeoutSeconds < 604800 ? String(Math.floor(disappearingSettings.timeoutSeconds / 86400)) + 'd' : String(Math.floor(disappearingSettings.timeoutSeconds / 604800)) + 'w'}` : 'Auto-delete'}</button><button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: '#c9d1d9', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => { setShowMobileMoreMenu(false); onOpenSettings?.(); }}>Room Info</button>{onLeave && <button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: '#f85149', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => { setShowMobileMoreMenu(false); onLeave(); }}>Leave Conversation</button>}</div></>}
+      {isMobile && showMobileMoreMenu && <><div style={{ position: 'fixed' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9998, animation: 'frame-overlay-fade-in 0.2s ease-out' }} onClick={() => setShowMobileMoreMenu(false)} /><div style={{ position: 'fixed' as const, bottom: 0, left: 0, right: 0, backgroundColor: '#21262d', borderTop: '1px solid #30363d', borderRadius: '16px 16px 0 0', padding: '8px 0', paddingBottom: 'env(safe-area-inset-bottom,8px)', zIndex: 9999, animation: 'frame-bottom-sheet-slide-up 0.25s cubic-bezier(0.32,0.72,0,1)', boxShadow: '0 -4px 24px rgba(0,0,0,0.4)' }}><div style={{ width: 36, height: 4, backgroundColor: '#484f58', borderRadius: 2, margin: '4px auto 12px' }} /><button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: disappearingSettings?.enabled ? '#d29922' : '#c9d1d9', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => { setShowMobileMoreMenu(false); setShowDisappearingMenu(v => !v); }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={disappearingSettings?.enabled ? '#d29922' : '#8b949e'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>{disappearingSettings?.enabled ? `Auto-delete \u00B7 ${disappearingSettings.timeoutSeconds < 3600 ? String(Math.floor(disappearingSettings.timeoutSeconds / 60)) + 'm' : disappearingSettings.timeoutSeconds < 86400 ? String(Math.floor(disappearingSettings.timeoutSeconds / 3600)) + 'h' : disappearingSettings.timeoutSeconds < 604800 ? String(Math.floor(disappearingSettings.timeoutSeconds / 86400)) + 'd' : String(Math.floor(disappearingSettings.timeoutSeconds / 604800)) + 'w'}` : 'Auto-delete'}</button><button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: '#c9d1d9', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => { setShowMobileMoreMenu(false); onOpenSettings?.(); }}>Room Info</button>{roomType === 'direct' && (() => { const otherUid = memberUserIds.find((id) => id !== currentUserId); if (!otherUid) return null; const isBlocked = blockedUserIds?.has(otherUid) ?? false; return <button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: isBlocked ? '#3fb950' : '#f85149', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => { setShowMobileMoreMenu(false); void (isBlocked ? unblockUserAPI(otherUid) : blockUserAPI(otherUid)).then(() => { showToast?.(isBlocked ? 'success' : 'warning', isBlocked ? 'User unblocked' : 'User blocked'); onBlockStatusChanged?.(); }).catch((err: unknown) => showToast?.('error', err instanceof Error ? err.message : 'Failed')); }}>{isBlocked ? 'Unblock User' : 'Block User'}</button>; })()}{onLeave && <button type="button" style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', fontSize: 15, color: '#f85149', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, textAlign: 'left' as const }} onClick={() => { setShowMobileMoreMenu(false); onLeave(); }}>Leave Conversation</button>}</div></>}
     </div>
   );
 };

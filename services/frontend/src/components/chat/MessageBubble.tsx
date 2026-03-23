@@ -175,8 +175,11 @@ export function CipherTypingIndicator({ displayName }: { displayName: string }) 
       const resolved = Math.floor(frame / 3);
       let result = '';
       for (let i = 0; i < target.length; i++) {
+        // eslint-disable-next-line security/detect-object-injection
         if (i < resolved) {
+          // eslint-disable-next-line security/detect-object-injection
           result += target[i];
+          // eslint-disable-next-line security/detect-object-injection
         } else if (target[i] === ' ') {
           result += ' ';
         } else {
@@ -281,7 +284,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
   messageRef,
 }) => {
   const event = decrypted.event;
-  const msgDate = new Date(event.originServerTs);
+  const _msgDate = new Date(event.originServerTs);
 
   const bubbleRadius = isOwn
     ? { borderTopLeftRadius: 16, borderTopRightRadius: isFirstInGroup ? 16 : 4, borderBottomLeftRadius: 16, borderBottomRightRadius: isLastInGroup ? 4 : 4 }
@@ -290,6 +293,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
   // Detect if this message is an image — used to strip bubble padding
   const isImageMessage = !isDeleted && !isExpired && !hasError && decrypted.plaintext != null && isFileMessage(decrypted.plaintext) && isImageFile(decrypted.plaintext);
 
+  // eslint-disable-next-line security/detect-object-injection
   const isCurrentSearchMatch = searchQuery.trim() && filteredMessages.length > 0 && searchMatchIndex < filteredMessages.length && filteredMessages[searchMatchIndex]?.event.eventId === event.eventId;
 
   return (
@@ -375,8 +379,21 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
           </div>
         )}
         {!isOwn && isFirstInGroup && (
-          <div style={{ ...styles.senderName, color: isAnonymous ? '#bc8cff' : getAvatarColor(event.senderId) }}>
+          <div style={{ ...styles.senderName, color: isAnonymous ? '#bc8cff' : getAvatarColor(event.senderId), display: 'flex', alignItems: 'center', gap: 4 }}>
             {DOMPurify.sanitize(resolveDisplayName(event.senderId, event.senderDisplayName), PURIFY_CONFIG)}
+            {event.senderId.startsWith('@guest_') && (
+              <span style={{
+                fontSize: 9,
+                fontWeight: 600,
+                color: '#8b949e',
+                backgroundColor: 'rgba(139, 148, 158, 0.1)',
+                border: '1px solid rgba(139, 148, 158, 0.25)',
+                borderRadius: 3,
+                padding: '0px 4px',
+                lineHeight: '14px',
+                flexShrink: 0,
+              }}>Guest</span>
+            )}
           </div>
         )}
         <div style={styles.messageBody}>
@@ -450,6 +467,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(({
                     if (!lower.includes(q)) return linkifyText(text, isOwn);
                     const isCurrentMatch = filteredMessages.length > 0 &&
                       searchMatchIndex < filteredMessages.length &&
+                      // eslint-disable-next-line security/detect-object-injection
                       filteredMessages[searchMatchIndex]?.event.eventId === event.eventId;
                     const parts: React.ReactNode[] = [];
                     let cursor = 0;

@@ -14,7 +14,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
 import { generateFingerprint } from '../crypto/cryptoUtils';
-import { signDeviceKey, getMasterPublicKey, fetchMasterPublicKey, verifyCrossSignature } from '../crypto/crossSigning';
+import { signDeviceKey, getMasterPublicKey } from '../crypto/crossSigning';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
 

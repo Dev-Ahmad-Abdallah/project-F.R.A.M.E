@@ -148,6 +148,7 @@ export function playDestructSound(): void {
   const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
   const data = noiseBuffer.getChannelData(0);
   for (let i = 0; i < bufferSize; i++) {
+    // eslint-disable-next-line security/detect-object-injection
     data[i] = Math.random() * 2 - 1;
   }
 
@@ -189,6 +190,7 @@ export function playJoinSound(): void {
   const noiseBuffer = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
   const noiseData = noiseBuffer.getChannelData(0);
   for (let i = 0; i < noiseLen; i++) {
+    // eslint-disable-next-line security/detect-object-injection
     noiseData[i] = Math.random() * 2 - 1;
   }
 

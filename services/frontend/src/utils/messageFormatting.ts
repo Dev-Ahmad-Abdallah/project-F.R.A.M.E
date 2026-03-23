@@ -137,6 +137,7 @@ export function linkifyText(text: string, isOwn: boolean): React.ReactNode[] {
   const elements: React.ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
+  // eslint-disable-next-line security/detect-non-literal-regexp
   const regex = new RegExp(URL_REGEX.source, 'gi');
 
   // eslint-disable-next-line no-cond-assign

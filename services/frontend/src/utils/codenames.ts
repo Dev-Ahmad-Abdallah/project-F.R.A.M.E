@@ -38,6 +38,7 @@ export function generateCodename(seed: string): string {
  * Ensures the two digits are non-consecutive (not equal and not adjacent).
  */
 export function generateMissionCode(): string {
+  // eslint-disable-next-line no-useless-concat
   const alpha = 'ABCDEFGH' + 'JKLMNPQRSTUVWXYZ'; // I, O removed for readability
   const letters = alpha;
   const l1 = letters[Math.floor(Math.random() * letters.length)];

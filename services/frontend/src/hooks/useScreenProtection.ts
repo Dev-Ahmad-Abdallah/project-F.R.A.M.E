@@ -49,7 +49,7 @@ export function useScreenProtection(): ScreenProtectionState {
   }, []);
 
   // ── Helper: check if target is a valid input (textarea in chat input, or form input) ──
-  const isInputElement = (target: EventTarget | null): boolean => {
+  const _isInputElement = (target: EventTarget | null): boolean => {
     if (!target) return false;
     const el = target as HTMLElement;
     const tag = el.tagName?.toLowerCase();

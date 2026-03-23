@@ -12,7 +12,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from '../utils/purifyConfig';
-import { inviteToRoom, leaveRoom, getRoomCode, regenerateCode, updateRoomSettings, getRoomSettingsAPI } from '../api/roomsAPI';
+import { inviteToRoom, leaveRoom, getRoomCode, regenerateCode, updateRoomSettings, getRoomSettingsAPI, kickMember } from '../api/roomsAPI';
 import { useIsMobile } from '../hooks/useIsMobile';
 import type { RoomSummary, RoomMember } from '../api/roomsAPI';
 
@@ -85,6 +85,10 @@ interface RoomSettingsProps {
   onRoomRenamed?: (roomId: string, newName: string) => void;
   /** Called when a member is invited */
   onMemberInvited?: (roomId: string) => void;
+  /** Called when a member is kicked */
+  onMemberKicked?: (roomId: string, userId: string) => void;
+  /** Toast notification callback */
+  showToast?: (type: 'success' | 'error' | 'info' | 'warning', message: string, options?: { persistent?: boolean; dedupeKey?: string; duration?: number }) => void;
 }
 
 const RoomSettings: React.FC<RoomSettingsProps> = ({
@@ -94,12 +98,14 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
   onLeaveRoom,
   onRoomRenamed,
   onMemberInvited,
+  onMemberKicked,
+  showToast,
 }) => {
   const isMobile = useIsMobile();
   // Rename state
   const [isEditingName, setIsEditingName] = useState(false);
   const [editNameValue, setEditNameValue] = useState(room.name || '');
-  const [isRenaming, setIsRenaming] = useState(false);
+  const [isRenaming, _setIsRenaming] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Invite state
@@ -115,6 +121,10 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
   // Disappearing messages state (synced with server)
   const [disappearingEnabled, setDisappearingEnabled] = useState(false);
   const [updatingDisappearing, setUpdatingDisappearing] = useState(false);
+
+  // Kick member state
+  const [kickConfirmUserId, setKickConfirmUserId] = useState<string | null>(null);
+  const [isKicking, setIsKicking] = useState(false);
 
   // Success flash state
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -274,6 +284,21 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
       setIsInviting(false);
     }
   }, [inviteUserId, room.roomId, onMemberInvited, showSuccess]);
+
+  const handleKickMember = useCallback(async (userId: string) => {
+    setIsKicking(true);
+    try {
+      await kickMember(room.roomId, userId);
+      showToast?.('success', 'User removed');
+      showSuccess('User removed from room');
+      onMemberKicked?.(room.roomId, userId);
+      setKickConfirmUserId(null);
+    } catch (err) {
+      showToast?.('error', err instanceof Error ? err.message : 'Failed to remove user');
+    } finally {
+      setIsKicking(false);
+    }
+  }, [room.roomId, showToast, showSuccess, onMemberKicked]);
 
   const handleLeave = useCallback(async () => {
     setIsLeaving(true);
@@ -653,10 +678,87 @@ const RoomSettings: React.FC<RoomSettingsProps> = ({
                       {member.userId === currentUserId && (
                         <span style={styles.youBadge}>you</span>
                       )}
+                      {member.userId.startsWith('@guest_') && (
+                        <span style={{
+                          fontSize: 9,
+                          fontWeight: 600,
+                          color: '#8b949e',
+                          backgroundColor: 'rgba(139, 148, 158, 0.1)',
+                          border: '1px solid rgba(139, 148, 158, 0.25)',
+                          borderRadius: 3,
+                          padding: '0px 4px',
+                          lineHeight: '14px',
+                          flexShrink: 0,
+                        }}>Guest</span>
+                      )}
                     </div>
                     <span style={styles.verifiedBadge} title="Verified">
                       &#10003;
                     </span>
+                    {/* Kick button — only shown for admin, not for self */}
+                    {isAdmin && member.userId !== currentUserId && (
+                      kickConfirmUserId === member.userId ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            style={{
+                              padding: '2px 8px',
+                              fontSize: 10,
+                              fontWeight: 600,
+                              backgroundColor: '#da3633',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: 3,
+                              cursor: isKicking ? 'not-allowed' : 'pointer',
+                              fontFamily: 'inherit',
+                              opacity: isKicking ? 0.6 : 1,
+                            }}
+                            disabled={isKicking}
+                            onClick={() => void handleKickMember(member.userId)}
+                          >
+                            {isKicking ? '...' : 'Confirm'}
+                          </button>
+                          <button
+                            type="button"
+                            style={{
+                              padding: '2px 8px',
+                              fontSize: 10,
+                              fontWeight: 600,
+                              backgroundColor: 'transparent',
+                              color: '#8b949e',
+                              border: '1px solid #30363d',
+                              borderRadius: 3,
+                              cursor: 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                            onClick={() => setKickConfirmUserId(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          style={{
+                            padding: '2px 8px',
+                            fontSize: 10,
+                            fontWeight: 600,
+                            backgroundColor: 'rgba(248, 81, 73, 0.08)',
+                            color: '#f85149',
+                            border: '1px solid rgba(248, 81, 73, 0.3)',
+                            borderRadius: 3,
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                            flexShrink: 0,
+                            transition: 'all 0.15s',
+                          }}
+                          title={`Remove ${DOMPurify.sanitize(member.displayName || member.userId, PURIFY_CONFIG)} from this room`}
+                          onClick={() => setKickConfirmUserId(member.userId)}
+                        >
+                          Remove
+                        </button>
+                      )
+                    )}
                   </div>
                 );
               })}

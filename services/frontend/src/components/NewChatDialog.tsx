@@ -21,7 +21,7 @@ import { FrameApiError } from '../api/client';
 import { fetchAndVerifyKey } from '../verification/keyTransparency';
 import { FONT_BODY, FONT_MONO } from '../globalStyles';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { generateCodename, generateSessionName } from '../utils/codenames';
+import { generateSessionName } from '../utils/codenames';
 import { playJoinSound, playErrorSound } from '../sounds';
 import { incrementRoomsCreated, checkAchievements } from '../utils/rankSystem';
 

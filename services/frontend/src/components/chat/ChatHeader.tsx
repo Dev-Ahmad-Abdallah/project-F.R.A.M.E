@@ -89,7 +89,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
   // Inline rename state
   const [isEditingName, setIsEditingName] = useState(false);
   const [editNameValue, setEditNameValue] = useState('');
-  const [isRenaming, setIsRenaming] = useState(false);
+  const [_isRenaming, _setIsRenaming] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Block/unblock state
@@ -223,7 +223,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
             </div>
           )}
           {isEditingName ? (
-            <input ref={renameInputRef} type="text" style={styles.renameInput} value={editNameValue} onChange={(e) => setEditNameValue(e.target.value)} onKeyDown={handleRenameKeyDown} onBlur={handleCancelRename} disabled={isRenaming} maxLength={128} aria-label="Rename room" />
+            <input ref={renameInputRef} type="text" style={styles.renameInput} value={editNameValue} onChange={(e) => setEditNameValue(e.target.value)} onKeyDown={handleRenameKeyDown} onBlur={handleCancelRename} disabled={_isRenaming} maxLength={128} aria-label="Rename room" />
           ) : (
             <span className="frame-chat-header-name" style={{ maxWidth: '50vw', cursor: 'pointer' }} onClick={handleStartRename} title="Click to rename">
               {headerName}
@@ -256,10 +256,12 @@ const ChatHeader: React.FC<ChatHeaderProps> = React.memo(({
                   width: 8,
                   height: 8,
                   borderRadius: '50%',
+                  // eslint-disable-next-line security/detect-object-injection
                   backgroundColor: STATUS_COLORS[contactStatus],
                   display: 'inline-block',
                   flexShrink: 0,
                 }}
+                // eslint-disable-next-line security/detect-object-injection
                 title={STATUS_LABELS[contactStatus]}
               />
               {contactStatusHovered && (

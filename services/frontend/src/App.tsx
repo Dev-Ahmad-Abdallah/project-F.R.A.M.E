@@ -40,6 +40,7 @@ import { formatDisplayName } from './utils/displayName';
 import DOMPurify from 'dompurify';
 import { PURIFY_CONFIG } from './utils/purifyConfig';
 import { listRooms, leaveRoom } from './api/roomsAPI';
+import { getBlockedUsers } from './api/blocksAPI';
 import { getKnownDevices, verifyDevice } from './devices/deviceManager';
 import type { RoomSummary } from './api/roomsAPI';
 import { generateAndUploadKeys } from './crypto/keyManager';
@@ -134,6 +135,7 @@ function App() {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const [showRoomSettings, setShowRoomSettings] = useState(false);
+  const [blockedUserIds, setBlockedUserIds] = useState<Set<string>>(new Set());
   /* eslint-disable @typescript-eslint/no-unused-vars */
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const [focusedRoomIndex, setFocusedRoomIndex] = useState<number | null>(null);
@@ -343,6 +345,18 @@ function App() {
       window.removeEventListener('online', handleOnline);
     };
   }, [showToast, auth]);
+
+  // ── Fetch blocked users on login ──
+  const refreshBlockedUsers = useCallback(() => {
+    if (!auth) return;
+    getBlockedUsers()
+      .then((users) => setBlockedUserIds(new Set(users)))
+      .catch(() => { /* ignore — endpoint may not exist yet */ });
+  }, [auth]);
+
+  useEffect(() => {
+    refreshBlockedUsers();
+  }, [refreshBlockedUsers]);
 
   // ── Periodic room list auto-refresh (every 15s) ──
   // Keeps the sidebar fresh without requiring manual reload.
@@ -1218,6 +1232,8 @@ function App() {
               onRoomRenamed={handleRoomRenamed}
               onLeave={() => setShowLeaveConfirm(true)}
               showToast={showToast}
+              blockedUserIds={blockedUserIds}
+              onBlockStatusChanged={refreshBlockedUsers}
             />
           );
         }
@@ -1712,6 +1728,7 @@ function App() {
               loading={initPhase !== 'done' && rooms.length === 0}
               searchInputRef={searchInputRef}
               focusedRoomIndex={focusedRoomIndex ?? undefined}
+              showToast={showToast}
             />
             {/* Gradient overlay at the bottom indicating scrollability */}
             <div style={styles.scrollFadeOverlay} />
@@ -1902,6 +1919,8 @@ function App() {
           onLeaveRoom={handleLeaveRoomFromSettings}
           onRoomRenamed={handleRoomRenamed}
           onMemberInvited={() => void handleRetryRoomFetch()}
+          onMemberKicked={() => void handleRetryRoomFetch()}
+          showToast={showToast}
         />
         </React.Suspense>
       )}
