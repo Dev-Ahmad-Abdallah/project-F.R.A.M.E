@@ -41,6 +41,60 @@ jest.mock('../../src/config', () => ({
   }),
 }));
 
+jest.mock('../../src/redis/client', () => ({
+  redisClient: {
+    publish: jest.fn().mockResolvedValue(1),
+    get: jest.fn().mockResolvedValue(null),
+    set: jest.fn().mockResolvedValue('OK'),
+    del: jest.fn().mockResolvedValue(1),
+    incr: jest.fn().mockResolvedValue(1),
+    pexpire: jest.fn().mockResolvedValue(1),
+    pttl: jest.fn().mockResolvedValue(-1),
+  },
+  redisSubscriber: {
+    subscribe: jest.fn().mockResolvedValue(undefined),
+    unsubscribe: jest.fn().mockResolvedValue(undefined),
+    on: jest.fn(),
+    removeListener: jest.fn(),
+  },
+}));
+
+// Mock requireAuth to pass-through and set auth payload
+jest.mock('../../src/middleware/auth', () => ({
+  requireAuth: (req: any, _res: any, next: any) => {
+    // Extract auth from Authorization header if present
+    const authHeader = req.headers?.authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const payload = jwt.verify(authHeader.slice(7), 'test-secret-that-is-at-least-32-chars-long!!');
+        req.auth = payload;
+      } catch { /* ignore */ }
+    }
+    if (!req.auth) {
+      return next({ statusCode: 401, code: 'M_UNAUTHORIZED', message: 'Not authenticated' });
+    }
+    next();
+  },
+}));
+
+// Mock rate limiters to pass-through in tests
+jest.mock('../../src/middleware/rateLimit', () => {
+  const passthrough = (_req: any, _res: any, next: any) => next();
+  return {
+    apiLimiter: passthrough,
+    messageLimiter: passthrough,
+    syncLimiter: passthrough,
+    loginLimiter: passthrough,
+    registerLimiter: passthrough,
+    refreshLimiter: passthrough,
+    keyUploadLimiter: passthrough,
+    keyQueryLimiter: passthrough,
+    fileUploadLimiter: passthrough,
+    guestLimiter: passthrough,
+  };
+});
+
 jest.mock('../../src/logger', () => ({
   logger: {
     info: jest.fn(),
