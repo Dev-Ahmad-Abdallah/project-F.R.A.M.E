@@ -18,6 +18,14 @@ html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  /* Prevent iOS Safari bounce and white space on keyboard open/close */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ── Base typography ── */

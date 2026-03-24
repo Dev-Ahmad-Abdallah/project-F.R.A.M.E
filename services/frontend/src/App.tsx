@@ -2016,10 +2016,15 @@ const styles: Record<string, React.CSSProperties> = {
   appWrapper: {
     display: 'flex',
     flexDirection: 'column',
-    height: '100dvh',
+    height: '100svh',
     maxHeight: '-webkit-fill-available',
     width: '100vw',
     overflow: 'hidden',
+    position: 'fixed' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: '#0d1117',
     color: '#c9d1d9',
     fontFamily:
