@@ -51,11 +51,11 @@ updates:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
-  # Keep GitHub Actions pinned SHAs up to date
+  # Keep GitHub Actions up to date (minor/patch only)
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
       time: "08:00"
       timezone: "Africa/Cairo"
     open-pull-requests-limit: 5
@@ -63,3 +63,6 @@ updates:
     reviewers: ["Dev-Hossam"]
     commit-message:
       prefix: "ci(actions)"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
